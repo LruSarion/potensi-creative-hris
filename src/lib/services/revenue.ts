@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
-import type { RevenueSource } from "@/generated/prisma/enums";
+import type { RevenueSource, Role } from "@/generated/prisma/enums";
 
 /**
  * Revenue ledger + commission split engine.
@@ -17,6 +17,7 @@ import type { RevenueSource } from "@/generated/prisma/enums";
  */
 
 const WRITE_ROLES = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] as const;
+const STAFF_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER", "OPERATION", "CLIENT", "CLIENT_ADMIN"];
 
 const revenueSchema = z.object({
   jadwalId: z.string().optional().nullable(),
@@ -112,8 +113,18 @@ export async function recordRevenue(input: RevenueInput) {
 
 export async function listRevenue(params?: { streamerKaryawanId?: string; periode?: string; source?: RevenueSource }) {
   const user = await requireRole();
+  const isStaff = STAFF_ROLES.includes(user.role);
+  const isStreamerSelf = user.karyawanId != null;
+
+  // Staff (finance/ops/admin) see tenant-wide revenue (with agency margins).
+  // Streamers see ONLY their own streamerCut (never agency margin / peer earnings).
   const where: Record<string, unknown> = { ...tenantWhere(user) };
-  if (params?.streamerKaryawanId) where.streamerKaryawanId = params.streamerKaryawanId;
+  if (isStaff) {
+    if (params?.streamerKaryawanId) where.streamerKaryawanId = params.streamerKaryawanId;
+  } else {
+    // Streamer: only own entries, and strip agency margin below.
+    where.streamerKaryawanId = user.karyawanId ?? "__none__";
+  }
   if (params?.source) where.source = params.source;
 
   const rows = await db.revenueEntry.findMany({
@@ -122,21 +133,36 @@ export async function listRevenue(params?: { streamerKaryawanId?: string; period
     take: 200,
   });
 
-  return rows.map((r) => ({
-    id: r.id,
-    source: r.source,
-    grossAmount: Number(r.grossAmount),
-    agencyCut: Number(r.agencyCut),
-    streamerCut: Number(r.streamerCut),
-    eventAt: r.eventAt,
-  }));
+  return rows.map((r) => {
+    const base = {
+      id: r.id,
+      source: r.source,
+      streamerCut: Number(r.streamerCut),
+      eventAt: r.eventAt,
+    };
+    // Streamers must never see agency margin or gross totals beyond their own cut.
+    if (!isStaff) return base;
+    return {
+      ...base,
+      grossAmount: Number(r.grossAmount),
+      agencyCut: Number(r.agencyCut),
+    };
+  });
 }
 
 /** Period aggregate: total gross, agency, streamer, and per-source breakdown. */
 export async function revenueSummary(params?: { streamerKaryawanId?: string; source?: RevenueSource }) {
   const user = await requireRole();
+  const isStaff = STAFF_ROLES.includes(user.role);
+
+  // Only staff may see aggregate revenue (agency margins). Streamers see only
+  // their own streamer total.
   const where: Record<string, unknown> = { ...tenantWhere(user) };
-  if (params?.streamerKaryawanId) where.streamerKaryawanId = params.streamerKaryawanId;
+  if (isStaff) {
+    if (params?.streamerKaryawanId) where.streamerKaryawanId = params.streamerKaryawanId;
+  } else {
+    where.streamerKaryawanId = user.karyawanId ?? "__none__";
+  }
   if (params?.source) where.source = params.source;
 
   const rows = await db.revenueEntry.findMany({ where });
@@ -144,12 +170,17 @@ export async function revenueSummary(params?: { streamerKaryawanId?: string; sou
   const bySource: Record<string, { count: number; gross: number; streamer: number; agency: number }> = {};
 
   for (const r of rows) {
-    const g = Number(r.grossAmount), a = Number(r.agencyCut), s = Number(r.streamerCut);
+    const g = isStaff ? Number(r.grossAmount) : 0;
+    const a = isStaff ? Number(r.agencyCut) : 0;
+    const s = Number(r.streamerCut);
     gross += g; agency += a; streamer += s;
     const b = bySource[r.source] ?? { count: 0, gross: 0, streamer: 0, agency: 0 };
     b.count++; b.gross += g; b.agency += a; b.streamer += s;
     bySource[r.source] = b;
   }
 
-  return { count: rows.length, gross, agency, streamer, bySource };
+  // Streamers see only their own streamer total (gross/agency masked).
+  return isStaff
+    ? { count: rows.length, gross, agency, streamer, bySource }
+    : { count: rows.length, streamer, bySource: Object.fromEntries(Object.entries(bySource).map(([k, v]) => [k, { count: v.count, streamer: v.streamer }])) };
 }
