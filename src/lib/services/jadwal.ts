@@ -7,6 +7,7 @@ import {
   computePeriodeBulan,
   validateTokenJeda,
   validateStudioRoomConflict,
+  isTimeOverlapping,
 } from "@/lib/schedule-rules";
 
 export const jadwalSchema = z.object({
@@ -60,15 +61,27 @@ export async function getJadwal(id: string) {
  * Validate token-jeda for a streamer against existing schedules.
  * Throws if the new schedule violates the 30-min rest rule.
  */
-async function assertTokenJedaOk(streamerId: string, start: Date, tenantId: string, excludeId?: string) {
+async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, tenantId: string, excludeId?: string) {
   const others = await db.jadwal.findMany({
     where: {
       streamerKaryawanId: streamerId,
       tenantId,
+      status: { notIn: ["DIBATALKAN", "REJECTED"] },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
-    select: { jamMulaiLive: true, jamSelesaiLive: true },
+    select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true },
   });
+
+  // (A) Same-streamer overlap: a streamer cannot be in two sessions at once.
+  for (const o of others) {
+    if (isTimeOverlapping(start, end, o.jamMulaiLive, o.jamSelesaiLive)) {
+      throw AppError.conflict(
+        `Streamer sudah dijadwalkan sesi lain (${o.idJadwal}) pada jam yang bentrok.`
+      );
+    }
+  }
+
+  // (B) Token-jeda rest rule: 30 min between sessions for the same streamer.
   const result = validateTokenJeda(
     start,
     others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
@@ -79,14 +92,20 @@ async function assertTokenJedaOk(streamerId: string, start: Date, tenantId: stri
 }
 
 async function assertStudioRoomAvailable(studioName: string, start: Date, end: Date, tenantId: string, excludeId?: string) {
+  // studioName is the concatenated "Cabang Nomor" (e.g. "Timoho 01"). Split into
+  // the separate cabangStudio + nomorStudio columns the schema actually stores.
+  const parts = studioName.trim().split(/\s+/);
+  const cabang = parts[0] ?? "";
+  const nomor = parts.slice(1).join(" ") || (parts[0] ?? "");
+
   const existing = await db.jadwal.findMany({
     where: {
       tenantId,
       status: { notIn: ["DIBATALKAN", "REJECTED"] },
       ...(excludeId ? { id: { not: excludeId } } : {}),
-      OR: [
-        { cabangStudio: { contains: studioName, mode: "insensitive" } },
-        { nomorStudio: { contains: studioName, mode: "insensitive" } },
+      AND: [
+        { cabangStudio: { contains: cabang, mode: "insensitive" } },
+        { nomorStudio: { contains: nomor, mode: "insensitive" } },
       ],
     },
     select: { idJadwal: true, cabangStudio: true, nomorStudio: true, jamMulaiLive: true, jamSelesaiLive: true },
@@ -107,6 +126,16 @@ async function assertStudioRoomAvailable(studioName: string, start: Date, end: D
   }
 }
 
+/** Coerce empty-string optional FKs to null (avoid FK constraint violations). */
+function normalizeJadwalData(input: JadwalInput): JadwalInput {
+  const data = { ...input };
+  for (const key of ["clientId", "streamerKaryawanId", "hostKaryawanId", "otsKaryawanId", "idHost", "idOts"] as const) {
+    const v = data[key as keyof JadwalInput];
+    if (v === "") (data as Record<string, unknown>)[key] = null;
+  }
+  return data;
+}
+
 export async function createJadwal(input: JadwalInput) {
   const user = await requirePermission("jadwal:write");
   const parsed = jadwalSchema.parse(input);
@@ -116,7 +145,7 @@ export async function createJadwal(input: JadwalInput) {
   if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
 
   if (parsed.streamerKaryawanId) {
-    await assertTokenJedaOk(parsed.streamerKaryawanId, start, user.tenantId);
+    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId);
   }
 
   const studioIdentifier = `${parsed.cabangStudio ?? ""} ${parsed.nomorStudio ?? ""}`.trim();
@@ -131,7 +160,7 @@ export async function createJadwal(input: JadwalInput) {
 
   return db.jadwal.create({
     data: {
-      ...parsed,
+      ...normalizeJadwalData(parsed),
       tenantId: user.tenantId,
       status: parsed.status ?? undefined,
       tanggal,
@@ -154,13 +183,13 @@ export async function updateJadwal(id: string, input: JadwalInput) {
   const tanggal = new Date(parsed.tanggal);
 
   if (parsed.streamerKaryawanId) {
-    await assertTokenJedaOk(parsed.streamerKaryawanId, start, user.tenantId, id);
+    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, id);
   }
 
   return db.jadwal.update({
     where: { id },
     data: {
-      ...parsed,
+      ...normalizeJadwalData(parsed),
       status: parsed.status ?? undefined,
       tanggal,
       jamMulaiLive: start,
@@ -191,9 +220,19 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
 
       if (parsed.streamerKaryawanId) {
         const others = await tx.jadwal.findMany({
-          where: { streamerKaryawanId: parsed.streamerKaryawanId, tenantId: user.tenantId },
-          select: { jamMulaiLive: true, jamSelesaiLive: true },
+          where: {
+            streamerKaryawanId: parsed.streamerKaryawanId,
+            tenantId: user.tenantId,
+            status: { notIn: ["DIBATALKAN", "REJECTED"] },
+          },
+          select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true },
         });
+        // Same-streamer overlap within the batch + existing.
+        for (const o of others) {
+          if (isTimeOverlapping(start, end, o.jamMulaiLive, o.jamSelesaiLive)) {
+            throw AppError.conflict(`Batch dibatalkan: sesi ${parsed.idJadwal} bentrok dengan ${o.idJadwal} untuk streamer yang sama.`);
+          }
+        }
         const result = validateTokenJeda(
           start,
           others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
@@ -205,7 +244,7 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
 
       const row = await tx.jadwal.create({
         data: {
-          ...parsed,
+          ...normalizeJadwalData(parsed),
           tenantId: user.tenantId,
           status: parsed.status ?? undefined,
           tanggal,

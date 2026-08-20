@@ -193,7 +193,7 @@ export default function InputJadwalPage() {
             {/* ID Jadwal */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider">ID Jadwal</label>
+                <label htmlFor="idJadwal" className="text-xs font-semibold text-slate-700 uppercase tracking-wider">ID Jadwal</label>
                 <button
                   type="button"
                   onClick={() => generateIdJadwal(form.tanggal)}
@@ -203,6 +203,7 @@ export default function InputJadwalPage() {
                 </button>
               </div>
               <input
+                id="idJadwal"
                 type="text"
                 value={form.idJadwal}
                 onChange={(e) => setForm({ ...form, idJadwal: e.target.value })}
@@ -213,10 +214,11 @@ export default function InputJadwalPage() {
 
             {/* Tanggal Live */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="tanggalSesi" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Tanggal Sesi
               </label>
               <input
+                id="tanggalSesi"
                 type="date"
                 value={form.tanggal}
                 onChange={handleDateChange}
@@ -245,10 +247,11 @@ export default function InputJadwalPage() {
 
             {/* Streamer Selector */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="streamerHost" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Streamer / Host
               </label>
               <select
+                id="streamerHost"
                 value={form.streamerKaryawanId}
                 onChange={(e) => setForm({ ...form, streamerKaryawanId: e.target.value })}
                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white"
@@ -283,10 +286,11 @@ export default function InputJadwalPage() {
 
             {/* Studio Room */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="lokasiStudio" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Lokasi Studio
               </label>
               <select
+                id="lokasiStudio"
                 value={`${form.cabangStudio}-${form.nomorStudio}`}
                 onChange={(e) => {
                   const [cabang, no] = e.target.value.split("-");
@@ -304,10 +308,11 @@ export default function InputJadwalPage() {
 
             {/* Jam Mulai */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="jamMulaiLive" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Waktu Mulai Live
               </label>
               <input
+                id="jamMulaiLive"
                 type="datetime-local"
                 value={form.jamMulaiLive}
                 onChange={(e) => setForm({ ...form, jamMulaiLive: e.target.value })}
@@ -318,10 +323,11 @@ export default function InputJadwalPage() {
 
             {/* Jam Selesai */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="jamSelesaiLive" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Waktu Selesai Live
               </label>
               <input
+                id="jamSelesaiLive"
                 type="datetime-local"
                 value={form.jamSelesaiLive}
                 onChange={(e) => setForm({ ...form, jamSelesaiLive: e.target.value })}
@@ -332,10 +338,11 @@ export default function InputJadwalPage() {
 
             {/* Judul Live Campaign */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="judulLive" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
                 Judul Sesi / Campaign
               </label>
               <input
+                id="judulLive"
                 type="text"
                 placeholder="mis. Mega Flash Sale 8.8"
                 value={form.judulLive}
