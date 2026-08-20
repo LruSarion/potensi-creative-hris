@@ -1,0 +1,968 @@
+// Prisma schema for HRIS Potensi Creative clone
+// Full parity with legacy 20-module GAS system.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN_OPERASIONAL
+  CLIENT
+  CLIENT_ADMIN
+  STREAMER
+  STAFF
+  OTS
+  OPERATION
+  TRAINER
+  QC_MANAGER
+  QC_REVIEWER
+  FINANCE
+  FINANCE_MANAGER
+}
+
+enum Gender {
+  LAKI_LAKI
+  PEREMPUAN
+}
+
+enum StatusAktif {
+  AKTIF
+  NON_AKTIF
+}
+
+enum TipeJadwal {
+  OFFICE_HOURS
+  SHIFT
+  LIVE
+}
+
+enum StatusJadwal {
+  TERJADWAL
+  PENDING
+  APPROVED
+  REJECTED
+  SELESAI
+  DIBATALKAN
+}
+
+enum StatusApproval {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TipeAbsensi {
+  CHECK_IN
+  CHECK_OUT
+}
+
+enum KategoriAbsensi {
+  STREAMER
+  STAFF
+  OTS
+}
+
+enum StatusLembur {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StatusIzin {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StatusTukarShift {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StatusProduk {
+  DRAFT
+  APPROVED
+  ONLINE
+  CLEANING
+  ARCHIVED
+}
+
+// ============================================================
+// AUTH & USERS
+// ============================================================
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   @default("AGENCY") // AGENCY | CLIENT_BRAND
+  logo      String?
+  config    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  karyawan      Karyawan[]
+  clients       Client[]
+  produk        Produk[]
+  jadwal        Jadwal[]
+  absensi       Absensi[]
+  payroll       Payroll[]
+  tiering       Tiering[]
+  kuotaHost     KuotaHost[]
+  liburStreamer LiburStreamer[]
+  clientKetentuan ClientKetentuan[]
+  logAktivitas  LogAktivitas[]
+  sessionStateLogs SessionStateLog[]
+  incidents     Incident[]
+  rosterShifts  RosterShift[]
+  payoutRuns    PayoutRun[]
+  billingDocs   BillingDoc[]
+  courses       Course[]
+  qcRubrics     QCRubric[]
+  qcReviews     SessionReview[]
+  attachments   Attachment[]
+
+  @@map("tenants")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  role          Role     @default(STAFF)
+  tenantId      String?
+  pinHash       String?
+  pinSalt       String?
+  failedLogins  Int      @default(0)
+  blockedUntil  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan      Karyawan?
+  sessions      Session[]
+  logAktivitas  LogAktivitas[]
+  accounts      Account[]
+
+  @@map("users")
+}
+
+model Karyawan {
+  id                String     @id @default(cuid())
+  idKaryawan        String     @unique // e.g. UJI013 / PCS075
+  tenantId          String?
+  namaLengkap       String
+  namaPanggilan     String?
+  gender            Gender?
+  jabatan           String?
+  kategori          String?
+  tipeJadwal        TipeJadwal?
+  nomorTelepon      String?
+  email             String?
+  startDate         DateTime?
+  endDate           DateTime?
+  statusAktif       StatusAktif @default(AKTIF)
+  nik               String?
+  npwp              String?
+  statusPtkp        String?
+  alamatKtp         String?
+  alamatDomisili    String?
+  tempatLahir       String?
+  tanggalLahir      DateTime?
+  statusPerkawinan  String?
+  agama             String?
+  riwayatPenyakit   String?
+  emergencyContact  String?
+  scanKtpDriveId    String?
+  scanKkDriveId     String?
+  scanNpwpDriveId   String?
+  namaBank          String?
+  nomorRekening     String?
+  namaPemilikRek    String?
+  linkFolder        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  userId            String?  @unique
+  user              User?    @relation(fields: [userId], references: [id])
+  tenant            Tenant?  @relation(fields: [tenantId], references: [id])
+  jadwalHost        Jadwal[]   @relation("JadwalHost")
+  jadwalStreamer    Jadwal[]   @relation("JadwalStreamer")
+  jadwalOts         Jadwal[]   @relation("JadwalOts")
+  absensi           Absensi[]
+  lembur            Lembur[]
+  izin              Izin[]
+  tukarShift        TukarShift[] @relation("TukarShiftRequester")
+  tukarShiftTarget  TukarShift[] @relation("TukarShiftTarget")
+  penilaian         PenilaianSDM[]
+  payroll           Payroll[]
+  kuotaHost         KuotaHost[]
+  liburStreamer     LiburStreamer[]
+  rosterShifts      RosterShift[]
+  payoutLines       PayoutLine[]
+  incidents         Incident[]      @relation("IncidentStreamer")
+  incidentsAssigned Incident[]      @relation("IncidentAssignee")
+  enrollments       Enrollment[]
+
+  @@map("karyawan")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ============================================================
+// KARYAWAN (EMPLOYEES)
+// ============================================================
+
+// ============================================================
+// CLIENT & PRODUK
+// ============================================================
+
+model Client {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  namaClient  String
+  platform    String?
+  pic         String?
+  kontak      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  ketentuan   ClientKetentuan[]
+  produk      Produk[]
+  jadwal      Jadwal[]
+  billingDocs BillingDoc[]
+
+  @@map("clients")
+}
+
+model ClientKetentuan {
+  id                String  @id @default(cuid())
+  tenantId          String?
+  clientId          String
+  platform          String
+  blacklist         String?
+  prioritasPlatform String?
+
+  tenant            Tenant? @relation(fields: [tenantId], references: [id])
+  client            Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, platform])
+  @@map("client_ketentuan")
+}
+
+model Produk {
+  id          String       @id @default(cuid())
+  tenantId    String?
+  clientId    String
+  namaProduk  String
+  kategori    String?
+  harga       Decimal?     @db.Decimal(12, 2)
+  status      StatusProduk @default(DRAFT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("produk")
+}
+
+// ============================================================
+// JADWAL (SCHEDULES)
+// ============================================================
+
+model Jadwal {
+  id               String       @id @default(cuid())
+  idJadwal         String       @unique // e.g. JDS/260429/014
+  tenantId         String?
+  tanggal          DateTime
+  platform         String?
+  idHost           String?
+  hostKaryawanId   String?
+  streamerKaryawanId String?
+  idOts            String?
+  otsKaryawanId    String?
+  cabangStudio     String?
+  nomorStudio      String?
+  jamMulaiLive     DateTime
+  jamSelesaiLive   DateTime
+  status           StatusJadwal @default(TERJADWAL)
+  liveState        SessionLiveState @default(SCHEDULED)
+  produkPrioritas  String?
+  keperluanOts     String?
+  judulLive        String?
+  promoLive        String?
+  catatanHost      String?
+  catatanOts       String?
+  filePendukungHostDriveId String?
+  filePendukungOtsDriveId  String?
+  periodeBulan     String? // e.g. "Mei 2026"
+  clientId         String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
+  hostKaryawan     Karyawan?    @relation("JadwalHost", fields: [hostKaryawanId], references: [id])
+  streamerKaryawan Karyawan?    @relation("JadwalStreamer", fields: [streamerKaryawanId], references: [id])
+  otsKaryawan      Karyawan?    @relation("JadwalOts", fields: [otsKaryawanId], references: [id])
+  client           Client?      @relation(fields: [clientId], references: [id])
+  absensi          Absensi[]
+  sessionStateLogs SessionStateLog[]
+  incidents        Incident[]
+  billingLines     BillingLine[]
+  sessionReviews   SessionReview[]
+
+  @@index([tanggal])
+  @@index([streamerKaryawanId])
+  @@map("jadwal")
+}
+
+// ============================================================
+// ABSENSI
+// ============================================================
+
+model Absensi {
+  id            String          @id @default(cuid())
+  tenantId      String?
+  karyawanId    String
+  jadwalId      String?
+  tipe          TipeAbsensi
+  kategori      KategoriAbsensi
+  waktu         DateTime        @default(now())
+  buktiDriveId  String?
+  catatan       String?
+
+  tenant        Tenant?         @relation(fields: [tenantId], references: [id])
+  karyawan      Karyawan        @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  jadwal        Jadwal?         @relation(fields: [jadwalId], references: [id])
+
+  @@index([karyawanId, waktu])
+  @@map("absensi")
+}
+
+// ============================================================
+// LEMBUR & IZIN
+// ============================================================
+
+model Lembur {
+  id           String       @id @default(cuid())
+  karyawanId   String
+  tanggal      DateTime
+  jamMulai     DateTime
+  jamSelesai   DateTime
+  alasan       String?
+  buktiDriveId String?
+  status       StatusLembur @default(PENDING)
+  approvedById String?
+  createdAt    DateTime     @default(now())
+
+  karyawan     Karyawan     @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@map("lembur")
+}
+
+model Izin {
+  id           String      @id @default(cuid())
+  karyawanId   String
+  tanggalMulai DateTime
+  tanggalSelesai DateTime
+  jenis        String?
+  alasan       String?
+  lampiranDriveId String?
+  status       StatusIzin  @default(PENDING)
+  approvedById String?
+  createdAt    DateTime    @default(now())
+
+  karyawan     Karyawan    @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@map("izin")
+}
+
+// ============================================================
+// TUKAR SHIFT
+// ============================================================
+
+model TukarShift {
+  id            String          @id @default(cuid())
+  requesterId   String
+  targetId      String
+  jadwalId      String?
+  tanggal       DateTime
+  alasan        String?
+  lampiranDriveId String?
+  status        StatusTukarShift @default(PENDING)
+  createdAt     DateTime        @default(now())
+
+  requester     Karyawan        @relation("TukarShiftRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  target        Karyawan        @relation("TukarShiftTarget", fields: [targetId], references: [id])
+
+  @@map("tukar_shift")
+}
+
+// ============================================================
+// PENILAIAN SDM
+// ============================================================
+
+model PenilaianSDM {
+  id          String   @id @default(cuid())
+  karyawanId  String
+  penilaiId   String
+  skor        Int
+  komentar    String?
+  periode     String?
+  createdAt   DateTime @default(now())
+
+  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@map("penilaian_sdm")
+}
+
+// ============================================================
+// PAYROLL & TIERING
+// ============================================================
+
+model Tiering {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  tier        String   @unique // Basic, Standard, Optimal, Advance, High Performer
+  jamMinimal  Int
+  jamMaksimal Int
+  ratePerJam  Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@map("tiering")
+}
+
+model Payroll {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  karyawanId  String
+  periode     String // e.g. "Mei 2026"
+  totalJam    Decimal  @db.Decimal(10, 2)
+  tier        String?
+  ratePerJam  Decimal  @db.Decimal(12, 2)
+  grossPay    Decimal  @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([karyawanId, periode])
+  @@map("payroll")
+}
+
+model KuotaHost {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  karyawanId  String
+  periode     String
+  kuota       Int
+  terpakai    Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([karyawanId, periode])
+  @@map("kuota_host")
+}
+
+model LiburStreamer {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  karyawanId  String
+  tanggal     DateTime
+  alasan      String?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([karyawanId, tanggal])
+  @@map("libur_streamer")
+}
+
+// ============================================================
+// PHASE 1: OPERATIONS (roster, session lifecycle, incidents)
+// ============================================================
+
+enum SessionLiveState {
+  SCHEDULED
+  LIVE
+  REVIEW
+  CLOSED
+}
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum IncidentStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  ESCALATED
+  RESOLVED
+  CLOSED
+}
+
+enum RosterStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model SessionStateLog {
+  id        String           @id @default(cuid())
+  tenantId  String?
+  jadwalId  String
+  fromState SessionLiveState?
+  toState   SessionLiveState
+  changedById String?
+  note      String?
+  createdAt DateTime         @default(now())
+
+  tenant    Tenant?          @relation(fields: [tenantId], references: [id])
+  jadwal    Jadwal           @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
+
+  @@index([jadwalId, createdAt])
+  @@map("session_state_log")
+}
+
+model Incident {
+  id          String           @id @default(cuid())
+  tenantId    String?
+  jadwalId    String?
+  streamerKaryawanId String?
+  title       String
+  description String?          @db.Text
+  severity    IncidentSeverity @default(MEDIUM)
+  status      IncidentStatus   @default(OPEN)
+  assigneeId  String?
+  reportedById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
+  jadwal      Jadwal?          @relation(fields: [jadwalId], references: [id])
+  streamer    Karyawan?        @relation("IncidentStreamer", fields: [streamerKaryawanId], references: [id])
+  assignee    Karyawan?        @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+
+  @@index([status, severity])
+  @@index([tenantId, createdAt])
+  @@map("incident")
+}
+
+// Roster: planned shift assignments (multi-day planning, leave cover).
+model RosterShift {
+  id             String       @id @default(cuid())
+  tenantId       String?
+  karyawanId     String
+  tanggal        DateTime
+  jamMulai       DateTime
+  jamSelesai     DateTime
+  role           String?      // STREAMER | OTS | HOST | STAFF
+  status         RosterStatus @default(ACTIVE)
+  note           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  tenant         Tenant?      @relation(fields: [tenantId], references: [id])
+  karyawan       Karyawan     @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@map("roster_shift")
+}
+
+// ============================================================
+// PHASE 2: FINANCE (payout runs, billing)
+// ============================================================
+
+enum PayoutRunStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+enum BillingStatus {
+  DRAFT
+  SENT
+  PAID
+  OVERDUE
+  VOID
+}
+
+model PayoutRun {
+  id          String           @id @default(cuid())
+  tenantId    String?
+  periode     String
+  status      PayoutRunStatus  @default(DRAFT)
+  totalAmount Decimal          @db.Decimal(14, 2) @default(0)
+  approvedById String?
+  paidAt      DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
+  lines       PayoutLine[]
+
+  @@unique([tenantId, periode])
+  @@map("payout_run")
+}
+
+model PayoutLine {
+  id          String   @id @default(cuid())
+  payoutRunId String
+  karyawanId  String
+  amount      Decimal  @db.Decimal(14, 2)
+  note        String?
+  createdAt   DateTime @default(now())
+
+  run         PayoutRun @relation(fields: [payoutRunId], references: [id], onDelete: Cascade)
+  karyawan    Karyawan  @relation(fields: [karyawanId], references: [id])
+
+  @@map("payout_line")
+}
+
+model BillingDoc {
+  id          String        @id @default(cuid())
+  tenantId    String?
+  clientId    String
+  periode     String
+  status      BillingStatus @default(DRAFT)
+  totalAmount Decimal       @db.Decimal(14, 2) @default(0)
+  dueDate     DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
+  client      Client        @relation(fields: [clientId], references: [id])
+  lines       BillingLine[]
+
+  @@unique([clientId, periode])
+  @@map("billing_doc")
+}
+
+model BillingLine {
+  id          String    @id @default(cuid())
+  billingDocId String
+  jadwalId    String
+  description String?
+  amount      Decimal   @db.Decimal(14, 2)
+  createdAt   DateTime  @default(now())
+
+  doc         BillingDoc @relation(fields: [billingDocId], references: [id], onDelete: Cascade)
+  jadwal      Jadwal     @relation(fields: [jadwalId], references: [id])
+
+  @@map("billing_line")
+}
+
+// ============================================================
+// PHASE 3: LMS (training)
+// ============================================================
+
+enum EnrollmentStatus {
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum QuizQuestionType {
+  MCQ
+  ESSAY
+}
+
+model Course {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  title       String
+  description String?  @db.Text
+  coverDriveId String?
+  status      String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  modules     Module[]
+  enrollments Enrollment[]
+
+  @@map("course")
+}
+
+model Module {
+  id         String   @id @default(cuid())
+  courseId   String
+  title      String
+  order      Int      @default(1)
+  contentType String? // VIDEO | TEXT | MIXED
+  contentDriveId String?
+  passingScore Int    @default(70)
+
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons    Lesson[]
+  questions  QuizQuestion[]
+
+  @@map("course_module")
+}
+
+model Lesson {
+  id          String   @id @default(cuid())
+  moduleId    String
+  title       String
+  order       Int      @default(1)
+  content     String?  @db.Text
+  attachmentDriveId String?
+
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@map("course_lesson")
+}
+
+model QuizQuestion {
+  id          String            @id @default(cuid())
+  moduleId    String
+  type        QuizQuestionType  @default(MCQ)
+  question    String            @db.Text
+  options     Json?             // MCQ: string[] ; ESSAY: null
+  correctAnswer String?         // MCQ: index/option ; ESSAY: reference answer
+  order       Int               @default(1)
+
+  module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  attempts    QuizAttempt[]
+
+  @@map("quiz_question")
+}
+
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  enrollmentId String
+  moduleId    String
+  questionId  String
+  answerText  String?  @db.Text
+  score       Int?
+  gradedById  String?
+  gradedAt    DateTime?
+  createdAt   DateTime @default(now())
+
+  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  question    QuizQuestion @relation(fields: [questionId], references: [id])
+
+  @@map("quiz_attempt")
+}
+
+model Enrollment {
+  id            String           @id @default(cuid())
+  courseId      String
+  karyawanId    String
+  status        EnrollmentStatus @default(ASSIGNED)
+  dueDate       DateTime?
+  progressPct   Int              @default(0)
+  completedAt   DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  karyawan      Karyawan         @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  attempts      QuizAttempt[]
+  certificates  Certificate[]
+
+  @@unique([courseId, karyawanId])
+  @@map("enrollment")
+}
+
+model Certificate {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  enrollmentId String
+  issuedAt    DateTime  @default(now())
+  revokedAt   DateTime?
+
+  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@map("certificate")
+}
+
+// ============================================================
+// PHASE 4: QUALITY CONTROL
+// ============================================================
+
+enum ReviewStatus {
+  PENDING
+  SCORED
+  PASS
+  FAIL
+}
+
+model QCRubric {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  name        String
+  description String?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  dimensions  QCRubricDimension[]
+  reviews     SessionReview[]
+
+  @@map("qc_rubric")
+}
+
+model QCRubricDimension {
+  id        String   @id @default(cuid())
+  rubricId  String
+  name      String
+  weight    Int      @default(1)
+  scaleMax  Int      @default(10)
+
+  rubric    QCRubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  scores    ReviewScore[]
+
+  @@map("qc_rubric_dimension")
+}
+
+model ReviewScore {
+  id          String  @id @default(cuid())
+  reviewId    String
+  dimensionId String
+  score       Int
+
+  review      SessionReview      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  dimension   QCRubricDimension  @relation(fields: [dimensionId], references: [id])
+
+  @@map("review_score")
+}
+
+model SessionReview {
+  id            String       @id @default(cuid())
+  tenantId      String?
+  jadwalId      String
+  rubricId      String
+  reviewerId    String?
+  status        ReviewStatus @default(PENDING)
+  totalScore    Int?
+  remarks       String?      @db.Text
+  recordingDriveId String?
+  createdAt     DateTime     @default(now())
+  reviewedAt    DateTime?
+
+  tenant         Tenant?      @relation(fields: [tenantId], references: [id])
+  jadwal         Jadwal       @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
+  rubric         QCRubric     @relation(fields: [rubricId], references: [id])
+  scores         ReviewScore[]
+  actionItems    ActionItem[]
+
+  @@map("session_review")
+}
+
+enum ActionItemStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+model ActionItem {
+  id          String          @id @default(cuid())
+  reviewId    String
+  assigneeId  String?
+  title       String
+  description String?         @db.Text
+  status      ActionItemStatus @default(OPEN)
+  createdAt   DateTime        @default(now())
+  resolvedAt  DateTime?
+
+  review      SessionReview   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("action_item")
+}
+
+// ============================================================
+// ATTACHMENTS (real model replacing LogAktivitas abuse)
+// ============================================================
+
+model Attachment {
+  id          String   @id @default(cuid())
+  tenantId    String?
+  kind        String // bucket key (ABSENSI, LEMBUR, CERTIFICATE, ...)
+  entityType  String
+  entityId    String
+  refId       String
+  url         String?
+  mime        String?
+  size        Int?
+  name        String?
+  createdAt   DateTime @default(now())
+
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, entityType, entityId])
+  @@map("attachment")
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+
+model LogAktivitas {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  userId    String?
+  aksi      String
+  detail    String?  @db.Text
+  ip        String?
+  createdAt DateTime @default(now())
+
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@map("log_aktivitas")
+}
