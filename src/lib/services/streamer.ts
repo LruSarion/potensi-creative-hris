@@ -58,22 +58,46 @@ export async function getMyReport(periode?: string) {
       ...(periode ? { periodeBulan: periode } : {}),
     },
   });
-  const totalMinutes = jadwal.reduce(
-    (s, j) => s + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive),
-    0
-  );
+
+  // Prefer recorded webhook uptime (durationSec); fall back to scheduled duration.
+  const totalSec = jadwal.reduce((s, j) => s + (j.durationSec || 0), 0);
+  const totalMinutes = totalSec > 0
+    ? totalSec / 60
+    : jadwal.reduce((s, j) => s + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive), 0);
   const totalJam = totalMinutes / 60;
 
   const payroll = await db.payroll.findFirst({
     where: { karyawanId, ...(periode ? { periode } : {}) },
   });
 
+  // Streamer's own earnings (their cut from the revenue ledger) for the period.
+  const startOf = periode ? new Date(periodeRange(periode)[0]) : undefined;
+  const endOf = periode ? new Date(periodeRange(periode)[1]) : undefined;
+  const revenues = await db.revenueEntry.findMany({
+    where: {
+      streamerKaryawanId: karyawanId,
+      ...(startOf && endOf ? { eventAt: { gte: startOf, lt: endOf } } : {}),
+    },
+  });
+  const streamerEarnings = revenues.reduce((s, r) => s + Number(r.streamerCut), 0);
+
   return {
     karyawanId,
     totalJadwal: jadwal.length,
     totalJam: Math.round(totalJam * 100) / 100,
+    totalUptimeSec: totalSec,
+    streamerEarnings,
     payroll: payroll
       ? { periode: payroll.periode, tier: payroll.tier, grossPay: Number(payroll.grossPay) }
       : null,
   };
+}
+
+/** Parse "Bulan YYYY" into a [start, end) date range. */
+function periodeRange(periode: string): [number, number] {
+  const m = /^(\w+) (\d{4})$/.exec(periode.trim());
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const idx = m ? months.indexOf(m[1]) : new Date().getMonth();
+  const year = m ? parseInt(m[2], 10) : new Date().getFullYear();
+  return [new Date(year, idx, 1).getTime(), new Date(year, idx + 1, 1).getTime()];
 }

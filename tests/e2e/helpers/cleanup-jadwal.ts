@@ -18,10 +18,14 @@ async function main() {
   if (!idArg) throw new Error("Missing --id=<idJadwal>");
   const idJadwal = idArg.split("=")[1];
 
-  const j = await prisma.jadwal.findFirst({ where: { idJadwal } });
+  const j = await prisma.jadwal.findFirst({
+    where: idJadwal.endsWith("%")
+      ? { idJadwal: { startsWith: idJadwal.slice(0, -1) } }
+      : { idJadwal },
+  });
   if (j) {
     await prisma.jadwal.delete({ where: { id: j.id } });
-    console.log(`deleted: ${idJadwal}`);
+    console.log(`deleted: ${j.idJadwal}`);
   } else {
     console.log(`not-found: ${idJadwal}`);
   }

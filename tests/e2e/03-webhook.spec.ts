@@ -67,6 +67,9 @@ test("webhook online -> offline records exact durationSec and liveState", async 
   expect(rec.status).toBe("SELESAI");
   expect(rec.durationSec).toBe(10800);
   expect(rec.stateLogCount).toBe(2); // SCHEDULED->LIVE, LIVE->REVIEW
+
+  // Cleanup to avoid polluting other tests (especially dashboard analytics).
+  execSync(`npx tsx tests/e2e/helpers/cleanup-jadwal.ts --id=${TEST_ID}`, { cwd: process.cwd(), env: { ...process.env } });
 });
 
 test("webhook rejects missing/incorrect secret (security)", async ({ page }) => {
