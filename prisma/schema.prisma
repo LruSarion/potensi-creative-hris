@@ -131,6 +131,7 @@ model Tenant {
   courses       Course[]
   qcRubrics     QCRubric[]
   qcReviews     SessionReview[]
+  revenueEntries RevenueEntry[]
   attachments   Attachment[]
 
   @@map("tenants")
@@ -358,6 +359,7 @@ model Jadwal {
   incidents        Incident[]
   billingLines     BillingLine[]
   sessionReviews   SessionReview[]
+  revenueEntries   RevenueEntry[]
 
   @@index([tanggal])
   @@index([streamerKaryawanId])
@@ -951,6 +953,39 @@ model Attachment {
 
   @@index([tenantId, entityType, entityId])
   @@map("attachment")
+}
+
+// ============================================================
+// REVENUE LEDGER (monetization events: bits, gifts, brand deals)
+// ============================================================
+
+enum RevenueSource {
+  BITS
+  GIFT
+  SUBSCRIPTION
+  BRAND_DEAL
+  OTHER
+}
+
+model RevenueEntry {
+  id             String      @id @default(cuid())
+  tenantId       String?
+  jadwalId       String?
+  streamerKaryawanId String?
+  clientId       String?
+  source         RevenueSource
+  grossAmount    Decimal     @db.Decimal(14, 2) // platform/paid amount (IDR)
+  agencyCut      Decimal     @db.Decimal(14, 2) // agency margin
+  streamerCut    Decimal     @db.Decimal(14, 2) // streamer payout share
+  currency       String      @default("IDR")
+  eventAt        DateTime    @default(now())
+  metadata       String?     @db.Text
+  createdAt      DateTime    @default(now())
+
+  tenant         Tenant?     @relation(fields: [tenantId], references: [id])
+  jadwal         Jadwal?     @relation(fields: [jadwalId], references: [id])
+
+  @@map("revenue_entry")
 }
 
 // ============================================================
