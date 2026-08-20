@@ -333,6 +333,8 @@ model Jadwal {
   jamSelesaiLive   DateTime
   status           StatusJadwal @default(TERJADWAL)
   liveState        SessionLiveState @default(SCHEDULED)
+  // Actual stream uptime (seconds) from platform webhook ingest (online->offline).
+  durationSec      Int          @default(0)
   produkPrioritas  String?
   keperluanOts     String?
   judulLive        String?
