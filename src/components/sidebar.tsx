@@ -40,7 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/qc", label: "Portal Quality Control", icon: "fa-clipboard-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"], section: "Portals Khusus" },
   { href: "/portal/trainer", label: "Portal Trainer", icon: "fa-chalkboard-user", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
   { href: "/portal/client", label: "Portal Brand Client", icon: "fa-chart-line", roles: ["SUPER_ADMIN", "CLIENT"], section: "Portals Khusus" },
-  { href: "/portal/streamer/lms", label: "LMS & Akademi Host", icon: "fa-graduation-cap", roles: ["SUPER_ADMIN", "STREAMER", "TRAINER"], section: "Portals Khusus" },
+  { href: "/portal/streamer/lms", label: "LMS & Akademi Host", icon: "fa-graduation-cap", roles: ["SUPER_ADMIN", "STREAMER", "OTS"], section: "Portals Khusus" },
   { href: "/admin", label: "Admin Console", icon: "fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
   { href: "/history-log", label: "Audit & History Log", icon: "fa-clock-rotate-left", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
 ];

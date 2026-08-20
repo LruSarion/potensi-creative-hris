@@ -42,7 +42,7 @@ export default function StreamerDashboardPage() {
     try {
       const [jRes, sRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
-        fetch("/api/staff?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
+        fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);

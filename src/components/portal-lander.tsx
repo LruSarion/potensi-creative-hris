@@ -43,7 +43,7 @@ const PORTAL_SECTIONS: Record<
       title: "Pelatihan & Onboarding",
       desc: "Kelola modul kursus, kurikulum live selling, dan evaluasi peserta.",
       tiles: [
-        { href: "/portal/streamer/lms", label: "Modul Akademi Streamer", icon: "fa-graduation-cap" },
+        { href: "/portal/trainer", label: "Kurikulum & Modul Kursus", icon: "fa-graduation-cap" },
         { href: "/penilaian-sdm", label: "Evaluasi KPI Host", icon: "fa-star" },
       ],
     },

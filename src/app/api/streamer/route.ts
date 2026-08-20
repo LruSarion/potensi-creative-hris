@@ -1,5 +1,5 @@
 import { apiHandler } from "@/lib/api-handler";
-import { getMyJadwal, getMyAbsensi, getMyReport } from "@/lib/services/streamer";
+import { getMyJadwal, getMyAbsensi, getMyReport, getMySesiAktif } from "@/lib/services/streamer";
 
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
@@ -7,5 +7,6 @@ export const GET = apiHandler(async (req: Request) => {
   const periode = url.searchParams.get("periode") ?? undefined;
   if (view === "absensi") return getMyAbsensi();
   if (view === "report") return getMyReport(periode);
+  if (view === "sesi") return getMySesiAktif();
   return getMyJadwal();
 });

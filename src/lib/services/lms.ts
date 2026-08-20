@@ -175,11 +175,13 @@ export async function listEnrollments(courseId?: string) {
     }
   }
 
+  // Enrollment has no tenantId column — scope via the related Course's tenantId.
+  const tenantFilter = user.role === "SUPER_ADMIN" ? {} : { course: { tenantId: user.tenantId } };
   return db.enrollment.findMany({
     where: {
       ...(courseId ? { courseId } : {}),
       ...(user.role === "STREAMER" && karyawanId ? { karyawanId } : {}),
-      ...tenantWhere(user),
+      ...tenantFilter,
     },
     include: {
       course: {

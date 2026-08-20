@@ -132,6 +132,7 @@ export const PERMISSIONS: Record<Role, string[]> = {
     "billing:read",
     "billing:write",
     "pnl:read",
+    "client:read",
   ],
   FINANCE_MANAGER: [
     "payroll:read",
@@ -145,6 +146,7 @@ export const PERMISSIONS: Record<Role, string[]> = {
     "billing:approve",
     "pnl:read",
     "tiering:write",
+    "client:read",
   ],
 };
 

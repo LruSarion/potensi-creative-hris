@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
 export default function PengajuanLemburPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [employees, setEmployees] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [form, setForm] = useState({
@@ -19,8 +19,9 @@ export default function PengajuanLemburPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (status === "authenticated") loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   async function loadData() {
     try {

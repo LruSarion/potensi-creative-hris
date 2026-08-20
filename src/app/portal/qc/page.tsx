@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 type Review = {
   id: string;
@@ -14,6 +15,9 @@ type Review = {
 };
 
 export default function QcPortalPage() {
+  const { data: session } = useSession();
+  // Trend/report analytics is manager-only (qc:reports permission).
+  const isManager = session?.user?.role === "QC_MANAGER" || session?.user?.role === "SUPER_ADMIN";
   const [reviews, setReviews] = useState<Review[]>([]);
   const [trends, setTrends] = useState<any>(null);
   const [error, setError] = useState("");
@@ -27,7 +31,8 @@ export default function QcPortalPage() {
 
   useEffect(() => {
     loadData();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isManager]);
 
   async function loadData() {
     setLoading(true);
@@ -35,11 +40,11 @@ export default function QcPortalPage() {
     try {
       const [r, t] = await Promise.all([
         fetch("/api/qc?view=reviews").then((x) => x.json()),
-        fetch("/api/qc?view=trends").then((x) => x.json()),
+        isManager ? fetch("/api/qc?view=trends").then((x) => x.json()) : Promise.resolve(null),
       ]);
       if (r.status === "success") setReviews(r.data);
-      if (t.status === "success") setTrends(t.data);
-      else if (t.status === "error") setError(t.message ?? "Akses ditolak");
+      if (t && t.status === "success") setTrends(t.data);
+      else if (t && t.status === "error") setError(t.message ?? "Akses ditolak");
     } catch {
       setError("Gagal memuat data QC");
     } finally {

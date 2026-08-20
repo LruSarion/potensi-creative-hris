@@ -33,6 +33,22 @@ export async function getMyAbsensi() {
   });
 }
 
+/** Current active (open) attendance session for the streamer, if any. */
+export async function getMySesiAktif() {
+  const karyawanId = await requireStreamer();
+  const lastCheckIn = await db.absensi.findFirst({
+    where: { karyawanId, tipe: "CHECK_IN" },
+    orderBy: { waktu: "desc" },
+  });
+  if (!lastCheckIn) return null;
+  const lastCheckOut = await db.absensi.findFirst({
+    where: { karyawanId, tipe: "CHECK_OUT" },
+    orderBy: { waktu: "desc" },
+  });
+  if (lastCheckOut && lastCheckOut.waktu > lastCheckIn.waktu) return null;
+  return lastCheckIn;
+}
+
 /** My monthly performance report (hours + tier + gross). */
 export async function getMyReport(periode?: string) {
   const karyawanId = await requireStreamer();
