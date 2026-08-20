@@ -192,6 +192,10 @@ model Karyawan {
   nomorRekening     String?
   namaPemilikRek    String?
   linkFolder        String?
+  // Commission split for this streamer/host. Percentages must sum to 100.
+  // streamerCutPct = share paid to the streamer; agencyCutPct = agency margin.
+  streamerCutPct    Decimal  @default(70) @db.Decimal(5, 2)
+  agencyCutPct      Decimal  @default(30) @db.Decimal(5, 2)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

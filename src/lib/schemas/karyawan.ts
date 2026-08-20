@@ -33,6 +33,20 @@ export const karyawanSchema = z.object({
   nomorRekening: z.string().optional().nullable(),
   namaPemilikRek: z.string().optional().nullable(),
   linkFolder: z.string().optional().nullable(),
+  // Commission split percentages (must sum to 100). Defaults to 70/30.
+  streamerCutPct: z.coerce.number().min(0).max(100).optional().default(70),
+  agencyCutPct: z.coerce.number().min(0).max(100).optional().default(30),
+}).superRefine((data, ctx) => {
+  const streamer = data.streamerCutPct ?? 70;
+  const agency = data.agencyCutPct ?? 30;
+  // Tolerance for floating-point sum check.
+  if (Math.abs(streamer + agency - 100) > 0.001) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["streamerCutPct"],
+      message: `Split ${streamer}/${agency} must sum to exactly 100 (got ${streamer + agency}).`,
+    });
+  }
 });
 
 export type KaryawanInput = z.infer<typeof karyawanSchema>;

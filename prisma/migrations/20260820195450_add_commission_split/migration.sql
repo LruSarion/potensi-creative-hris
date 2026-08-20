@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "karyawan" ADD COLUMN     "agencyCutPct" DECIMAL(5,2) NOT NULL DEFAULT 30,
+ADD COLUMN     "streamerCutPct" DECIMAL(5,2) NOT NULL DEFAULT 70;

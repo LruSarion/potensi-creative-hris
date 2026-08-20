@@ -26,6 +26,8 @@ export default function InputKaryawanPage() {
     namaPemilikRek: "",
     emergencyContact: "",
     statusAktif: "AKTIF",
+    streamerCutPct: 70,
+    agencyCutPct: 30,
   });
 
   useEffect(() => {
@@ -72,6 +74,8 @@ export default function InputKaryawanPage() {
           namaPemilikRek: "",
           emergencyContact: "",
           statusAktif: "AKTIF",
+          streamerCutPct: 70,
+          agencyCutPct: 30,
         });
         loadEmployees();
       } else {
@@ -134,8 +138,9 @@ export default function InputKaryawanPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">ID Karyawan</label>
+                  <label htmlFor="idKaryawan" className="block text-xs font-semibold text-slate-700 mb-1">ID Karyawan</label>
                   <input
+                    id="idKaryawan"
                     type="text"
                     value={form.idKaryawan}
                     onChange={(e) => setForm({ ...form, idKaryawan: e.target.value })}
@@ -157,8 +162,9 @@ export default function InputKaryawanPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
+                <label htmlFor="namaLengkap" className="block text-xs font-semibold text-slate-700 mb-1">Nama Lengkap</label>
                 <input
+                  id="namaLengkap"
                   type="text"
                   value={form.namaLengkap}
                   onChange={(e) => setForm({ ...form, namaLengkap: e.target.value })}
@@ -180,8 +186,9 @@ export default function InputKaryawanPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
+                  <label htmlFor="email" className="block text-xs font-semibold text-slate-700 mb-1">Email</label>
                   <input
+                    id="email"
                     type="email"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -263,6 +270,58 @@ export default function InputKaryawanPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Section 4: Commission Split */}
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                4. Komisi Pembagian (Revenue Split)
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="streamerCutPct" className="block text-xs font-semibold text-slate-700 mb-1">Streamer Cut (%)</label>
+                  <input
+                    id="streamerCutPct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.streamerCutPct}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setForm((f) => ({
+                        ...f,
+                        streamerCutPct: v,
+                        agencyCutPct: Math.max(0, 100 - v),
+                      }));
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Persentase pendapatan untuk streamer (default 70%).
+                  </p>
+                </div>
+                <div>
+                  <label htmlFor="agencyCutPct" className="block text-xs font-semibold text-slate-700 mb-1">Agency Cut (%)</label>
+                  <input
+                    id="agencyCutPct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    readOnly
+                    value={form.agencyCutPct}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono bg-slate-50 text-slate-500 focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Margin agency = 100% − streamer cut (auto).
+                  </p>
+                </div>
+              </div>
+              {Math.abs((form.streamerCutPct ?? 0) + (form.agencyCutPct ?? 0) - 100) > 0.001 && (
+                <div className="text-[11px] text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  Pembagian komisi harus berjumlah tepat 100%.
+                </div>
+              )}
             </div>
 
             <div className="pt-2">
