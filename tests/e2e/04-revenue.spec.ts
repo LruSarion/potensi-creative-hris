@@ -54,6 +54,9 @@ test("70/30 split: gross=100000 => streamer=70000, agency=30000, exact invariant
   expect(entry.streamer).toBe(70000);
   expect(entry.agency).toBe(30000);
   expect(entry.invariant).toBe(true);
+
+  // Cleanup to avoid polluting other tests.
+  execSync(`npx tsx tests/e2e/helpers/cleanup-revenue.ts --streamer=${STREAMER_PCS}`, { cwd: process.cwd(), env: { ...process.env } });
 });
 
 test("mixed sources + odd gross round-trip keeps gross == streamer + agency exactly", async ({ page }) => {
@@ -77,4 +80,7 @@ test("mixed sources + odd gross round-trip keeps gross == streamer + agency exac
   const d2 = (await res2.json()).data;
   expect(d2.streamerCut).toBe(3500000);
   expect(d2.agencyCut).toBe(1500000);
+
+  // Cleanup.
+  execSync(`npx tsx tests/e2e/helpers/cleanup-revenue.ts --streamer=${STREAMER_PCS}`, { cwd: process.cwd(), env: { ...process.env } });
 });

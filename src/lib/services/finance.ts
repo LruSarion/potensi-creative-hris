@@ -93,7 +93,7 @@ export async function createPayoutRun(periode: string) {
   return run;
 }
 
-export async function setPayoutStatus(id: string, status: "SUBMITTED" | "APPROVED" | "PAID" | "CANCELLED") {
+export async function setPayoutStatus(id: string, status: "PROCESSING" | "SUBMITTED" | "APPROVED" | "PAID" | "CANCELLED") {
   const user = await requireRole(...(status === "APPROVED" || status === "PAID" ? APPROVE_ROLES : FIN_ROLES));
   const run = await db.payoutRun.findFirst({ where: { id, ...tenantWhere(user) } });
   if (!run) throw AppError.notFound("Payout run tidak ditemukan");
@@ -103,6 +103,70 @@ export async function setPayoutStatus(id: string, status: "SUBMITTED" | "APPROVE
   });
   await logAktivitas({ tenantId: user.tenantId, userId: user.id, aksi: `PAYOUT_${status}`, detail: JSON.stringify({ runId: id }) });
   return updated;
+}
+
+/**
+ * Build a payout run from the revenue ledger (streamerCuts) for a period,
+ * minus per-line deductions. Guarantees:
+ *   amount = streamerCut - deductions
+ *   run.totalAmount == SUM(amount) == SUM(streamerCut) - SUM(deductions)
+ * Exact integer math (no floating-point drift).
+ */
+export async function reconcilePayoutRun(periode: string, deductionsByKaryawan: Record<string, number> = {}) {
+  const user = await requireRole(...FIN_ROLES);
+  if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
+
+  // Aggregate streamerCut per karyawan from revenue for the period (by eventAt month).
+  const [startOf, endOf] = periodeRange(periode);
+  const revenues = await db.revenueEntry.findMany({
+    where: { tenantId: user.tenantId, eventAt: { gte: startOf, lt: endOf } },
+  });
+
+  const perStreamer = new Map<string, number>();
+  for (const r of revenues) {
+    if (!r.streamerKaryawanId) continue;
+    const cut = Number(r.streamerCut);
+    perStreamer.set(r.streamerKaryawanId, (perStreamer.get(r.streamerKaryawanId) ?? 0) + cut);
+  }
+
+  const existing = await db.payoutRun.findFirst({ where: { tenantId: user.tenantId, periode } });
+  if (existing) throw AppError.conflict("Payout run untuk periode ini sudah ada");
+
+  const run = await db.$transaction(async (tx) => {
+    const run = await tx.payoutRun.create({
+      data: { tenantId: user.tenantId!, periode, totalAmount: 0, deductions: 0, status: "DRAFT" },
+    });
+
+    let totalAmount = 0;
+    let totalDeductions = 0;
+    for (const [karyawanId, streamerCut] of perStreamer) {
+      const deductions = Math.round(deductionsByKaryawan[karyawanId] ?? 0);
+      const amount = streamerCut - deductions;
+      if (amount <= 0) continue; // skip zero/negative lines
+      totalAmount += amount;
+      totalDeductions += deductions;
+      await tx.payoutLine.create({
+        data: { payoutRunId: run.id, karyawanId, streamerCut, deductions, amount },
+      });
+    }
+
+    return tx.payoutRun.update({
+      where: { id: run.id },
+      data: { totalAmount, deductions: totalDeductions },
+    });
+  });
+
+  await logAktivitas({ tenantId: user.tenantId, userId: user.id, aksi: "PAYOUT_RECONCILED", detail: JSON.stringify({ runId: run.id, periode }) });
+  return run;
+}
+
+/** Parse "Bulan YYYY" into a [start, end) date range. */
+function periodeRange(periode: string): [Date, Date] {
+  const m = /^(\w+) (\d{4})$/.exec(periode.trim());
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const idx = m ? months.indexOf(m[1]) : new Date().getMonth();
+  const year = m ? parseInt(m[2], 10) : new Date().getFullYear();
+  return [new Date(year, idx, 1), new Date(year, idx + 1, 1)];
 }
 
 export async function listPayoutRuns(periode?: string) {

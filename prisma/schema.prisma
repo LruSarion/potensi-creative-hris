@@ -634,6 +634,7 @@ model RosterShift {
 
 enum PayoutRunStatus {
   DRAFT
+  PROCESSING
   SUBMITTED
   APPROVED
   PAID
@@ -654,6 +655,7 @@ model PayoutRun {
   periode     String
   status      PayoutRunStatus  @default(DRAFT)
   totalAmount Decimal          @db.Decimal(14, 2) @default(0)
+  deductions  Decimal          @db.Decimal(14, 2) @default(0)
   approvedById String?
   paidAt      DateTime?
   createdAt   DateTime         @default(now())
@@ -670,6 +672,8 @@ model PayoutLine {
   id          String   @id @default(cuid())
   payoutRunId String
   karyawanId  String
+  streamerCut Decimal  @db.Decimal(14, 2) @default(0)
+  deductions  Decimal  @db.Decimal(14, 2) @default(0)
   amount      Decimal  @db.Decimal(14, 2)
   note        String?
   createdAt   DateTime @default(now())

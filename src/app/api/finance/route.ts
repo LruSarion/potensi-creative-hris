@@ -8,6 +8,7 @@ import {
   setBillingStatus,
   listBilling,
   pnlSummary,
+  reconcilePayoutRun,
 } from "@/lib/services/finance";
 
 export const GET = apiHandler(async (req: Request) => {
@@ -32,6 +33,9 @@ export const POST = apiHandler(async (req: Request) => {
   }
   if (action === "payout-run") {
     return createPayoutRun(body.periode);
+  }
+  if (action === "reconcile") {
+    return reconcilePayoutRun(body.periode, body.deductionsByKaryawan);
   }
   if (action === "billing") {
     return createBillingDoc(body.clientId, body.periode);
