@@ -41,10 +41,35 @@ export async function telegramStatus() {
   const user = await requireRole();
   const u = await db.user.findUnique({ where: { id: user.id } });
   if (!u) throw AppError.notFound("User tidak ditemukan");
+  const connected = Boolean(u.telegramChatId);
+  const cfg = await getTelegramConfig(user);
+
+  // When not connected, auto-provision a fresh bind link so the dashboard can
+  // show a ready-to-click bot button (no separate "connect" step for the user).
+  let link: string | null = null;
+  let botUsername: string | null = null;
+  if (!connected && cfg.botUsername) {
+    const existing = u.telegramBindToken && u.telegramBindExpires && u.telegramBindExpires > new Date()
+      ? { token: u.telegramBindToken, expires: u.telegramBindExpires }
+      : null;
+    const token = existing?.token ?? randomBytes(16).toString("hex");
+    if (!existing) {
+      await db.user.update({
+        where: { id: user.id },
+        data: { telegramBindToken: token, telegramBindExpires: new Date(Date.now() + BIND_TTL_MS) },
+      });
+    }
+    link = `https://t.me/${cfg.botUsername}?start=${token}`;
+    botUsername = cfg.botUsername;
+  }
+
   return {
-    connected: Boolean(u.telegramChatId),
+    connected,
     chatId: u.telegramChatId ?? null,
     boundAt: u.telegramBoundAt ?? null,
+    link,
+    botUsername,
+    configured: Boolean(cfg.botToken && cfg.botUsername),
   };
 }
 

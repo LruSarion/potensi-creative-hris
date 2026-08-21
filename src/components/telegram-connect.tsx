@@ -11,6 +11,7 @@ export default function TelegramConnect() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [link, setLink] = useState("");
+  const [configured, setConfigured] = useState(false);
   const [types, setTypes] = useState<NotifType[]>([]);
   const [prefs, setPrefs] = useState<Record<string, boolean>>({});
   const [savingPrefs, setSavingPrefs] = useState(false);
@@ -24,6 +25,8 @@ export default function TelegramConnect() {
       if (d.status === "success") {
         setConnected(d.data.connected);
         setChatId(d.data.chatId);
+        setLink(d.data.link ?? "");
+        setConfigured(d.data.configured ?? false);
       } else {
         setError(d.message ?? "Gagal memuat status Telegram");
       }
@@ -69,26 +72,6 @@ export default function TelegramConnect() {
       setError("Koneksi gagal");
     } finally {
       setSavingPrefs(false);
-    }
-  }
-
-  async function handleConnect() {
-    setError("");
-    setSuccess("");
-    try {
-      const r = await fetch("/api/telegram/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "connect" }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setLink(d.data.link);
-      } else {
-        setError(d.message ?? "Gagal membuat tautan Telegram");
-      }
-    } catch {
-      setError("Koneksi gagal");
     }
   }
 
@@ -178,35 +161,34 @@ export default function TelegramConnect() {
           <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-1">
             <p className="font-semibold">Langkah mudah:</p>
             <ol className="list-decimal list-inside space-y-0.5 text-slate-500">
-              <li>Buka Telegram di HP.</li>
               <li>Klik tombol hijau di bawah ini.</li>
               <li>Tekan "Start" di chat bot.</li>
+              <li>Selesai — otomatis terhubung.</li>
             </ol>
           </div>
           <a
             href={link}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 bg-[#229ED9] hover:bg-[#1c86b8] text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-md shadow-sky-500/20"
+            className="w-full inline-flex items-center justify-center gap-2 bg-[#229ED9] hover:bg-[#1c86b8] text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-md shadow-sky-500/20"
           >
-            <i className="fa-brands fa-telegram" /> Buka Bot Telegram
+            <i className="fa-brands fa-telegram" /> Buka Bot Telegram &amp; Hubungkan
           </a>
-          <p className="text-[10px] text-slate-400">Sudah menekan Start? Kembali ke sini sebentar, status akan terhubung otomatis.</p>
-          <div className="flex gap-2">
-            <button onClick={load} className="text-[11px] font-semibold text-blue-600 hover:underline">
-              Periksa Status
-            </button>
-            <button onClick={() => setLink("")} className="text-[11px] font-semibold text-slate-400 hover:underline">
-              Batal
-            </button>
-          </div>
+          <p className="text-[10px] text-slate-400">Sudah menekan Start? Kembali ke sini, status terhubung otomatis.</p>
+          <button onClick={load} className="text-[11px] font-semibold text-blue-600 hover:underline">
+            Periksa Status
+          </button>
+        </div>
+      ) : configured === false ? (
+        <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl p-3">
+          Bot Telegram belum dikonfigurasi oleh Super Admin. Hubungi admin untuk mengaktifkan.
         </div>
       ) : (
         <button
-          onClick={handleConnect}
+          onClick={load}
           className="w-full inline-flex items-center justify-center gap-2 bg-[#229ED9] hover:bg-[#1c86b8] text-white font-bold py-2.5 rounded-xl text-xs transition shadow-md shadow-sky-500/20"
         >
-          <i className="fa-brands fa-telegram" /> Hubungkan Telegram
+          <i className="fa-brands fa-telegram" /> Cek Status Telegram
         </button>
       )}
     </div>

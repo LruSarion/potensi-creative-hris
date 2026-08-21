@@ -74,6 +74,38 @@ async function handleStart(chatId: number, text: string, cfg: TelegramConfig) {
   ]);
 
   await sendTelegramText(chatId, `Terhubung sebagai ${user.name || user.email}.\nKamu akan menerima notifikasi di sini.`, cfg);
+
+  // Immediately offer the absensi menu so the user can check in/out in one tap.
+  await sendTelegramKeyboard(
+    chatId,
+    "📋 Absensi HRIS — pilih aksi:",
+    {
+      inline_keyboard: [
+        [{ text: "✅ Absen Masuk", callback_data: "ABSEN_IN" }],
+        [{ text: "🚪 Absen Pulang", callback_data: "ABSEN_OUT" }],
+      ],
+    },
+    cfg
+  );
+}
+
+async function sendTelegramKeyboard(
+  chatId: number,
+  text: string,
+  kb: { inline_keyboard: { text: string; callback_data: string }[][] },
+  cfg: TelegramConfig
+) {
+  if (!cfg.botToken) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${cfg.botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, reply_markup: kb }),
+      cache: "no-store",
+    });
+  } catch {
+    // ignore
+  }
 }
 
 async function handleCallback(data: string, chatId: number, callbackId: string | undefined, cfg: TelegramConfig) {
