@@ -55,6 +55,31 @@ export default function TelegramConfigAdmin() {
     }
   }
 
+  const [webhookLoading, setWebhookLoading] = useState(false);
+
+  async function setWebhook() {
+    setError("");
+    setSuccess("");
+    setWebhookLoading(true);
+    try {
+      const r = await fetch("/api/telegram/webhook/set", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appUrl: window.location.origin }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setSuccess(`Webhook Bot berhasil diaktifkan ke: ${d.data.webhookUrl}`);
+      } else {
+        setError(d.message ?? "Gagal memasang webhook");
+      }
+    } catch {
+      setError("Gagal menghubungkan webhook");
+    } finally {
+      setWebhookLoading(false);
+    }
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
       <div className="flex items-center gap-2">
@@ -105,10 +130,17 @@ export default function TelegramConfigAdmin() {
       </form>
 
       {hasToken && (
-        <div className="text-[10px] text-slate-400 space-y-1">
-          <p className="font-semibold text-slate-500">Cara menyiapkan webhook (sekali saja):</p>
-          <p className="font-mono">
-            https://api.telegram.org/bot&lt;TOKEN&gt;/setWebhook?url=&lt;URL_SERVER&gt;/api/telegram/webhook
+        <div className="pt-2 border-t border-slate-100 space-y-2">
+          <button
+            type="button"
+            onClick={setWebhook}
+            disabled={webhookLoading}
+            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2"
+          >
+            {webhookLoading ? "Memasang Webhook..." : "🚀 Aktifkan Webhook Bot ke Domain Ini (1-Klik)"}
+          </button>
+          <p className="text-[10px] text-slate-400 text-center">
+            Setiap kali mengubah domain Vercel / server, klik tombol di atas agar Telegram mengirim balasan & absensi ke URL baru.
           </p>
         </div>
       )}
