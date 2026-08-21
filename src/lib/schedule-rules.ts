@@ -69,6 +69,20 @@ export function computeDurationMinutes(start: Date, end: Date): number {
   return Math.round(ms / 60000);
 }
 
+/**
+ * Overnight-safe duration for time-of-day Lembur records where `end < start`
+ * means the shift crosses midnight (e.g. 22:00 -> 02:00 = 4h). Uses the same-day
+ * date of both values; only adds a day when end time-of-day is strictly earlier.
+ * NOT for Jadwal (which carries absolute dates).
+ */
+export function computeDurationMinutesOvernightSafe(start: Date, end: Date): number {
+  const ms = end.getTime() - start.getTime();
+  if (ms >= 0) return Math.round(ms / 60000);
+  // Cross-midnight: add a full day to the (shorter) end time-of-day.
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.round((ms + dayMs) / 60000);
+}
+
 /** WAJIB_HADIR = start - 25 min. */
 export function computeWajibHadir(start: Date): Date {
   return new Date(start.getTime() - WAJIB_HADIR_MINUTES * 60 * 1000);

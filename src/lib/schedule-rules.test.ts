@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeDurationMinutes,
+  computeDurationMinutesOvernightSafe,
   computeWajibHadir,
   computeBatasTerlambat,
   validateTokenJeda,
@@ -240,6 +241,23 @@ describe("validateTokenJeda — studio-aware transition gaps", () => {
     expect(validateTokenJeda(d(15, 40), [prior], 30, cfg, timoho1)).toBe("BISA_TOKEN");
     // Same 10m gap but cross-branch (needs 20m) -> rejected.
     expect(validateTokenJeda(d(15, 40), [prior], 30, cfg, berbah1)).toBe("TIDAK");
+  });
+});
+
+describe("computeDurationMinutesOvernightSafe (Lembur time-of-day)", () => {
+  it("same-day duration is unchanged", () => {
+    expect(computeDurationMinutesOvernightSafe(d(10, 0), d(12, 0))).toBe(120);
+  });
+  it("overnight lembur end<start adds a day (22:00 -> 02:00 = 4h)", () => {
+    expect(computeDurationMinutesOvernightSafe(d(22, 0), d(2, 0))).toBe(240);
+  });
+  it("cross-midnight 10:16 -> 05:22 = ~19h (the payroll bug case)", () => {
+    const start = new Date(2026, 7, 21, 10, 16);
+    const end = new Date(2026, 7, 21, 5, 22);
+    expect(computeDurationMinutesOvernightSafe(start, end)).toBe(19 * 60 + 6);
+  });
+  it("never returns negative", () => {
+    expect(computeDurationMinutesOvernightSafe(d(23, 0), d(1, 0))).toBeGreaterThan(0);
   });
 });
 
