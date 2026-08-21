@@ -508,7 +508,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
 
     const questions = await db.quizQuestion.findMany({
       where: { moduleId: mod.id, isNote: false },
-      orderBy: { createdAt: "asc" },
+      orderBy: { eventTime: "asc" },
     });
     const attempts = await db.quizAttempt.findMany({ where: { enrollmentId, moduleId: mod.id } });
 
@@ -559,7 +559,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
 
   const questions = await db.quizQuestion.findMany({
     where: { moduleId: w.lesson.moduleId, isNote: false },
-    orderBy: { createdAt: "asc" },
+    orderBy: { eventTime: "asc" },
   });
   const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
 

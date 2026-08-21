@@ -3,6 +3,7 @@ import { logAktivitas } from "@/lib/audit";
 import { INCIDENT_SLA_MIN, slaLate } from "@/lib/services/operations";
 import { processTelegramBot } from "@/lib/services/telegram-bot";
 import { getBotConfig } from "@/lib/services/telegram";
+import { createNotification } from "@/lib/services/integration";
 import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums";
 
 /**
@@ -312,20 +313,17 @@ async function runHrReminders() {
 
   // 1. Contract expiry: find employees whose contract ends within 30 days
   const expiring = await db.karyawan.findMany({
-    where: { endDate: { gte: now, lte: in30days }, status: "ACTIVE" },
+    where: { endDate: { gte: now, lte: in30days } },
     select: { id: true, namaLengkap: true, endDate: true },
   });
 
   for (const k of expiring) {
     const daysLeft = Math.ceil(((k.endDate?.getTime() ?? 0) - now.getTime()) / (1000 * 60 * 60 * 24));
-    await db.notification.create({
-      data: {
-        targetKaryawanId: null,
-        title: `⚠️ Kontrak Hampir Berakhir: ${k.namaLengkap}`,
-        message: `Kontrak ${k.namaLengkap} akan berakhir dalam ${daysLeft} hari. Segera proses perpanjangan.`,
-        link: "/view-data",
-        type: "SYSTEM",
-      },
+    await createNotification({
+      targetKaryawanId: k.id,
+      title: `⚠️ Kontrak Hampir Berakhir: ${k.namaLengkap}`,
+      message: `Kontrak ${k.namaLengkap} akan berakhir dalam ${daysLeft} hari. Segera proses perpanjangan.`,
+      link: "/view-data",
     }).catch(() => undefined);
   }
 
@@ -345,14 +343,11 @@ async function runHrReminders() {
       const totalJam = (row._sum.durationSec ?? 0) / 3600;
       if (totalJam >= threshold90 && row.streamerKaryawanId) {
         const k = await db.karyawan.findUnique({ where: { id: row.streamerKaryawanId }, select: { namaLengkap: true } });
-        await db.notification.create({
-          data: {
-            targetKaryawanId: null,
-            title: `🚨 Streamer Mendekati Batas Tier 4: ${k?.namaLengkap}`,
-            message: `${k?.namaLengkap} sudah akumulasi ${totalJam.toFixed(1)} jam bulan ini (ambang Tier 4: ${tier4.jamMinimal} jam). Pertimbangkan pengendalian jadwal.`,
-            link: "/input-jadwal",
-            type: "SYSTEM",
-          },
+        await createNotification({
+          targetKaryawanId: row.streamerKaryawanId,
+          title: `🚨 Streamer Mendekati Batas Tier 4: ${k?.namaLengkap}`,
+          message: `${k?.namaLengkap} sudah akumulasi ${totalJam.toFixed(1)} jam bulan ini (ambang Tier 4: ${tier4.jamMinimal} jam). Pertimbangkan pengendalian jadwal.`,
+          link: "/input-jadwal",
         }).catch(() => undefined);
       }
     }
