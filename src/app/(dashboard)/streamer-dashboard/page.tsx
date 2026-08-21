@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import CameraCapture from "@/components/camera-capture";
 
 type Jadwal = {
   id: string;
@@ -442,13 +443,11 @@ export default function StreamerDashboardPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Link Foto Bukti / Studio Selfie (Opsional)</label>
-              <input
-                type="text"
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Foto Bukti / Studio Selfie</label>
+              <CameraCapture
                 value={fotoBuktiUrl}
-                onChange={(e) => setFotoBuktiUrl(e.target.value)}
-                placeholder="https://drive.google.com/... atau URL foto"
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={setFotoBuktiUrl}
+                label="📷 Ambil Foto Check-In"
               />
             </div>
 

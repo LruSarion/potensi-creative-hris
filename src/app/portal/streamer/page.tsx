@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import CameraCapture from "@/components/camera-capture";
 
 export default function StreamerPortalPage() {
   const { data: session } = useSession();
@@ -214,13 +215,11 @@ export default function StreamerPortalPage() {
 
             <form onSubmit={saveProfile} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">URL Foto Profil</label>
-                <input
-                  type="url"
+                <label className="block font-semibold text-slate-700 mb-1">Foto Profil</label>
+                <CameraCapture
                   value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://.../foto-anda.jpg (Drive / gambar)"
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={setPhotoUrl}
+                  label="📷 Ambil Foto Profil"
                 />
               </div>
               <div>
