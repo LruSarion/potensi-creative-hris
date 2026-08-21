@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { logAktivitas } from "@/lib/audit";
 import { INCIDENT_SLA_MIN, slaLate } from "@/lib/services/operations";
+import { processTelegramBot } from "@/lib/services/telegram-bot";
 import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums";
 
 /**
@@ -12,7 +13,7 @@ import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums"
 const LOCAL_LOCKS = new Set<string>();
 const LOCK_TTL_MS = 60 * 60 * 1000; // 1h safety valve
 
-type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate";
+type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate" | "telegram-poll";
 
 export async function runJob(id: JobId, fn: () => Promise<void>): Promise<{ status: string; started: string }> {
   const started = new Date();
@@ -138,6 +139,12 @@ async function runIncidentEscalate(): Promise<number> {
 export type { JobId };
 
 export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
+  "telegram-poll": async () => {
+    const token = process.env.TELEGRAM_BOT_TOKEN || "";
+    if (!token) return;
+    const processed = await processTelegramBot({ botToken: token, botUsername: process.env.TELEGRAM_BOT_USERNAME || "" });
+    await logAktivitas({ aksi: "CRON_telegram-poll", detail: JSON.stringify({ processed }) });
+  },
   "payout-run": async () => {
     const now = new Date();
     const periode = `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][now.getMonth()]} ${now.getFullYear()}`;
