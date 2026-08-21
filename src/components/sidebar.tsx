@@ -39,6 +39,8 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/finance", label: "Portal Keuangan", icon: "fa-wallet", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "Portals Khusus" },
   { href: "/portal/qc", label: "Portal Quality Control", icon: "fa-clipboard-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"], section: "Portals Khusus" },
   { href: "/portal/trainer", label: "Portal Trainer", icon: "fa-chalkboard-user", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
+  { href: "/portal/trainer/learning-test", label: "Materi Video Interaktif", icon: "fa-circle-play", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
+  { href: "/portal/trainer/hasil-jawaban", label: "Hasil Jawaban Streamer", icon: "fa-file-circle-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
   { href: "/portal/client", label: "Portal Klien & Proyek Saya", icon: "fa-briefcase", roles: ["SUPER_ADMIN", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
   { href: "/streamer-directory", label: "Direktori Streamer & Sertifikasi", icon: "fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
   { href: "/pipeline", label: "Marketplace Pipeline", icon: "fa-diagram-project", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },

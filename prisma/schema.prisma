@@ -795,8 +795,11 @@ model Lesson {
   order       Int      @default(1)
   content     String?  @db.Text
   attachmentDriveId String?
+  videoId     String?  // YouTube video ID for interactive video lessons
+  videoDuration Int?   // seconds, for watch-percentage tracking
 
   module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  videoWatches VideoWatch[]
 
   @@map("course_lesson")
 }
@@ -809,6 +812,8 @@ model QuizQuestion {
   options     Json?             // MCQ: string[] ; ESSAY: null
   correctAnswer String?         // MCQ: index/option ; ESSAY: reference answer
   order       Int               @default(1)
+  eventTime   Int?              // seconds into the video where this timed question appears
+  isNote      Boolean           @default(false) // note event (not graded)
 
   module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   attempts    QuizAttempt[]
@@ -848,9 +853,28 @@ model Enrollment {
   karyawan      Karyawan         @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
   attempts      QuizAttempt[]
   certificates  Certificate[]
+  videoWatches  VideoWatch[]
 
   @@unique([courseId, karyawanId])
   @@map("enrollment")
+}
+
+model VideoWatch {
+  id           String   @id @default(cuid())
+  enrollmentId String
+  lessonId     String
+  watchSeconds Int      @default(0)
+  watchPct     Int      @default(0)     // 0..100
+  completed    Boolean  @default(false)
+  submittedAt  DateTime?                // when the streamer submitted the video quiz
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, lessonId])
+  @@map("video_watch")
 }
 
 model Certificate {

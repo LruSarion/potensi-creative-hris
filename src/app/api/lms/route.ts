@@ -4,7 +4,9 @@ import {
   listCourses,
   upsertModule,
   upsertLesson,
+  deleteLesson,
   addQuestion,
+  deleteQuestion,
   submitAnswer,
   gradeEssay,
   enroll,
@@ -13,6 +15,10 @@ import {
   listEnrollments,
   issueCertificate,
   revokeCertificate,
+  updateVideoWatch,
+  submitVideoLesson,
+  listVideoSubmissions,
+  getVideoSubmissionDetail,
 } from "@/lib/services/lms";
 import { listCertifications } from "@/lib/services/marketplace";
 
@@ -20,8 +26,12 @@ export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const view = url.searchParams.get("view") ?? "courses";
   const courseId = url.searchParams.get("courseId") ?? undefined;
+  const lessonId = url.searchParams.get("lessonId") ?? undefined;
+  const watchId = url.searchParams.get("watchId") ?? undefined;
   if (view === "enrollments") return listEnrollments(courseId);
   if (view === "certifications") return listCertifications();
+  if (view === "video-submissions") return listVideoSubmissions({ courseId, lessonId });
+  if (view === "video-submission-detail" && watchId) return getVideoSubmissionDetail(watchId);
   return listCourses();
 });
 
@@ -32,7 +42,9 @@ export const POST = apiHandler(async (req: Request) => {
   if (action === "course") return createCourse(body.course ?? body);
   if (action === "module") return upsertModule(body);
   if (action === "lesson") return upsertLesson(body);
+  if (action === "lesson-delete") return deleteLesson(body.id);
   if (action === "question") return addQuestion(body.question ?? body);
+  if (action === "question-delete") return deleteQuestion(body.id);
   if (action === "answer") return submitAnswer(body.enrollmentId, body.questionId, body.answerText);
   if (action === "grade") return gradeEssay(body.attemptId, body.score);
   if (action === "enroll") return enroll(body.karyawanId, body.courseId, body.dueDate);
@@ -40,5 +52,7 @@ export const POST = apiHandler(async (req: Request) => {
   if (action === "progress") return computeProgress(body.enrollmentId);
   if (action === "certificate") return issueCertificate(body.enrollmentId);
   if (action === "revoke-cert") return revokeCertificate(body.id);
+  if (action === "video-watch") return updateVideoWatch(body);
+  if (action === "video-submit") return submitVideoLesson(body);
   throw new Error("unknown lms action");
 });
