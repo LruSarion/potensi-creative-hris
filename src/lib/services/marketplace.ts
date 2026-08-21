@@ -21,10 +21,11 @@ export type ListingInput = z.infer<typeof listingSchema>;
 
 /**
  * Check whether a streamer holds a valid (not revoked, not expired) certification
- * for the given course/brand client.
+ * for the given course/brand client. A listing with NO courseId (no cert
+ * requirement) is eligible for every streamer.
  */
 export async function hasValidCertification(streamerKaryawanId: string, courseId: string | null | undefined): Promise<boolean> {
-  if (!courseId) return false;
+  if (!courseId) return true;
   const now = new Date();
   const cert = await db.certificate.findFirst({
     where: {

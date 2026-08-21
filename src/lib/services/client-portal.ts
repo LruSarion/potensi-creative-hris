@@ -64,21 +64,50 @@ export async function proposePromoJadwal(input: z.infer<typeof promoApprovalSche
   const tanggal = new Date(parsed.tanggal);
   const existing = await db.jadwal.findUnique({ where: { idJadwal: parsed.idJadwal } });
   if (existing) throw AppError.conflict("ID Jadwal sudah terdaftar");
-  return db.jadwal.create({
-    data: {
-      idJadwal: parsed.idJadwal,
-      tenantId: user.tenantId || undefined,
-      tanggal,
-      platform: parsed.platform ?? null,
-      judulLive: parsed.judulLive ?? null,
-      promoLive: parsed.promoLive ?? null,
-      catatanOts: parsed.catatan ?? null,
-      clientId: parsed.clientId ?? null,
-      status: "PENDING",
-      jamMulaiLive: tanggal,
-      jamSelesaiLive: tanggal,
-      periodeBulan: `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][tanggal.getMonth()]} ${tanggal.getFullYear()}`,
-    },
+
+  // Resolve the brand client for the marketplace listing: prefer the explicit
+  // clientId, else the client record owned by the current tenant.
+  const clientId =
+    parsed.clientId ??
+    (user.tenantId
+      ? (await db.client.findFirst({ where: { tenantId: user.tenantId } }))?.id ?? null
+      : null);
+
+  return db.$transaction(async (tx) => {
+    const jadwal = await tx.jadwal.create({
+      data: {
+        idJadwal: parsed.idJadwal,
+        tenantId: user.tenantId || undefined,
+        tanggal,
+        platform: parsed.platform ?? null,
+        judulLive: parsed.judulLive ?? null,
+        promoLive: parsed.promoLive ?? null,
+        catatanOts: parsed.catatan ?? null,
+        clientId,
+        status: "PENDING",
+        jamMulaiLive: tanggal,
+        jamSelesaiLive: tanggal,
+        periodeBulan: `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][tanggal.getMonth()]} ${tanggal.getFullYear()}`,
+      },
+    });
+
+    // Auto-create a marketplace listing so streamers can apply to this project.
+    if (clientId) {
+      await tx.marketplaceListing.create({
+        data: {
+          tenantId: user.tenantId || undefined,
+          clientId,
+          jadwalId: jadwal.id,
+          title: parsed.judulLive || parsed.idJadwal,
+          description: parsed.promoLive || null,
+          platform: parsed.platform ?? null,
+          quota: 1,
+          status: "OPEN",
+        },
+      });
+    }
+
+    return jadwal;
   });
 }
 

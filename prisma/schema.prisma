@@ -368,6 +368,7 @@ model Jadwal {
   billingLines     BillingLine[]
   sessionReviews   SessionReview[]
   revenueEntries   RevenueEntry[]
+  marketplaceListings MarketplaceListing[]
 
   @@index([tanggal])
   @@index([streamerKaryawanId])
@@ -900,6 +901,7 @@ model MarketplaceListing {
   id            String   @id @default(cuid())
   tenantId      String?
   clientId      String
+  jadwalId      String?  // proposed jadwal this listing recruits streamers for
   courseId      String?  // required certification course to be eligible
   title         String
   description   String?  @db.Text
@@ -912,6 +914,7 @@ model MarketplaceListing {
 
   tenant        Tenant?  @relation(fields: [tenantId], references: [id])
   client        Client   @relation(fields: [clientId], references: [id])
+  jadwal        Jadwal?  @relation(fields: [jadwalId], references: [id])
   course        Course?  @relation(fields: [courseId], references: [id])
   applications  ProjectApplication[]
 
