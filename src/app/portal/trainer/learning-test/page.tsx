@@ -195,7 +195,7 @@ export default function LearningTestPage() {
       setError("Pilih modul tujuan terlebih dahulu.");
       return;
     }
-    if (!selectedLessonId) {
+    if (!activeLessonId) {
       setError("Pilih materi video terlebih dahulu, lalu tambahkan pertanyaannya.");
       return;
     }
@@ -210,7 +210,7 @@ export default function LearningTestPage() {
       const payload: Record<string, unknown> = {
         action: "question",
         moduleId: selectedModuleId,
-        lessonId: selectedLessonId,
+        lessonId: activeLessonId,
         id: editingQuestion?.id,
         type: "MCQ",
         question: qQuestion.trim(),
