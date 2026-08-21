@@ -441,9 +441,12 @@ const BULAN_SHORT = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Se
 
 // ---------- Incident Queue Component ----------
 
+type ViolationCategory = { id: string; name: string; defaultFine: number | null };
+
 function IncidentQueue() {
   const [items, setItems] = useState<Incident[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [categories, setCategories] = useState<ViolationCategory[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
 
@@ -452,13 +455,25 @@ function IncidentQueue() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [severity, setSeverity] = useState<Incident["severity"]>("MEDIUM");
+  const [categoryId, setCategoryId] = useState("");
+  const [proofDriveId, setProofDriveId] = useState("");
+  const [fineApplied, setFineApplied] = useState("");
+  const [streamerKaryawanId, setStreamerKaryawanId] = useState("");
+
+  // approve modal
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [approveFine, setApproveFine] = useState("");
 
   async function load() {
     setBusy(true);
     try {
-      const res = await fetch("/api/incidents").then((x) => x.json());
-      if (res.status === "success") setItems(res.data);
-      else setError(res.message ?? "Gagal memuat insiden");
+      const [incRes, catRes] = await Promise.all([
+        fetch("/api/incidents").then((x) => x.json()),
+        fetch("/api/incidents?view=categories").then((x) => x.json()),
+      ]);
+      if (incRes.status === "success") setItems(incRes.data);
+      else setError(incRes.message ?? "Gagal memuat insiden");
+      if (catRes.status === "success") setCategories(catRes.data);
     } catch {
       setError("Terjadi kesalahan saat memuat insiden");
     } finally {
@@ -470,25 +485,34 @@ function IncidentQueue() {
     load();
     fetch("/api/employees")
       .then((x) => x.json())
-      .then((r) => {
-        if (r.status === "success") setEmployees(r.data);
-      })
+      .then((r) => { if (r.status === "success") setEmployees(r.data); })
       .catch(() => undefined);
   }, []);
 
   async function createIncident(e: React.FormEvent) {
     e.preventDefault();
     if (!title) return;
+    if (!proofDriveId) { setError("Link bukti (Screenshot/Screen Record) wajib diisi."); return; }
+    setError("");
     const res = await fetch("/api/incidents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, description: description || undefined, severity }),
+      body: JSON.stringify({
+        title,
+        description: description || undefined,
+        severity,
+        categoryId: categoryId || undefined,
+        proofDriveId,
+        fineApplied: fineApplied ? parseFloat(fineApplied) : undefined,
+        streamerKaryawanId: streamerKaryawanId || undefined,
+      }),
     }).then((x) => x.json());
     if (res.status === "success") {
       setShowForm(false);
-      setTitle("");
-      setDescription("");
+      setTitle(""); setDescription(""); setCategoryId(""); setProofDriveId(""); setFineApplied(""); setStreamerKaryawanId("");
       load();
+    } else {
+      setError(res.message ?? "Gagal membuat laporan");
     }
   }
 
@@ -505,6 +529,20 @@ function IncidentQueue() {
     await act(id, "assign", { status: "ASSIGNED", assigneeId });
   }
 
+  async function approveWithFine() {
+    if (!approvingId) return;
+    await act(approvingId, "approve", { fineApplied: approveFine ? parseFloat(approveFine) : 0 });
+    setApprovingId(null);
+    setApproveFine("");
+  }
+
+  // Auto-fill fine when category changes
+  function handleCategoryChange(id: string) {
+    setCategoryId(id);
+    const cat = categories.find((c) => c.id === id);
+    if (cat?.defaultFine) setFineApplied(String(cat.defaultFine));
+  }
+
   return (
     <div className="space-y-4">
       {error && (
@@ -519,45 +557,123 @@ function IncidentQueue() {
           className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 shadow-md shadow-rose-600/20 flex items-center gap-1.5"
         >
           <i className="fa-solid fa-triangle-exclamation" />
-          <span>Laporkan Kendala Studio / Live</span>
+          <span>Laporkan Pelanggaran / Kendala</span>
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={createIncident} className="bg-white rounded-2xl border border-slate-200 p-4 grid grid-cols-1 md:grid-cols-6 gap-3 text-xs shadow-sm">
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Judul kendala (mis. Mic wireless studio 2 baterai drop)"
-            className="border border-slate-200 rounded-xl px-3 py-2 md:col-span-3 outline-none"
-            required
-          />
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Deskripsi detail..."
-            className="border border-slate-200 rounded-xl px-3 py-2 md:col-span-2 outline-none"
-          />
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as any)}
-            className="border border-slate-200 rounded-xl px-3 py-2 bg-white outline-none"
-          >
-            <option value="LOW">LOW</option>
-            <option value="MEDIUM">MEDIUM</option>
-            <option value="HIGH">HIGH</option>
-            <option value="CRITICAL">CRITICAL</option>
-          </select>
-          <button type="submit" className="px-3 py-2 rounded-xl font-bold bg-rose-600 text-white hover:bg-rose-700 md:col-span-1 shadow-sm">
-            Kirim Laporan
-          </button>
+        <form onSubmit={createIncident} className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4 shadow-sm">
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <i className="fa-solid fa-file-shield text-rose-500" />
+            Form Laporan Pelanggaran / Kendala SOP
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            {/* Judul */}
+            <div className="md:col-span-2">
+              <label className="block font-semibold text-slate-700 mb-1.5">Judul Pelanggaran / Kendala <span className="text-red-500">*</span></label>
+              <input
+                value={title} onChange={(e) => setTitle(e.target.value)}
+                placeholder="mis. Streamer tertidur saat live, mic mati 15 menit"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-rose-500"
+                required
+              />
+            </div>
+
+            {/* Streamer */}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1.5">Streamer yang Bersangkutan</label>
+              <select
+                value={streamerKaryawanId} onChange={(e) => setStreamerKaryawanId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white outline-none"
+              >
+                <option value="">-- Pilih Streamer (opsional) --</option>
+                {employees.map((em) => (
+                  <option key={em.id} value={em.id}>{em.namaLengkap} ({em.idKaryawan})</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Severity */}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1.5">Tingkat Keparahan <span className="text-red-500">*</span></label>
+              <select
+                value={severity} onChange={(e) => setSeverity(e.target.value as any)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white outline-none"
+              >
+                <option value="LOW">LOW — Ringan</option>
+                <option value="MEDIUM">MEDIUM — Sedang</option>
+                <option value="HIGH">HIGH — Berat</option>
+                <option value="CRITICAL">CRITICAL — Darurat</option>
+              </select>
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1.5">Kategori Pelanggaran (SOP)</label>
+              <select
+                value={categoryId} onChange={(e) => handleCategoryChange(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white outline-none"
+              >
+                <option value="">-- Pilih Kategori --</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}{c.defaultFine ? ` (Denda: Rp ${Number(c.defaultFine).toLocaleString("id-ID")})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Fine */}
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1.5">Nominal Denda (Rp)</label>
+              <input
+                type="number" value={fineApplied} onChange={(e) => setFineApplied(e.target.value)}
+                placeholder="Otomatis terisi dari kategori, atau isi manual"
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            {/* Proof link — WAJIB */}
+            <div className="md:col-span-2">
+              <label className="block font-semibold text-slate-700 mb-1.5">
+                Link Bukti Screenshot / Screen Record <span className="text-red-500">* Wajib</span>
+              </label>
+              <input
+                value={proofDriveId} onChange={(e) => setProofDriveId(e.target.value)}
+                placeholder="https://drive.google.com/... atau URL bukti"
+                className="w-full border border-red-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-rose-500"
+                required
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Laporan tanpa bukti tidak bisa diajukan. Pastikan SS/Screen Record sudah diunggah ke Google Drive.</p>
+            </div>
+
+            {/* Description */}
+            <div className="md:col-span-2">
+              <label className="block font-semibold text-slate-700 mb-1.5">Deskripsi Detail (Opsional)</label>
+              <textarea
+                value={description} onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                placeholder="Uraikan kronologi kejadian secara singkat..."
+                className="w-full border border-slate-200 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-rose-500 resize-none"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100">
+              Batal
+            </button>
+            <button type="submit" className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 shadow-sm">
+              Kirim Laporan Pelanggaran
+            </button>
+          </div>
         </form>
       )}
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
         {items.map((it) => (
-          <div key={it.id} className="p-4 hover:bg-slate-50/80 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
+          <div key={it.id} className="p-4 hover:bg-slate-50/80 transition flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="space-y-1 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-bold text-slate-800">{it.title}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${SEVERITY_STYLE[it.severity]}`}>
@@ -573,10 +689,12 @@ function IncidentQueue() {
                 )}
               </div>
               <div className="text-xs text-slate-500">
-                {it.description || "Kendala teknis operasional live."}
+                {it.description || "Pelanggaran SOP operasional live."}
               </div>
-              <div className="text-[11px] text-slate-400">
-                Ditugaskan ke: <strong className="text-slate-700">{it.assignee?.namaLengkap ?? "Belum ada PIC"}</strong>
+              <div className="text-[11px] text-slate-400 flex flex-wrap gap-3">
+                <span>Streamer: <strong className="text-slate-700">{it.streamer?.namaLengkap ?? "—"}</strong></span>
+                <span>Ditugaskan ke: <strong className="text-slate-700">{it.assignee?.namaLengkap ?? "Belum ada PIC"}</strong></span>
+                <span>{new Date(it.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}</span>
               </div>
             </div>
 
@@ -585,24 +703,19 @@ function IncidentQueue() {
                 <>
                   <select
                     value=""
-                    onChange={(e) => {
-                      if (e.target.value) assign(it.id, e.target.value);
-                      e.target.value = "";
-                    }}
+                    onChange={(e) => { if (e.target.value) assign(it.id, e.target.value); e.target.value = ""; }}
                     className="px-3 py-1.5 rounded-xl text-xs border border-slate-200 bg-white"
                   >
-                    <option value="">Tugaskan ke OTS...</option>
+                    <option value="">Tugaskan ke...</option>
                     {employees.map((em) => (
-                      <option key={em.id} value={em.id}>
-                        {em.namaLengkap}
-                      </option>
+                      <option key={em.id} value={em.id}>{em.namaLengkap}</option>
                     ))}
                   </select>
                   <button
-                    onClick={() => act(it.id, "resolve", { status: "RESOLVED" })}
+                    onClick={() => { setApprovingId(it.id); }}
                     className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
                   >
-                    Selesaikan (Resolve)
+                    ✅ Approve & Tetapkan Denda
                   </button>
                 </>
               )}
@@ -615,6 +728,37 @@ function IncidentQueue() {
           </div>
         )}
       </div>
+
+      {/* Approve Modal */}
+      {approvingId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i className="fa-solid fa-gavel text-emerald-600" /> Approve Pelanggaran & Tetapkan Denda
+              </h3>
+              <button onClick={() => { setApprovingId(null); setApproveFine(""); }} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Nominal Denda Final (Rp)</label>
+              <input
+                type="number" value={approveFine} onChange={(e) => setApproveFine(e.target.value)}
+                placeholder="0 = tidak ada denda"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Denda ini akan dipotong dari gaji Streamer bulan ini dan direkap untuk Finance.</p>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => { setApprovingId(null); setApproveFine(""); }} className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100">Batal</button>
+              <button type="button" onClick={approveWithFine} className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md">
+                Konfirmasi Approve
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

@@ -20,7 +20,12 @@ export async function getMyJadwal() {
   return db.jadwal.findMany({
     where: { streamerKaryawanId: karyawanId },
     orderBy: { tanggal: "desc" },
-    include: { client: true },
+    include: { 
+      client: true,
+      absensi: {
+        where: { tipe: "CHECK_OUT" }
+      }
+    },
   });
 }
 
@@ -100,4 +105,118 @@ function periodeRange(periode: string): [number, number] {
   const idx = m ? months.indexOf(m[1]) : new Date().getMonth();
   const year = m ? parseInt(m[2], 10) : new Date().getFullYear();
   return [new Date(year, idx, 1).getTime(), new Date(year, idx + 1, 1).getTime()];
+}
+/** Full realtime dashboard data for the streamer. */
+export async function getMyDashboard() {
+  const karyawanId = await requireStreamer();
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Current month label for tiering lookup
+  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const currentPeriode = `${months[now.getMonth()]} ${now.getFullYear()}`;
+
+  const [karyawan, jadwalBulanIni, abensiBulanIni, incidents, tieringList] = await Promise.all([
+    db.karyawan.findUnique({ where: { id: karyawanId } }),
+    db.jadwal.findMany({
+      where: {
+        streamerKaryawanId: karyawanId,
+        tanggal: { gte: startOfMonth, lt: endOfMonth },
+        status: "SELESAI",
+      },
+    }),
+    db.absensi.findMany({
+      where: {
+        karyawanId,
+        waktu: { gte: startOfMonth, lt: endOfMonth },
+      },
+    }),
+    db.incident.findMany({
+      where: {
+        streamerKaryawanId: karyawanId,
+        status: { in: ["RESOLVED", "CLOSED"] },
+        createdAt: { gte: startOfMonth, lt: endOfMonth },
+      },
+      include: { category: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.tiering.findMany({ orderBy: { jamMinimal: "asc" } }),
+  ]);
+
+  // Calculate total live hours from jadwal
+  const totalMinutes = jadwalBulanIni.reduce((s, j) => {
+    if (j.durationSec > 0) return s + j.durationSec / 60;
+    return s + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
+  }, 0);
+  const totalJam = totalMinutes / 60;
+
+  // Find applicable tier
+  const activeTier = tieringList.slice().reverse().find(
+    (t) => totalJam >= t.jamMinimal
+  ) ?? tieringList[0] ?? null;
+
+  const ratePerJam = activeTier ? Number(activeTier.ratePerJam) : 0;
+  const grossPay = totalJam * ratePerJam;
+
+  // Total GMV from check-out records with reportedGmv
+  const totalGmv = abensiBulanIni
+    .filter((a) => a.tipe === "CHECK_OUT" && a.reportedGmv)
+    .reduce((s, a) => s + Number(a.reportedGmv), 0);
+
+  // Total denda (fines) from resolved incidents
+  const totalDenda = incidents.reduce((s, i) => s + Number(i.fineApplied ?? 0), 0);
+  const netPay = grossPay - totalDenda;
+
+  // Contract countdown
+  const kontrakEndDate = karyawan?.endDate ?? null;
+  const daysLeft = kontrakEndDate
+    ? Math.ceil((new Date(kontrakEndDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  return {
+    karyawan: karyawan ? {
+      namaLengkap: karyawan.namaLengkap,
+      namaPanggilan: karyawan.namaPanggilan,
+      kontrakType: karyawan.kategori,
+      endDate: karyawan.endDate,
+      tags: karyawan.tags,
+    } : null,
+    periode: currentPeriode,
+    totalJam: Math.round(totalJam * 100) / 100,
+    totalSesi: jadwalBulanIni.length,
+    activeTier: activeTier ? { nama: activeTier.tier, ratePerJam } : null,
+    grossPay: Math.round(grossPay),
+    totalGmv: Math.round(totalGmv),
+    totalDenda: Math.round(totalDenda),
+    netPay: Math.round(netPay),
+    kontrakDaysLeft: daysLeft,
+    incidents: incidents.map((i) => ({
+      id: i.id,
+      title: i.title,
+      category: i.category?.name ?? null,
+      fineApplied: Number(i.fineApplied ?? 0),
+      createdAt: i.createdAt,
+    })),
+  };
+}
+
+/** Get Check-Out records that are missing GMV (from auto-checkout/Terusan) */
+export async function getPendingGmv() {
+  const karyawanId = await requireStreamer();
+  return db.absensi.findMany({
+    where: {
+      karyawanId,
+      tipe: "CHECK_OUT",
+      reportedGmv: null,
+      jadwalId: { not: null }
+    },
+    orderBy: { waktu: "desc" },
+    include: {
+      jadwal: {
+        include: { client: true }
+      }
+    }
+  });
 }

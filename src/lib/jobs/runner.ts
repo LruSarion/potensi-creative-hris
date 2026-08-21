@@ -12,7 +12,7 @@ import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums"
 const LOCAL_LOCKS = new Set<string>();
 const LOCK_TTL_MS = 60 * 60 * 1000; // 1h safety valve
 
-type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate";
+type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate" | "check-in-reminders" | "auto-checkout";
 
 export async function runJob(id: JobId, fn: () => Promise<void>): Promise<{ status: string; started: string }> {
   const started = new Date();
@@ -135,6 +135,172 @@ async function runIncidentEscalate(): Promise<number> {
   return escalated;
 }
 
+/** check-in-reminders: sends 60-min advance reminders to streamers and 30-min escalations to SPVs */
+async function runCheckInReminders(): Promise<void> {
+  const now = new Date();
+  
+  // 1. Reminders for streamers: 60 minutes before jamMulaiLive
+  const in60Mins = new Date(now.getTime() + 60 * 60 * 1000);
+  const in65Mins = new Date(now.getTime() + 65 * 60 * 1000);
+  
+  const toRemind = await db.jadwal.findMany({
+    where: {
+      liveState: "SCHEDULED",
+      reminderStreamerSent: false,
+      jamMulaiLive: {
+        gte: in60Mins,
+        lt: in65Mins
+      }
+    },
+    select: { id: true, jamMulaiLive: true, streamerKaryawanId: true }
+  });
+
+  let remindersSent = 0;
+  for (const j of toRemind) {
+    if (j.streamerKaryawanId) {
+      await db.logAktivitas.create({
+        data: {
+          aksi: "NOTIFICATION",
+          detail: JSON.stringify({
+            targetKaryawanId: j.streamerKaryawanId,
+            title: "Pengingat Check-in",
+            message: `Jadwal live Anda akan dimulai pada ${j.jamMulaiLive.toLocaleTimeString("id-ID")}. Harap segera melakukan check-in minimal 30 menit sebelum sesi.`,
+            link: "/streamer-dashboard"
+          })
+        }
+      });
+      await db.jadwal.update({
+        where: { id: j.id },
+        data: { reminderStreamerSent: true }
+      });
+      remindersSent++;
+    }
+  }
+
+  // 2. Escalations to SPV/Admin: 30 minutes before jamMulaiLive if NO check-in
+  const in30Mins = new Date(now.getTime() + 30 * 60 * 1000);
+  const in35Mins = new Date(now.getTime() + 35 * 60 * 1000);
+  
+  const toEscalate = await db.jadwal.findMany({
+    where: {
+      liveState: "SCHEDULED",
+      reminderSpvSent: false,
+      jamMulaiLive: {
+        gte: in30Mins,
+        lt: in35Mins
+      },
+      absensi: {
+        none: {
+          tipe: "CHECK_IN"
+        }
+      }
+    },
+    select: { id: true, jamMulaiLive: true, streamerKaryawan: { select: { namaLengkap: true } } }
+  });
+
+  let escalationsSent = 0;
+  if (toEscalate.length > 0) {
+    // Find admins to notify
+    const admins = await db.user.findMany({
+      where: { role: { in: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"] } },
+      select: { id: true }
+    });
+
+    for (const j of toEscalate) {
+      for (const admin of admins) {
+        await db.logAktivitas.create({
+          data: {
+            aksi: "NOTIFICATION",
+            detail: JSON.stringify({
+              targetUserId: admin.id,
+              title: "Eskalasi: Streamer Belum Check-in",
+              message: `Streamer ${j.streamerKaryawan?.namaLengkap || 'Unknown'} belum melakukan check-in untuk jadwal live jam ${j.jamMulaiLive.toLocaleTimeString("id-ID")}.`,
+              link: "/admin/jadwal"
+            })
+          }
+        });
+      }
+      await db.jadwal.update({
+        where: { id: j.id },
+        data: { reminderSpvSent: true }
+      });
+      escalationsSent++;
+    }
+  }
+
+  if (remindersSent > 0 || escalationsSent > 0) {
+    await logAktivitas({ aksi: "CHECK_IN_REMINDERS", detail: JSON.stringify({ remindersSent, escalationsSent }) });
+  }
+}
+
+/** auto-checkout: automatically checks out streamers who forgot to check out 2 hours after scheduled end time */
+async function runAutoCheckout(): Promise<void> {
+  const now = new Date();
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+  const abandonedSessions = await db.jadwal.findMany({
+    where: {
+      liveState: "LIVE",
+      jamSelesaiLive: { lt: twoHoursAgo }
+    },
+    include: {
+      absensi: {
+        where: { tipe: "CHECK_IN" },
+        orderBy: { waktu: "desc" },
+        take: 1
+      }
+    }
+  });
+
+  let processedCount = 0;
+
+  for (const j of abandonedSessions) {
+    if (!j.streamerKaryawanId || j.absensi.length === 0) continue;
+    
+    const lastCheckIn = j.absensi[0];
+
+    await db.$transaction(async (tx) => {
+      await tx.absensi.create({
+        data: {
+          tenantId: j.tenantId,
+          karyawanId: j.streamerKaryawanId!,
+          jadwalId: j.id,
+          tipe: "CHECK_OUT",
+          kategori: lastCheckIn.kategori,
+          catatan: "Auto check-out by System",
+          reportedGmv: 0,
+        }
+      });
+
+      const durationSec = Math.floor((j.jamSelesaiLive.getTime() - lastCheckIn.waktu.getTime()) / 1000);
+
+      await tx.jadwal.update({
+        where: { id: j.id },
+        data: {
+          liveState: "REVIEW",
+          status: "SELESAI",
+          durationSec: Math.max(0, durationSec)
+        }
+      });
+
+      await tx.sessionStateLog.create({
+        data: {
+          tenantId: j.tenantId,
+          jadwalId: j.id,
+          fromState: "LIVE",
+          toState: "REVIEW",
+          note: "Auto-transition on Auto-Checkout (Session abandoned)"
+        }
+      });
+    });
+    processedCount++;
+  }
+
+  if (processedCount > 0) {
+    await logAktivitas({ aksi: "AUTO_CHECKOUT", detail: JSON.stringify({ processedCount }) });
+  }
+}
+
 export type { JobId };
 
 export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
@@ -159,5 +325,11 @@ export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
   },
   "incident-escalate": async () => {
     await runIncidentEscalate();
+  },
+  "check-in-reminders": async () => {
+    await runCheckInReminders();
+  },
+  "auto-checkout": async () => {
+    await runAutoCheckout();
   },
 };

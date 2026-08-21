@@ -16,6 +16,33 @@ type Jadwal = {
   liveState: string;
   client?: { namaClient: string } | null;
   produk?: { namaProduk: string; sku: string }[];
+  absensi?: { reportedGmv: number | null }[];
+};
+
+type DashboardData = {
+  karyawan: {
+    namaLengkap: string;
+    namaPanggilan: string | null;
+    kontrakType: string | null;
+    endDate: string | null;
+    tags: string | null;
+  } | null;
+  periode: string;
+  totalJam: number;
+  totalSesi: number;
+  activeTier: { nama: string; ratePerJam: number } | null;
+  grossPay: number;
+  totalGmv: number;
+  totalDenda: number;
+  netPay: number;
+  kontrakDaysLeft: number | null;
+  incidents: {
+    id: string;
+    title: string;
+    category: string | null;
+    fineApplied: number;
+    createdAt: string;
+  }[];
 };
 
 export default function StreamerDashboardPage() {
@@ -26,11 +53,19 @@ export default function StreamerDashboardPage() {
   const [success, setSuccess] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [activeSession, setActiveSession] = useState<{ id: string; waktu: string } | null>(null);
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
+  const [pendingGmvList, setPendingGmvList] = useState<any[]>([]);
 
   // Checkin modal/inputs
   const [checkinModalOpen, setCheckinModalOpen] = useState(false);
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [selectedJadwalId, setSelectedJadwalId] = useState("");
   const [fotoBuktiUrl, setFotoBuktiUrl] = useState("");
+  const [reportedGmv, setReportedGmv] = useState("");
+  
+  // Pending GMV submit
+  const [pendingGmvId, setPendingGmvId] = useState("");
+  const [pendingGmvModalOpen, setPendingGmvModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -40,15 +75,19 @@ export default function StreamerDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes] = await Promise.all([
+      const [jRes, sRes, dRes, pRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
         fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
+        fetch("/api/streamer?view=dashboard").then((r) => r.json()).catch(() => ({ status: "error" })),
+        fetch("/api/streamer?view=pending-gmv").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);
       else setError(jRes.message ?? "Gagal memuat jadwal streamer");
 
       if (sRes.status === "success") setActiveSession(sRes.data);
+      if (dRes.status === "success") setDashboardData(dRes.data);
+      if (pRes.status === "success") setPendingGmvList(pRes.data || []);
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
     } finally {
@@ -61,6 +100,7 @@ export default function StreamerDashboardPage() {
       setError("Pilih jadwal live yang akan di-checkin");
       return;
     }
+    
     setActionLoading(true);
     setError("");
     setSuccess("");
@@ -74,25 +114,35 @@ export default function StreamerDashboardPage() {
           kategori: "STREAMER",
           jadwalId: selectedJadwalId,
           fotoBuktiUrl: fotoBuktiUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300",
+          isTerusan: !!activeSession,
         }),
       });
       const d = await res.json();
       if (d.status === "success") {
         setSuccess("Presensi Check-In berhasil! Status sesi live sekarang ON-AIR.");
         setCheckinModalOpen(false);
+        setReportedGmv("");
         loadData();
       } else {
         setError(d.message ?? "Gagal melakukan check-in");
       }
-    } catch {
-      setError("Koneksi gagal saat presensi");
+    } catch (e: any) {
+      setError(e.message || "Koneksi gagal saat presensi");
     } finally {
       setActionLoading(false);
     }
   }
 
-  async function handleCheckOut(jadwalId?: string) {
-    if (!confirm("Konfirmasi selesai sesi live streaming dan Check-Out?")) return;
+  function handleCheckOutClick(jadwalId?: string) {
+    if (jadwalId) setSelectedJadwalId(jadwalId);
+    setCheckoutModalOpen(true);
+  }
+
+  async function handleCheckOutSubmit() {
+    if (!reportedGmv) {
+      setError("Harap isi total GMV income untuk sesi ini.");
+      return;
+    }
     setActionLoading(true);
     setError("");
     setSuccess("");
@@ -104,12 +154,15 @@ export default function StreamerDashboardPage() {
         body: JSON.stringify({
           tipe: "CHECK_OUT",
           kategori: "STREAMER",
-          jadwalId,
+          jadwalId: selectedJadwalId || undefined,
+          reportedGmv: parseFloat(reportedGmv),
         }),
       });
       const d = await res.json();
       if (d.status === "success") {
         setSuccess("Presensi Check-Out berhasil! Sesi streaming tersimpan ke rekap payroll.");
+        setCheckoutModalOpen(false);
+        setReportedGmv("");
         loadData();
       } else {
         setError(d.message ?? "Gagal melakukan check-out");
@@ -121,15 +174,41 @@ export default function StreamerDashboardPage() {
     }
   }
 
+  async function handlePendingGmvSubmit() {
+    if (!reportedGmv) {
+      setError("Harap isi total GMV income untuk sesi ini.");
+      return;
+    }
+    setActionLoading(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const res = await fetch(`/api/absensi?id=${pendingGmvId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportedGmv: parseFloat(reportedGmv) }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("GMV berhasil disimpan!");
+        setPendingGmvModalOpen(false);
+        setReportedGmv("");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal menyimpan GMV");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   // Calculate live hours
-  const totalLiveHours = jadwal
-    .filter((j) => j.status === "SELESAI" || j.status === "HADIR")
-    .reduce((acc, j) => {
-      const diff = (new Date(j.jamSelesaiLive).getTime() - new Date(j.jamMulaiLive).getTime()) / (1000 * 60 * 60);
-      return acc + (diff > 0 ? diff : 2);
-    }, 0);
 
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
+
 
   return (
     <div className="space-y-6">
@@ -150,7 +229,7 @@ export default function StreamerDashboardPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1">
-                {session?.user?.email} • ID: <span className="font-mono text-blue-300">{session?.user?.karyawanId ?? "PCS001"}</span>
+                {session?.user?.email}
               </p>
             </div>
           </div>
@@ -165,7 +244,7 @@ export default function StreamerDashboardPage() {
             </button>
             {activeSession && (
               <button
-                onClick={() => handleCheckOut()}
+                onClick={() => handleCheckOutClick()}
                 disabled={actionLoading}
                 className="bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-lg shadow-red-600/30 flex items-center gap-2"
               >
@@ -176,31 +255,27 @@ export default function StreamerDashboardPage() {
           </div>
         </div>
 
-        {/* Tier & Hour Progress */}
+        {/* Tier & Hour Progress (Realtime) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-800/80 text-xs">
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Tier Pencapaian</span>
             <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold text-white">
-                {totalLiveHours >= 156 ? "Advance" : totalLiveHours >= 121 ? "Optimal" : totalLiveHours >= 81 ? "Standard" : "Basic"}
-              </span>
+              <span className="text-base font-extrabold text-white">{dashboardData?.activeTier?.nama ?? "—"}</span>
               <span className="text-[10px] text-amber-300 font-semibold bg-amber-400/20 px-2 py-0.5 rounded-full">
-                Rp 28.500/jam
+                Rp {dashboardData?.activeTier?.ratePerJam?.toLocaleString("id-ID") ?? "0"}/jam
               </span>
             </div>
           </div>
-
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Total Jam Live Bulan Ini</span>
             <div className="text-base font-extrabold text-blue-300">
-              {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 120 Jam Target</span>
+              {dashboardData?.totalJam ?? 0} <span className="text-xs text-slate-400 font-normal">Jam</span>
             </div>
           </div>
-
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
-            <span className="text-slate-400 block mb-1">Total Sesi Terjadwal</span>
+            <span className="text-slate-400 block mb-1">Total Sesi Selesai</span>
             <div className="text-base font-extrabold text-purple-300">
-              {jadwal.length} <span className="text-xs text-slate-400 font-normal">Sesi Siaran</span>
+              {dashboardData?.totalSesi ?? 0} <span className="text-xs text-slate-400 font-normal">Sesi</span>
             </div>
           </div>
         </div>
@@ -219,6 +294,46 @@ export default function StreamerDashboardPage() {
           <span>{error}</span>
         </div>
       )}
+      
+      {/* Pending GMV Alerts */}
+      {pendingGmvList.map((p) => (
+        <div key={p.id} className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-pulse">
+          <div className="flex items-start gap-3">
+            <i className="fa-solid fa-triangle-exclamation text-red-600 text-xl mt-1" />
+            <div>
+              <h3 className="font-black text-red-700 uppercase tracking-wider text-xs">PENTING: LAPORAN GMV TERTUNDA</h3>
+              <p className="text-xs text-red-800 mt-0.5">
+                Anda memiliki sesi yang otomatis ditutup (Absensi Terusan) tanpa laporan GMV. 
+                <br className="hidden sm:block" />
+                Sesi: <strong>{p.jadwal?.client?.namaClient ?? "Klien"} ({p.jadwal?.platform})</strong> pada {new Date(p.jadwal?.tanggal).toLocaleDateString("id-ID")}.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setPendingGmvId(p.id);
+              setPendingGmvModalOpen(true);
+            }}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md shadow-red-600/20 whitespace-nowrap"
+          >
+            Lengkapi GMV Sesi Ini
+          </button>
+        </div>
+      ))}
+
+      {/* Contract Countdown Alert */}
+      {dashboardData?.kontrakDaysLeft !== null && dashboardData?.kontrakDaysLeft !== undefined && dashboardData.kontrakDaysLeft <= 30 && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 flex items-start gap-3">
+          <i className="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5" />
+          <div>
+            <div className="text-xs font-black text-amber-800">Perhatian: Kontrak Hampir Berakhir!</div>
+            <div className="text-[11px] text-amber-700 mt-0.5">
+              Kontrak Anda ({dashboardData.karyawan?.kontrakType ?? "Kontrak"}) akan berakhir dalam{" "}
+              <strong>{dashboardData.kontrakDaysLeft} hari</strong> lagi. Segera hubungi HR untuk proses perpanjangan.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active On-Air Stream Banner (if currently live) */}
       {currentLiveJadwal && (
@@ -235,9 +350,8 @@ export default function StreamerDashboardPage() {
               </p>
             </div>
           </div>
-
           <button
-            onClick={() => handleCheckOut(currentLiveJadwal.id)}
+            onClick={() => handleCheckOutClick(currentLiveJadwal.id)}
             disabled={actionLoading}
             className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-md shadow-rose-600/20"
           >
@@ -245,6 +359,84 @@ export default function StreamerDashboardPage() {
           </button>
         </div>
       )}
+
+      {/* Realtime Stats Cards */}
+      {dashboardData && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+              <i className="fa-solid fa-coins" /> Estimasi Gaji Bersih
+            </div>
+            <div className="text-lg font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
+            <div className="text-[10px] text-slate-500 mt-1">Setelah denda • {dashboardData.periode}</div>
+          </div>
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+            <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+              <i className="fa-solid fa-chart-line" /> Total GMV Dilaporkan
+            </div>
+            <div className="text-lg font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
+            <div className="text-[10px] text-slate-500 mt-1">Dari semua sesi {dashboardData.periode}</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-sm">
+            <div className="text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+              <i className="fa-solid fa-clock" /> Total Jam Live
+            </div>
+            <div className="text-lg font-black text-purple-700">{dashboardData.totalJam} Jam</div>
+            <div className="text-[10px] text-slate-500 mt-1">
+              Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "—"}</span>
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-sm">
+            <div className="text-[10px] text-red-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
+              <i className="fa-solid fa-gavel" /> Total Denda
+            </div>
+            <div className="text-lg font-black text-red-700">Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</div>
+            <div className="text-[10px] text-slate-500 mt-1">{dashboardData.incidents.length} Pelanggaran tercatat</div>
+          </div>
+        </div>
+      )}
+
+      {/* Violations Table */}
+      {dashboardData && dashboardData.incidents.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <i className="fa-solid fa-triangle-exclamation text-rose-500" /> Rekap Pelanggaran Bulan Ini
+              </h3>
+              <p className="text-[10px] text-slate-400 mt-0.5">Hanya pelanggaran yang sudah disetujui SPV</p>
+            </div>
+            <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-red-200">
+              {dashboardData.incidents.length} Kasus
+            </span>
+          </div>
+          <div className="divide-y divide-slate-50">
+            {dashboardData.incidents.map((inc) => (
+              <div key={inc.id} className="px-5 py-3 flex items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-semibold text-slate-800">{inc.title}</div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    Kategori: <span className="text-slate-600 font-medium">{inc.category ?? "—"}</span> •{" "}
+                    {new Date(inc.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  {inc.fineApplied > 0 ? (
+                    <span className="text-xs font-bold text-red-600">− Rp {inc.fineApplied.toLocaleString("id-ID")}</span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">Tanpa denda</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="px-5 py-3 bg-red-50 border-t border-red-100 flex justify-between items-center">
+            <span className="text-xs text-red-700 font-semibold">Total Potongan Denda</span>
+            <span className="text-sm font-black text-red-700">− Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</span>
+          </div>
+        </div>
+      )}
+
 
       {/* Quick Shortcuts */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -319,6 +511,7 @@ export default function StreamerDashboardPage() {
                 <th className="px-4 py-3">Tanggal & Jam</th>
                 <th className="px-4 py-3">Brand & Platform</th>
                 <th className="px-4 py-3">Lokasi Studio</th>
+                <th className="px-4 py-3">Total GMV</th>
                 <th className="px-4 py-3">Status Sesi</th>
                 <th className="px-4 py-3 text-right">Aksi</th>
               </tr>
@@ -352,6 +545,11 @@ export default function StreamerDashboardPage() {
                     <i className="fa-solid fa-location-dot text-slate-400 mr-1.5" />
                     {j.studio ?? "Timoho Studio 1"}
                   </td>
+                  <td className="px-4 py-3 font-semibold text-emerald-700">
+                    {j.absensi && j.absensi.length > 0 && j.absensi.some(a => a.reportedGmv !== null) 
+                      ? `Rp ${j.absensi.reduce((sum, a) => sum + Number(a.reportedGmv || 0), 0).toLocaleString("id-ID")}` 
+                      : <span className="text-[10px] text-slate-400 font-normal italic">Belum ada</span>}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
@@ -368,11 +566,13 @@ export default function StreamerDashboardPage() {
                   <td className="px-4 py-3 text-right">
                     {j.liveState === "LIVE" ? (
                       <button
-                        onClick={() => handleCheckOut(j.id)}
+                        onClick={() => handleCheckOutClick(j.id)}
                         className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
                       >
                         Check-Out
                       </button>
+                    ) : j.status === "SELESAI" || j.liveState === "CLOSED" ? (
+                      <span className="text-[10px] text-slate-400 font-bold italic">Selesai</span>
                     ) : (
                       <button
                         onClick={() => {
@@ -417,7 +617,9 @@ export default function StreamerDashboardPage() {
                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
               >
                 <option value="">-- Pilih Jadwal Siaran --</option>
-                {jadwal.map((j) => (
+                {jadwal
+                  .filter((j) => j.status !== "SELESAI" && j.liveState !== "CLOSED" && j.liveState !== "LIVE")
+                  .map((j) => (
                   <option key={j.id} value={j.id}>
                     {j.idJadwal} - {j.client?.namaClient ?? "Brand"} ({new Date(j.tanggal).toLocaleDateString("id-ID")})
                   </option>
@@ -436,6 +638,17 @@ export default function StreamerDashboardPage() {
               />
             </div>
 
+            {activeSession && (
+              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
+                <label className="block text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-2">
+                  <i className="fa-solid fa-triangle-exclamation" /> Absensi Terusan Terdeteksi
+                </label>
+                <p className="text-[10px] text-amber-700">
+                  Anda belum melakukan check-out untuk sesi sebelumnya. Sistem akan <strong>otomatis menutup sesi sebelumnya</strong>. Laporan GMV untuk sesi sebelumnya dapat Anda lengkapi nanti di Dashboard.
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -451,6 +664,108 @@ export default function StreamerDashboardPage() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-emerald-600/20 disabled:opacity-50"
               >
                 {actionLoading ? "Memproses..." : "Konfirmasi Check-In"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Check-Out Modal */}
+      {checkoutModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i className="fa-solid fa-stopwatch text-red-600" />
+                <span>Presensi Check-Out & Lapor GMV</span>
+              </h3>
+              <button onClick={() => setCheckoutModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi Ini (Wajib)</label>
+              <input
+                type="number"
+                value={reportedGmv}
+                onChange={(e) => setReportedGmv(e.target.value)}
+                placeholder="Contoh: 1500000"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Masukkan angka tanpa titik/koma. Contoh: 1500000 untuk 1,5 Juta.</p>
+              <div className="mt-2 text-[10px] text-red-700 bg-red-50 border border-red-200 p-2 rounded-lg flex items-start gap-1.5 leading-tight">
+                <i className="fa-solid fa-triangle-exclamation mt-0.5" />
+                <span>
+                  <strong>PENTING:</strong> Harap hanya memasukkan income GMV yang dihasilkan pada <strong>sesi INI SAJA</strong>. Jangan masukkan akumulasi dari sesi sebelumnya atau gabungan dengan host lain.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setCheckoutModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleCheckOutSubmit}
+                disabled={actionLoading || !reportedGmv}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-red-600/20 disabled:opacity-50"
+              >
+                {actionLoading ? "Memproses..." : "Konfirmasi Check-Out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending GMV Modal */}
+      {pendingGmvModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <i className="fa-solid fa-file-invoice-dollar text-red-600" />
+                <span>Lengkapi GMV Tertunda</span>
+              </h3>
+              <button onClick={() => setPendingGmvModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div className="bg-red-50 p-3 rounded-xl border border-red-200">
+              <p className="text-[10px] text-red-800">
+                Silakan masukkan GMV untuk sesi sebelumnya yang ditutup otomatis saat Absensi Terusan. Laporan ini wajib untuk perhitungan insentif bulanan Anda.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi Ini (Wajib)</label>
+              <input
+                type="number"
+                value={reportedGmv}
+                onChange={(e) => setReportedGmv(e.target.value)}
+                placeholder="Contoh: 1500000"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Masukkan angka tanpa titik/koma. Contoh: 1500000 untuk 1,5 Juta.</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingGmvModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handlePendingGmvSubmit}
+                disabled={actionLoading || !reportedGmv}
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-red-600/20 disabled:opacity-50"
+              >
+                {actionLoading ? "Menyimpan..." : "Simpan GMV"}
               </button>
             </div>
           </div>

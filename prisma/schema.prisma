@@ -111,115 +111,118 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users         User[]
-  karyawan      Karyawan[]
-  clients       Client[]
-  produk        Produk[]
-  jadwal        Jadwal[]
-  absensi       Absensi[]
-  payroll       Payroll[]
-  tiering       Tiering[]
-  kuotaHost     KuotaHost[]
-  liburStreamer LiburStreamer[]
-  clientKetentuan ClientKetentuan[]
-  logAktivitas  LogAktivitas[]
+  users            User[]
+  karyawan         Karyawan[]
+  clients          Client[]
+  produk           Produk[]
+  jadwal           Jadwal[]
+  absensi          Absensi[]
+  payroll          Payroll[]
+  tiering          Tiering[]
+  kuotaHost        KuotaHost[]
+  liburStreamer    LiburStreamer[]
+  clientKetentuan  ClientKetentuan[]
+  logAktivitas     LogAktivitas[]
   sessionStateLogs SessionStateLog[]
-  incidents     Incident[]
-  rosterShifts  RosterShift[]
-  payoutRuns    PayoutRun[]
-  billingDocs   BillingDoc[]
-  courses       Course[]
-  qcRubrics     QCRubric[]
-  qcReviews     SessionReview[]
-  revenueEntries RevenueEntry[]
-  attachments   Attachment[]
+  incidents        Incident[]
+  rosterShifts     RosterShift[]
+  payoutRuns       PayoutRun[]
+  billingDocs      BillingDoc[]
+  courses          Course[]
+  qcRubrics        QCRubric[]
+  qcReviews        SessionReview[]
+  revenueEntries   RevenueEntry[]
+  attachments      Attachment[]
 
   @@map("tenants")
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String?
-  image         String?
-  role          Role     @default(STAFF)
-  tenantId      String?
-  pinHash       String?
-  pinSalt       String?
-  failedLogins  Int      @default(0)
-  blockedUntil  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String?
+  image        String?
+  role         Role      @default(STAFF)
+  tenantId     String?
+  pinHash      String?
+  pinSalt      String?
+  failedLogins Int       @default(0)
+  blockedUntil DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
-  karyawan      Karyawan?
-  sessions      Session[]
-  logAktivitas  LogAktivitas[]
-  accounts      Account[]
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id])
+  karyawan     Karyawan?
+  sessions     Session[]
+  logAktivitas LogAktivitas[]
+  accounts     Account[]
 
   @@map("users")
 }
 
 model Karyawan {
-  id                String     @id @default(cuid())
-  idKaryawan        String     @unique // e.g. UJI013 / PCS075
-  tenantId          String?
-  namaLengkap       String
-  namaPanggilan     String?
-  gender            Gender?
-  jabatan           String?
-  kategori          String?
-  tipeJadwal        TipeJadwal?
-  nomorTelepon      String?
-  email             String?
-  startDate         DateTime?
-  endDate           DateTime?
-  statusAktif       StatusAktif @default(AKTIF)
-  nik               String?
-  npwp              String?
-  statusPtkp        String?
-  alamatKtp         String?
-  alamatDomisili    String?
-  tempatLahir       String?
-  tanggalLahir      DateTime?
-  statusPerkawinan  String?
-  agama             String?
-  riwayatPenyakit   String?
-  emergencyContact  String?
-  scanKtpDriveId    String?
-  scanKkDriveId     String?
-  scanNpwpDriveId   String?
-  namaBank          String?
-  nomorRekening     String?
-  namaPemilikRek    String?
-  linkFolder        String?
+  id               String      @id @default(cuid())
+  idKaryawan       String      @unique // e.g. UJI013 / PCS075
+  tenantId         String?
+  namaLengkap      String
+  namaPanggilan    String?
+  gender           Gender?
+  jabatan          String?
+  kategori         String?
+  tipeJadwal       TipeJadwal?
+  nomorTelepon     String?
+  email            String?
+  startDate        DateTime?
+  endDate          DateTime?
+  statusAktif      StatusAktif @default(AKTIF)
+  nik              String?
+  npwp             String?
+  statusPtkp       String?
+  alamatKtp        String?
+  alamatDomisili   String?
+  tempatLahir      String?
+  tanggalLahir     DateTime?
+  statusPerkawinan String?
+  agama            String?
+  riwayatPenyakit  String?
+  emergencyContact String?
+  scanKtpDriveId   String?
+  scanKkDriveId    String?
+  scanNpwpDriveId  String?
+  namaBank         String?
+  nomorRekening    String?
+  namaPemilikRek   String?
+  linkFolder       String?
   // Commission split for this streamer/host. Percentages must sum to 100.
   // streamerCutPct = share paid to the streamer; agencyCutPct = agency margin.
-  streamerCutPct    Decimal  @default(70) @db.Decimal(5, 2)
-  agencyCutPct      Decimal  @default(30) @db.Decimal(5, 2)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  streamerCutPct   Decimal     @default(70) @db.Decimal(5, 2)
+  agencyCutPct     Decimal     @default(30) @db.Decimal(5, 2)
+  tags             String?
+  kontrakType      String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
-  userId            String?  @unique
-  user              User?    @relation(fields: [userId], references: [id])
-  tenant            Tenant?  @relation(fields: [tenantId], references: [id])
-  jadwalHost        Jadwal[]   @relation("JadwalHost")
-  jadwalStreamer    Jadwal[]   @relation("JadwalStreamer")
-  jadwalOts         Jadwal[]   @relation("JadwalOts")
-  absensi           Absensi[]
-  lembur            Lembur[]
-  izin              Izin[]
-  tukarShift        TukarShift[] @relation("TukarShiftRequester")
-  tukarShiftTarget  TukarShift[] @relation("TukarShiftTarget")
-  penilaian         PenilaianSDM[]
-  payroll           Payroll[]
-  kuotaHost         KuotaHost[]
-  liburStreamer     LiburStreamer[]
-  rosterShifts      RosterShift[]
-  payoutLines       PayoutLine[]
-  incidents         Incident[]      @relation("IncidentStreamer")
-  incidentsAssigned Incident[]      @relation("IncidentAssignee")
-  enrollments       Enrollment[]
+  userId             String?             @unique
+  user               User?               @relation(fields: [userId], references: [id])
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id])
+  jadwalHost         Jadwal[]            @relation("JadwalHost")
+  jadwalStreamer     Jadwal[]            @relation("JadwalStreamer")
+  jadwalOts          Jadwal[]            @relation("JadwalOts")
+  absensi            Absensi[]
+  lembur             Lembur[]
+  izin               Izin[]
+  tukarShift         TukarShift[]        @relation("TukarShiftRequester")
+  tukarShiftTarget   TukarShift[]        @relation("TukarShiftTarget")
+  penilaian          PenilaianSDM[]
+  payroll            Payroll[]
+  kuotaHost          KuotaHost[]
+  liburStreamer      LiburStreamer[]
+  rosterShifts       RosterShift[]
+  payoutLines        PayoutLine[]
+  incidents          Incident[]          @relation("IncidentStreamer")
+  incidentsAssigned  Incident[]          @relation("IncidentAssignee")
+  enrollments        Enrollment[]
+  streamerBlacklists StreamerBlacklist[]
 
   @@map("karyawan")
 }
@@ -263,22 +266,37 @@ model Session {
 // ============================================================
 
 model Client {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  namaClient  String
-  platform    String?
-  pic         String?
-  kontak      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String?
+  namaClient String
+  platform   String?
+  pic        String?
+  kontak     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  ketentuan   ClientKetentuan[]
-  produk      Produk[]
-  jadwal      Jadwal[]
-  billingDocs BillingDoc[]
+  tenant             Tenant?             @relation(fields: [tenantId], references: [id])
+  ketentuan          ClientKetentuan[]
+  produk             Produk[]
+  jadwal             Jadwal[]
+  billingDocs        BillingDoc[]
+  streamerBlacklists StreamerBlacklist[]
 
   @@map("clients")
+}
+
+model StreamerBlacklist {
+  id         String   @id @default(cuid())
+  clientId   String
+  karyawanId String
+  alasan     String?
+  createdAt  DateTime @default(now())
+
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, karyawanId])
+  @@map("streamer_blacklist")
 }
 
 model ClientKetentuan {
@@ -289,26 +307,26 @@ model ClientKetentuan {
   blacklist         String?
   prioritasPlatform String?
 
-  tenant            Tenant? @relation(fields: [tenantId], references: [id])
-  client            Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@unique([clientId, platform])
   @@map("client_ketentuan")
 }
 
 model Produk {
-  id          String       @id @default(cuid())
-  tenantId    String?
-  clientId    String
-  namaProduk  String
-  kategori    String?
-  harga       Decimal?     @db.Decimal(12, 2)
-  status      StatusProduk @default(DRAFT)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id         String       @id @default(cuid())
+  tenantId   String?
+  clientId   String
+  namaProduk String
+  kategori   String?
+  harga      Decimal?     @db.Decimal(12, 2)
+  status     StatusProduk @default(DRAFT)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
-  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
-  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  client Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("produk")
 }
@@ -318,42 +336,44 @@ model Produk {
 // ============================================================
 
 model Jadwal {
-  id               String       @id @default(cuid())
-  idJadwal         String       @unique // e.g. JDS/260429/014
-  tenantId         String?
-  tanggal          DateTime
-  platform         String?
-  idHost           String?
-  hostKaryawanId   String?
-  streamerKaryawanId String?
-  idOts            String?
-  otsKaryawanId    String?
-  cabangStudio     String?
-  nomorStudio      String?
-  jamMulaiLive     DateTime
-  jamSelesaiLive   DateTime
-  status           StatusJadwal @default(TERJADWAL)
-  liveState        SessionLiveState @default(SCHEDULED)
+  id                       String           @id @default(cuid())
+  idJadwal                 String           @unique // e.g. JDS/260429/014
+  tenantId                 String?
+  tanggal                  DateTime
+  platform                 String?
+  idHost                   String?
+  hostKaryawanId           String?
+  streamerKaryawanId       String?
+  idOts                    String?
+  otsKaryawanId            String?
+  cabangStudio             String?
+  nomorStudio              String?
+  jamMulaiLive             DateTime
+  jamSelesaiLive           DateTime
+  status                   StatusJadwal     @default(TERJADWAL)
+  liveState                SessionLiveState @default(SCHEDULED)
   // Actual stream uptime (seconds) from platform webhook ingest (online->offline).
-  durationSec      Int          @default(0)
-  produkPrioritas  String?
-  keperluanOts     String?
-  judulLive        String?
-  promoLive        String?
-  catatanHost      String?
-  catatanOts       String?
+  durationSec              Int              @default(0)
+  produkPrioritas          String?
+  keperluanOts             String?
+  judulLive                String?
+  promoLive                String?
+  catatanHost              String?
+  catatanOts               String?
   filePendukungHostDriveId String?
   filePendukungOtsDriveId  String?
-  periodeBulan     String? // e.g. "Mei 2026"
-  clientId         String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  periodeBulan             String? // e.g. "Mei 2026"
+  clientId                 String?
+  reminderStreamerSent     Boolean          @default(false)
+  reminderSpvSent          Boolean          @default(false)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
 
-  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
-  hostKaryawan     Karyawan?    @relation("JadwalHost", fields: [hostKaryawanId], references: [id])
-  streamerKaryawan Karyawan?    @relation("JadwalStreamer", fields: [streamerKaryawanId], references: [id])
-  otsKaryawan      Karyawan?    @relation("JadwalOts", fields: [otsKaryawanId], references: [id])
-  client           Client?      @relation(fields: [clientId], references: [id])
+  tenant           Tenant?           @relation(fields: [tenantId], references: [id])
+  hostKaryawan     Karyawan?         @relation("JadwalHost", fields: [hostKaryawanId], references: [id])
+  streamerKaryawan Karyawan?         @relation("JadwalStreamer", fields: [streamerKaryawanId], references: [id])
+  otsKaryawan      Karyawan?         @relation("JadwalOts", fields: [otsKaryawanId], references: [id])
+  client           Client?           @relation(fields: [clientId], references: [id])
   absensi          Absensi[]
   sessionStateLogs SessionStateLog[]
   incidents        Incident[]
@@ -371,19 +391,21 @@ model Jadwal {
 // ============================================================
 
 model Absensi {
-  id            String          @id @default(cuid())
-  tenantId      String?
-  karyawanId    String
-  jadwalId      String?
-  tipe          TipeAbsensi
-  kategori      KategoriAbsensi
-  waktu         DateTime        @default(now())
-  buktiDriveId  String?
-  catatan       String?
+  id           String          @id @default(cuid())
+  tenantId     String?
+  karyawanId   String
+  jadwalId     String?
+  tipe         TipeAbsensi
+  kategori     KategoriAbsensi
+  waktu        DateTime        @default(now())
+  buktiDriveId String?
+  catatan      String?
+  reportedGmv  Decimal?        @db.Decimal(14, 2)
+  isTerusan    Boolean         @default(false)
 
-  tenant        Tenant?         @relation(fields: [tenantId], references: [id])
-  karyawan      Karyawan        @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
-  jadwal        Jadwal?         @relation(fields: [jadwalId], references: [id])
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  jadwal   Jadwal?  @relation(fields: [jadwalId], references: [id])
 
   @@index([karyawanId, waktu])
   @@map("absensi")
@@ -405,24 +427,24 @@ model Lembur {
   approvedById String?
   createdAt    DateTime     @default(now())
 
-  karyawan     Karyawan     @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@map("lembur")
 }
 
 model Izin {
-  id           String      @id @default(cuid())
-  karyawanId   String
-  tanggalMulai DateTime
-  tanggalSelesai DateTime
-  jenis        String?
-  alasan       String?
+  id              String     @id @default(cuid())
+  karyawanId      String
+  tanggalMulai    DateTime
+  tanggalSelesai  DateTime
+  jenis           String?
+  alasan          String?
   lampiranDriveId String?
-  status       StatusIzin  @default(PENDING)
-  approvedById String?
-  createdAt    DateTime    @default(now())
+  status          StatusIzin @default(PENDING)
+  approvedById    String?
+  createdAt       DateTime   @default(now())
 
-  karyawan     Karyawan    @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@map("izin")
 }
@@ -432,18 +454,18 @@ model Izin {
 // ============================================================
 
 model TukarShift {
-  id            String          @id @default(cuid())
-  requesterId   String
-  targetId      String
-  jadwalId      String?
-  tanggal       DateTime
-  alasan        String?
+  id              String           @id @default(cuid())
+  requesterId     String
+  targetId        String
+  jadwalId        String?
+  tanggal         DateTime
+  alasan          String?
   lampiranDriveId String?
-  status        StatusTukarShift @default(PENDING)
-  createdAt     DateTime        @default(now())
+  status          StatusTukarShift @default(PENDING)
+  createdAt       DateTime         @default(now())
 
-  requester     Karyawan        @relation("TukarShiftRequester", fields: [requesterId], references: [id], onDelete: Cascade)
-  target        Karyawan        @relation("TukarShiftTarget", fields: [targetId], references: [id])
+  requester Karyawan @relation("TukarShiftRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  target    Karyawan @relation("TukarShiftTarget", fields: [targetId], references: [id])
 
   @@map("tukar_shift")
 }
@@ -453,15 +475,15 @@ model TukarShift {
 // ============================================================
 
 model PenilaianSDM {
-  id          String   @id @default(cuid())
-  karyawanId  String
-  penilaiId   String
-  skor        Int
-  komentar    String?
-  periode     String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  karyawanId String
+  penilaiId  String
+  skor       Int
+  komentar   String?
+  periode    String?
+  createdAt  DateTime @default(now())
 
-  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@map("penilaian_sdm")
 }
@@ -480,55 +502,55 @@ model Tiering {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   @@map("tiering")
 }
 
 model Payroll {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  karyawanId  String
-  periode     String // e.g. "Mei 2026"
-  totalJam    Decimal  @db.Decimal(10, 2)
-  tier        String?
-  ratePerJam  Decimal  @db.Decimal(12, 2)
-  grossPay    Decimal  @db.Decimal(14, 2)
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String?
+  karyawanId String
+  periode    String // e.g. "Mei 2026"
+  totalJam   Decimal  @db.Decimal(10, 2)
+  tier       String?
+  ratePerJam Decimal  @db.Decimal(12, 2)
+  grossPay   Decimal  @db.Decimal(14, 2)
+  createdAt  DateTime @default(now())
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@unique([karyawanId, periode])
   @@map("payroll")
 }
 
 model KuotaHost {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  karyawanId  String
-  periode     String
-  kuota       Int
-  terpakai    Int      @default(0)
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String?
+  karyawanId String
+  periode    String
+  kuota      Int
+  terpakai   Int      @default(0)
+  createdAt  DateTime @default(now())
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@unique([karyawanId, periode])
   @@map("kuota_host")
 }
 
 model LiburStreamer {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  karyawanId  String
-  tanggal     DateTime
-  alasan      String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String?
+  karyawanId String
+  tanggal    DateTime
+  alasan     String?
+  createdAt  DateTime @default(now())
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  karyawan    Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@unique([karyawanId, tanggal])
   @@map("libur_streamer")
@@ -568,40 +590,56 @@ enum RosterStatus {
 }
 
 model SessionStateLog {
-  id        String           @id @default(cuid())
-  tenantId  String?
-  jadwalId  String
-  fromState SessionLiveState?
-  toState   SessionLiveState
+  id          String            @id @default(cuid())
+  tenantId    String?
+  jadwalId    String
+  fromState   SessionLiveState?
+  toState     SessionLiveState
   changedById String?
-  note      String?
-  createdAt DateTime         @default(now())
+  note        String?
+  createdAt   DateTime          @default(now())
 
-  tenant    Tenant?          @relation(fields: [tenantId], references: [id])
-  jadwal    Jadwal           @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  jadwal Jadwal  @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
 
   @@index([jadwalId, createdAt])
   @@map("session_state_log")
 }
 
-model Incident {
-  id          String           @id @default(cuid())
-  tenantId    String?
-  jadwalId    String?
-  streamerKaryawanId String?
-  title       String
-  description String?          @db.Text
-  severity    IncidentSeverity @default(MEDIUM)
-  status      IncidentStatus   @default(OPEN)
-  assigneeId  String?
-  reportedById String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+model ViolationCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String   @db.Text
+  defaultFine Decimal? @db.Decimal(14, 2)
+  createdAt   DateTime @default(now())
 
-  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
-  jadwal      Jadwal?          @relation(fields: [jadwalId], references: [id])
-  streamer    Karyawan?        @relation("IncidentStreamer", fields: [streamerKaryawanId], references: [id])
-  assignee    Karyawan?        @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+  incidents Incident[]
+
+  @@map("violation_category")
+}
+
+model Incident {
+  id                 String           @id @default(cuid())
+  tenantId           String?
+  jadwalId           String?
+  streamerKaryawanId String?
+  title              String
+  description        String?          @db.Text
+  severity           IncidentSeverity @default(MEDIUM)
+  categoryId         String?
+  proofDriveId       String?
+  fineApplied        Decimal?         @db.Decimal(14, 2)
+  status             IncidentStatus   @default(OPEN)
+  assigneeId         String?
+  reportedById       String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  tenant   Tenant?            @relation(fields: [tenantId], references: [id])
+  jadwal   Jadwal?            @relation(fields: [jadwalId], references: [id])
+  streamer Karyawan?          @relation("IncidentStreamer", fields: [streamerKaryawanId], references: [id])
+  assignee Karyawan?          @relation("IncidentAssignee", fields: [assigneeId], references: [id])
+  category ViolationCategory? @relation(fields: [categoryId], references: [id])
 
   @@index([status, severity])
   @@index([tenantId, createdAt])
@@ -610,20 +648,20 @@ model Incident {
 
 // Roster: planned shift assignments (multi-day planning, leave cover).
 model RosterShift {
-  id             String       @id @default(cuid())
-  tenantId       String?
-  karyawanId     String
-  tanggal        DateTime
-  jamMulai       DateTime
-  jamSelesai     DateTime
-  role           String?      // STREAMER | OTS | HOST | STAFF
-  status         RosterStatus @default(ACTIVE)
-  note           String?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id         String       @id @default(cuid())
+  tenantId   String?
+  karyawanId String
+  tanggal    DateTime
+  jamMulai   DateTime
+  jamSelesai DateTime
+  role       String? // STREAMER | OTS | HOST | STAFF
+  status     RosterStatus @default(ACTIVE)
+  note       String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
 
-  tenant         Tenant?      @relation(fields: [tenantId], references: [id])
-  karyawan       Karyawan     @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  tenant   Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
   @@map("roster_shift")
 }
@@ -650,19 +688,19 @@ enum BillingStatus {
 }
 
 model PayoutRun {
-  id          String           @id @default(cuid())
-  tenantId    String?
-  periode     String
-  status      PayoutRunStatus  @default(DRAFT)
-  totalAmount Decimal          @db.Decimal(14, 2) @default(0)
-  deductions  Decimal          @db.Decimal(14, 2) @default(0)
+  id           String          @id @default(cuid())
+  tenantId     String?
+  periode      String
+  status       PayoutRunStatus @default(DRAFT)
+  totalAmount  Decimal         @default(0) @db.Decimal(14, 2)
+  deductions   Decimal         @default(0) @db.Decimal(14, 2)
   approvedById String?
-  paidAt      DateTime?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  paidAt       DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 
-  tenant      Tenant?          @relation(fields: [tenantId], references: [id])
-  lines       PayoutLine[]
+  tenant Tenant?      @relation(fields: [tenantId], references: [id])
+  lines  PayoutLine[]
 
   @@unique([tenantId, periode])
   @@map("payout_run")
@@ -672,14 +710,14 @@ model PayoutLine {
   id          String   @id @default(cuid())
   payoutRunId String
   karyawanId  String
-  streamerCut Decimal  @db.Decimal(14, 2) @default(0)
-  deductions  Decimal  @db.Decimal(14, 2) @default(0)
+  streamerCut Decimal  @default(0) @db.Decimal(14, 2)
+  deductions  Decimal  @default(0) @db.Decimal(14, 2)
   amount      Decimal  @db.Decimal(14, 2)
   note        String?
   createdAt   DateTime @default(now())
 
-  run         PayoutRun @relation(fields: [payoutRunId], references: [id], onDelete: Cascade)
-  karyawan    Karyawan  @relation(fields: [karyawanId], references: [id])
+  run      PayoutRun @relation(fields: [payoutRunId], references: [id], onDelete: Cascade)
+  karyawan Karyawan  @relation(fields: [karyawanId], references: [id])
 
   @@map("payout_line")
 }
@@ -690,29 +728,29 @@ model BillingDoc {
   clientId    String
   periode     String
   status      BillingStatus @default(DRAFT)
-  totalAmount Decimal       @db.Decimal(14, 2) @default(0)
+  totalAmount Decimal       @default(0) @db.Decimal(14, 2)
   dueDate     DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
-  client      Client        @relation(fields: [clientId], references: [id])
-  lines       BillingLine[]
+  tenant Tenant?       @relation(fields: [tenantId], references: [id])
+  client Client        @relation(fields: [clientId], references: [id])
+  lines  BillingLine[]
 
   @@unique([clientId, periode])
   @@map("billing_doc")
 }
 
 model BillingLine {
-  id          String    @id @default(cuid())
+  id           String   @id @default(cuid())
   billingDocId String
-  jadwalId    String
-  description String?
-  amount      Decimal   @db.Decimal(14, 2)
-  createdAt   DateTime  @default(now())
+  jadwalId     String
+  description  String?
+  amount       Decimal  @db.Decimal(14, 2)
+  createdAt    DateTime @default(now())
 
-  doc         BillingDoc @relation(fields: [billingDocId], references: [id], onDelete: Cascade)
-  jadwal      Jadwal     @relation(fields: [jadwalId], references: [id])
+  doc    BillingDoc @relation(fields: [billingDocId], references: [id], onDelete: Cascade)
+  jadwal Jadwal     @relation(fields: [jadwalId], references: [id])
 
   @@map("billing_line")
 }
@@ -733,16 +771,16 @@ enum QuizQuestionType {
 }
 
 model Course {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  title       String
-  description String?  @db.Text
+  id           String   @id @default(cuid())
+  tenantId     String?
+  title        String
+  description  String?  @db.Text
   coverDriveId String?
-  status      String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status       String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
   modules     Module[]
   enrollments Enrollment[]
 
@@ -750,94 +788,94 @@ model Course {
 }
 
 model Module {
-  id         String   @id @default(cuid())
-  courseId   String
-  title      String
-  order      Int      @default(1)
-  contentType String? // VIDEO | TEXT | MIXED
+  id             String  @id @default(cuid())
+  courseId       String
+  title          String
+  order          Int     @default(1)
+  contentType    String? // VIDEO | TEXT | MIXED
   contentDriveId String?
-  passingScore Int    @default(70)
+  passingScore   Int     @default(70)
 
-  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  lessons    Lesson[]
-  questions  QuizQuestion[]
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons   Lesson[]
+  questions QuizQuestion[]
 
   @@map("course_module")
 }
 
 model Lesson {
-  id          String   @id @default(cuid())
-  moduleId    String
-  title       String
-  order       Int      @default(1)
-  content     String?  @db.Text
+  id                String  @id @default(cuid())
+  moduleId          String
+  title             String
+  order             Int     @default(1)
+  content           String? @db.Text
   attachmentDriveId String?
 
-  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
   @@map("course_lesson")
 }
 
 model QuizQuestion {
-  id          String            @id @default(cuid())
-  moduleId    String
-  type        QuizQuestionType  @default(MCQ)
-  question    String            @db.Text
-  options     Json?             // MCQ: string[] ; ESSAY: null
-  correctAnswer String?         // MCQ: index/option ; ESSAY: reference answer
-  order       Int               @default(1)
+  id            String           @id @default(cuid())
+  moduleId      String
+  type          QuizQuestionType @default(MCQ)
+  question      String           @db.Text
+  options       Json? // MCQ: string[] ; ESSAY: null
+  correctAnswer String? // MCQ: index/option ; ESSAY: reference answer
+  order         Int              @default(1)
 
-  module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  attempts    QuizAttempt[]
+  module   Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  attempts QuizAttempt[]
 
   @@map("quiz_question")
 }
 
 model QuizAttempt {
-  id          String   @id @default(cuid())
+  id           String    @id @default(cuid())
   enrollmentId String
-  moduleId    String
-  questionId  String
-  answerText  String?  @db.Text
-  score       Int?
-  gradedById  String?
-  gradedAt    DateTime?
-  createdAt   DateTime @default(now())
+  moduleId     String
+  questionId   String
+  answerText   String?   @db.Text
+  score        Int?
+  gradedById   String?
+  gradedAt     DateTime?
+  createdAt    DateTime  @default(now())
 
-  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  question    QuizQuestion @relation(fields: [questionId], references: [id])
+  enrollment Enrollment   @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  question   QuizQuestion @relation(fields: [questionId], references: [id])
 
   @@map("quiz_attempt")
 }
 
 model Enrollment {
-  id            String           @id @default(cuid())
-  courseId      String
-  karyawanId    String
-  status        EnrollmentStatus @default(ASSIGNED)
-  dueDate       DateTime?
-  progressPct   Int              @default(0)
-  completedAt   DateTime?
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  id          String           @id @default(cuid())
+  courseId    String
+  karyawanId  String
+  status      EnrollmentStatus @default(ASSIGNED)
+  dueDate     DateTime?
+  progressPct Int              @default(0)
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-  course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  karyawan      Karyawan         @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
-  attempts      QuizAttempt[]
-  certificates  Certificate[]
+  course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  karyawan     Karyawan      @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  attempts     QuizAttempt[]
+  certificates Certificate[]
 
   @@unique([courseId, karyawanId])
   @@map("enrollment")
 }
 
 model Certificate {
-  id          String    @id @default(cuid())
-  code        String    @unique
+  id           String    @id @default(cuid())
+  code         String    @unique
   enrollmentId String
-  issuedAt    DateTime  @default(now())
-  revokedAt   DateTime?
+  issuedAt     DateTime  @default(now())
+  revokedAt    DateTime?
 
-  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 
   @@map("certificate")
 }
@@ -861,56 +899,56 @@ model QCRubric {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
-  dimensions  QCRubricDimension[]
-  reviews     SessionReview[]
+  tenant     Tenant?             @relation(fields: [tenantId], references: [id])
+  dimensions QCRubricDimension[]
+  reviews    SessionReview[]
 
   @@map("qc_rubric")
 }
 
 model QCRubricDimension {
-  id        String   @id @default(cuid())
-  rubricId  String
-  name      String
-  weight    Int      @default(1)
-  scaleMax  Int      @default(10)
+  id       String @id @default(cuid())
+  rubricId String
+  name     String
+  weight   Int    @default(1)
+  scaleMax Int    @default(10)
 
-  rubric    QCRubric @relation(fields: [rubricId], references: [id], onDelete: Cascade)
-  scores    ReviewScore[]
+  rubric QCRubric      @relation(fields: [rubricId], references: [id], onDelete: Cascade)
+  scores ReviewScore[]
 
   @@map("qc_rubric_dimension")
 }
 
 model ReviewScore {
-  id          String  @id @default(cuid())
+  id          String @id @default(cuid())
   reviewId    String
   dimensionId String
   score       Int
 
-  review      SessionReview      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  dimension   QCRubricDimension  @relation(fields: [dimensionId], references: [id])
+  review    SessionReview     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  dimension QCRubricDimension @relation(fields: [dimensionId], references: [id])
 
   @@map("review_score")
 }
 
 model SessionReview {
-  id            String       @id @default(cuid())
-  tenantId      String?
-  jadwalId      String
-  rubricId      String
-  reviewerId    String?
-  status        ReviewStatus @default(PENDING)
-  totalScore    Int?
-  remarks       String?      @db.Text
+  id               String       @id @default(cuid())
+  tenantId         String?
+  jadwalId         String
+  rubricId         String
+  reviewerId       String?
+  status           ReviewStatus @default(PENDING)
+  totalScore       Int?
+  remarks          String?      @db.Text
   recordingDriveId String?
-  createdAt     DateTime     @default(now())
-  reviewedAt    DateTime?
+  createdAt        DateTime     @default(now())
+  reviewedAt       DateTime?
 
-  tenant         Tenant?      @relation(fields: [tenantId], references: [id])
-  jadwal         Jadwal       @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
-  rubric         QCRubric     @relation(fields: [rubricId], references: [id])
-  scores         ReviewScore[]
-  actionItems    ActionItem[]
+  tenant      Tenant?       @relation(fields: [tenantId], references: [id])
+  jadwal      Jadwal        @relation(fields: [jadwalId], references: [id], onDelete: Cascade)
+  rubric      QCRubric      @relation(fields: [rubricId], references: [id])
+  scores      ReviewScore[]
+  actionItems ActionItem[]
 
   @@map("session_review")
 }
@@ -922,16 +960,16 @@ enum ActionItemStatus {
 }
 
 model ActionItem {
-  id          String          @id @default(cuid())
+  id          String           @id @default(cuid())
   reviewId    String
   assigneeId  String?
   title       String
-  description String?         @db.Text
+  description String?          @db.Text
   status      ActionItemStatus @default(OPEN)
-  createdAt   DateTime        @default(now())
+  createdAt   DateTime         @default(now())
   resolvedAt  DateTime?
 
-  review      SessionReview   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  review SessionReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
 
   @@map("action_item")
 }
@@ -941,19 +979,19 @@ model ActionItem {
 // ============================================================
 
 model Attachment {
-  id          String   @id @default(cuid())
-  tenantId    String?
-  kind        String // bucket key (ABSENSI, LEMBUR, CERTIFICATE, ...)
-  entityType  String
-  entityId    String
-  refId       String
-  url         String?
-  mime        String?
-  size        Int?
-  name        String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String?
+  kind       String // bucket key (ABSENSI, LEMBUR, CERTIFICATE, ...)
+  entityType String
+  entityId   String
+  refId      String
+  url        String?
+  mime       String?
+  size       Int?
+  name       String?
+  createdAt  DateTime @default(now())
 
-  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, entityType, entityId])
   @@map("attachment")
@@ -972,22 +1010,22 @@ enum RevenueSource {
 }
 
 model RevenueEntry {
-  id             String      @id @default(cuid())
-  tenantId       String?
-  jadwalId       String?
+  id                 String        @id @default(cuid())
+  tenantId           String?
+  jadwalId           String?
   streamerKaryawanId String?
-  clientId       String?
-  source         RevenueSource
-  grossAmount    Decimal     @db.Decimal(14, 2) // platform/paid amount (IDR)
-  agencyCut      Decimal     @db.Decimal(14, 2) // agency margin
-  streamerCut    Decimal     @db.Decimal(14, 2) // streamer payout share
-  currency       String      @default("IDR")
-  eventAt        DateTime    @default(now())
-  metadata       String?     @db.Text
-  createdAt      DateTime    @default(now())
+  clientId           String?
+  source             RevenueSource
+  grossAmount        Decimal       @db.Decimal(14, 2) // platform/paid amount (IDR)
+  agencyCut          Decimal       @db.Decimal(14, 2) // agency margin
+  streamerCut        Decimal       @db.Decimal(14, 2) // streamer payout share
+  currency           String        @default("IDR")
+  eventAt            DateTime      @default(now())
+  metadata           String?       @db.Text
+  createdAt          DateTime      @default(now())
 
-  tenant         Tenant?     @relation(fields: [tenantId], references: [id])
-  jadwal         Jadwal?     @relation(fields: [jadwalId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  jadwal Jadwal? @relation(fields: [jadwalId], references: [id])
 
   @@map("revenue_entry")
 }
@@ -1005,8 +1043,8 @@ model LogAktivitas {
   ip        String?
   createdAt DateTime @default(now())
 
-  tenant    Tenant?  @relation(fields: [tenantId], references: [id])
-  user      User?    @relation(fields: [userId], references: [id])
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+  user   User?   @relation(fields: [userId], references: [id])
 
   @@index([userId, createdAt])
   @@map("log_aktivitas")

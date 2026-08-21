@@ -10,10 +10,12 @@ import {
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
+  const kategori = url.searchParams.get("kategori") ?? undefined;
+  
   if (id) {
     return getEmployee(id);
   }
-  return listEmployees();
+  return listEmployees({ kategori });
 });
 
 export const POST = apiHandler(async (req: Request) => {

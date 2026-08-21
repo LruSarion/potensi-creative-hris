@@ -26,7 +26,7 @@ export default function PenilaianSDMPage() {
   async function loadData() {
     try {
       const [empRes, boardRes] = await Promise.all([
-        fetch("/api/employees").then((r) => r.json()),
+        fetch("/api/employees?kategori=STREAMER").then((r) => r.json()),
         fetch("/api/penilaian-sdm?leaderboard=1").then((r) => r.json()),
       ]);
 

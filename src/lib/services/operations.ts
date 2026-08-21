@@ -55,6 +55,9 @@ const incidentSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional().nullable(),
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).default("MEDIUM"),
+  categoryId: z.string().optional().nullable(),
+  proofDriveId: z.string().optional().nullable(),
+  fineApplied: z.number().optional().nullable(),
 });
 
 export type IncidentInput = z.infer<typeof incidentSchema>;
@@ -79,6 +82,9 @@ export async function createIncident(input: IncidentInput) {
       description: parsed.description ?? null,
       severity: parsed.severity,
       reportedById: user.id,
+      categoryId: parsed.categoryId ?? null,
+      proofDriveId: parsed.proofDriveId ?? null,
+      fineApplied: parsed.fineApplied ? parsed.fineApplied : null,
     },
   });
   // Notify ops leads / assignees of the new incident.
@@ -89,6 +95,26 @@ export async function createIncident(input: IncidentInput) {
     link: "/portal/operation",
   }).catch(() => undefined);
   return inc;
+}
+
+/** List all ViolationCategory master data */
+export async function listViolationCategories() {
+  await requirePermission("incident:read");
+  return db.violationCategory.findMany({ orderBy: { name: "asc" } });
+}
+
+/** Approve incident and record fine */
+export async function approveIncident(id: string, fineApplied?: number) {
+  const user = await requirePermission("operations:write");
+  const inc = await db.incident.findFirst({ where: { id, ...tenantWhere(user) } });
+  if (!inc) throw AppError.notFound("Insiden tidak ditemukan");
+  return db.incident.update({
+    where: { id },
+    data: {
+      status: "RESOLVED",
+      ...(fineApplied !== undefined ? { fineApplied } : {}),
+    },
+  });
 }
 
 /** Calculate SLA state: overdue when a severitied incident exceeds its SLA and is unresolved. */
@@ -116,7 +142,12 @@ export async function listIncidents(status?: IncidentStatus, severity?: Incident
       ...(severity ? { severity } : {}),
     },
     orderBy: { createdAt: "desc" },
-    include: { jadwal: { select: { idJadwal: true } }, streamer: { select: { namaLengkap: true } }, assignee: { select: { namaLengkap: true } } },
+    include: {
+      jadwal: { select: { idJadwal: true } },
+      streamer: { select: { namaLengkap: true, idKaryawan: true } },
+      assignee: { select: { namaLengkap: true } },
+      category: { select: { name: true } },
+    },
   });
   return rows.map((r) => ({ ...r, slaLate: incidentView(r).slaLate }));
 }

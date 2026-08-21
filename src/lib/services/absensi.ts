@@ -11,6 +11,8 @@ const absensiSchema = z.object({
   // Frontend sends "fotoBuktiUrl" — treat as the attendance photo proof.
   fotoBuktiUrl: z.string().optional().nullable(),
   catatan: z.string().optional().nullable(),
+  reportedGmv: z.number().optional().nullable(),
+  isTerusan: z.boolean().optional().default(false),
 });
 
 export type AbsensiInput = z.infer<typeof absensiSchema>;
@@ -35,6 +37,24 @@ export async function checkIn(input: AbsensiInput) {
     throw AppError.forbidden("Tidak dapat absen untuk karyawan lain");
   }
   const parsed = absensiSchema.parse({ ...input, karyawanId: targetKaryawanId });
+  parsed.jadwalId = parsed.jadwalId || null; // Fix empty string foreign key violation
+
+  if (parsed.jadwalId && !parsed.isTerusan) {
+    const j = await db.jadwal.findUnique({ where: { id: parsed.jadwalId } });
+    if (j) {
+      if (j.status === "SELESAI" || j.liveState === "CLOSED" || j.liveState === "REVIEW") {
+        throw AppError.badRequest("Sesi jadwal ini sudah selesai dan tidak bisa di-check-in ulang.");
+      }
+      if (j.liveState === "LIVE") {
+        throw AppError.badRequest("Jadwal ini sedang berjalan (ON AIR). Silakan lakukan check-out, bukan check-in.");
+      }
+      const sixtyMinsBefore = new Date(j.jamMulaiLive.getTime() - 60 * 60000);
+      const now = new Date();
+      if (now < sixtyMinsBefore) {
+        throw AppError.badRequest("Terlalu dini. Check-In baru dibuka 60 menit sebelum sesi dimulai.");
+      }
+    }
+  }
 
   // Duplicate active session check: an open CHECK_IN with no matching CHECK_OUT.
   const openCheckIn = await db.absensi.findFirst({
@@ -49,10 +69,56 @@ export async function checkIn(input: AbsensiInput) {
   });
 
   if (openCheckIn) {
-    throw AppError.conflict("Sesi absensi masih aktif. Lakukan check-out terlebih dahulu.");
+    if (!parsed.isTerusan) {
+      throw AppError.conflict("Sesi absensi masih aktif. Lakukan check-out terlebih dahulu atau pilih Absensi Terusan.");
+    }
+    // If isTerusan is true, we will automatically check out the open session in the transaction below
   }
 
   return db.$transaction(async (tx) => {
+    // 1. Auto Check-Out for previous session if isTerusan
+    if (openCheckIn && parsed.isTerusan) {
+      await tx.absensi.create({
+        data: {
+          tenantId: user.tenantId ?? undefined,
+          karyawanId: targetKaryawanId,
+          jadwalId: openCheckIn.jadwalId,
+          tipe: "CHECK_OUT",
+          kategori: openCheckIn.kategori,
+          catatan: "Auto Check-Out (Absensi Terusan)",
+          reportedGmv: null, // Streamer must fill this later
+        },
+      });
+
+      if (openCheckIn.jadwalId) {
+        const j = await tx.jadwal.findUnique({ where: { id: openCheckIn.jadwalId } });
+        if (j && (j.liveState === "LIVE" || j.liveState === "SCHEDULED")) {
+          const checkOutTime = new Date();
+          const durationSec = Math.floor((checkOutTime.getTime() - openCheckIn.waktu.getTime()) / 1000);
+          
+          await tx.jadwal.update({
+            where: { id: openCheckIn.jadwalId },
+            data: { 
+              liveState: "REVIEW", 
+              status: "SELESAI",
+              durationSec: Math.max(0, durationSec)
+            },
+          });
+          await tx.sessionStateLog.create({
+            data: {
+              tenantId: user.tenantId ?? undefined,
+              jadwalId: openCheckIn.jadwalId,
+              fromState: j.liveState,
+              toState: "REVIEW",
+              changedById: user.id,
+              note: "Auto-transition on Terusan Check-In",
+            },
+          });
+        }
+      }
+    }
+
+    // 2. Create the new Check-In record
     const record = await tx.absensi.create({
       data: {
         tenantId: user.tenantId ?? undefined,
@@ -62,6 +128,7 @@ export async function checkIn(input: AbsensiInput) {
         kategori: parsed.kategori,
         buktiDriveId: parsed.buktiDriveId ?? parsed.fotoBuktiUrl ?? null,
         catatan: parsed.catatan ?? null,
+        isTerusan: parsed.isTerusan,
       },
     });
 
@@ -109,6 +176,7 @@ export async function checkOut(input: AbsensiInput) {
     throw AppError.forbidden("Tidak dapat absen untuk karyawan lain");
   }
   const parsed = absensiSchema.parse({ ...input, karyawanId: targetKaryawanId });
+  parsed.jadwalId = parsed.jadwalId || null; // Fix empty string foreign key violation
 
   const lastCheckIn = await db.absensi.findFirst({
     where: { karyawanId: targetKaryawanId, tipe: "CHECK_IN" },
@@ -128,6 +196,7 @@ export async function checkOut(input: AbsensiInput) {
         kategori: parsed.kategori,
         buktiDriveId: parsed.buktiDriveId ?? parsed.fotoBuktiUrl ?? null,
         catatan: parsed.catatan ?? null,
+        reportedGmv: parsed.reportedGmv ?? null,
       },
     });
 
@@ -136,9 +205,16 @@ export async function checkOut(input: AbsensiInput) {
     if (targetJadwalId) {
       const j = await tx.jadwal.findUnique({ where: { id: targetJadwalId } });
       if (j && (j.liveState === "LIVE" || j.liveState === "SCHEDULED")) {
+        const checkOutTime = new Date();
+        const durationSec = Math.floor((checkOutTime.getTime() - lastCheckIn.waktu.getTime()) / 1000);
+        
         await tx.jadwal.update({
           where: { id: targetJadwalId },
-          data: { liveState: "REVIEW", status: "SELESAI" },
+          data: { 
+            liveState: "REVIEW", 
+            status: "SELESAI",
+            durationSec: Math.max(0, durationSec)
+          },
         });
         await tx.sessionStateLog.create({
           data: {
@@ -177,6 +253,21 @@ export async function listAbsensi(params?: { karyawanId?: string }) {
     where,
     orderBy: { waktu: "desc" },
     include: { karyawan: true, jadwal: true },
+  });
+}
+
+export async function updateGmv(id: string, reportedGmv: number) {
+  const user = await requireRole();
+  const absensi = await db.absensi.findUnique({ where: { id } });
+  if (!absensi) throw AppError.notFound("Data absensi tidak ditemukan");
+  
+  if (absensi.karyawanId !== user.karyawanId && !["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(user.role)) {
+    throw AppError.forbidden("Tidak bisa mengubah data absensi orang lain");
+  }
+
+  return db.absensi.update({
+    where: { id },
+    data: { reportedGmv }
   });
 }
 

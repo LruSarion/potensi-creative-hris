@@ -46,3 +46,10 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# generated output
+/graphify-out/
+*.md
+!README.md
+!AGENTS.md
+!CLAUDE.md

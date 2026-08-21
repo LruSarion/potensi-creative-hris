@@ -10,13 +10,21 @@ function toDate(v?: string | null): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
-export async function listEmployees() {
+export async function listEmployees(params?: { kategori?: string }) {
   // Read gating: admins see full; others see limited fields.
   const user = await requireRole();
   const isAdmin = hasPermission(user.role, "employee:write");
 
+  const whereClause: any = tenantWhere(user);
+  if (params?.kategori) {
+    whereClause.kategori = {
+      contains: params.kategori,
+      mode: "insensitive"
+    };
+  }
+
   const rows = await db.karyawan.findMany({
-    where: tenantWhere(user),
+    where: whereClause,
     orderBy: { namaLengkap: "asc" },
   });
 

@@ -14,3 +14,11 @@ export const POST = apiHandler(async (req: Request) => {
   if (body.tipe === "CHECK_OUT") return checkOut(body);
   return checkIn(body);
 });
+
+export const PATCH = apiHandler(async (req: Request) => {
+  const body = await req.json();
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) throw new Error("ID Absensi required");
+  return import("@/lib/services/absensi").then((m) => m.updateGmv(id, body.reportedGmv));
+});

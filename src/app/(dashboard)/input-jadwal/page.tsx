@@ -36,6 +36,13 @@ export default function InputJadwalPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [tagFilter, setTagFilter] = useState("");
+  const [streamerStats, setStreamerStats] = useState<any>(null);
+  const [blacklistWarning, setBlacklistWarning] = useState<string | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignJadwalId, setAssignJadwalId] = useState("");
+  const [assignStreamerId, setAssignStreamerId] = useState("");
 
   useEffect(() => {
     generateIdJadwal(form.tanggal);
@@ -45,7 +52,7 @@ export default function InputJadwalPage() {
   async function fetchData() {
     try {
       const [empRes, clientRes, jadwalRes] = await Promise.all([
-        fetch("/api/employees").then((r) => r.json()),
+        fetch("/api/employees?kategori=STREAMER").then((r) => r.json()),
         fetch("/api/clients").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
         fetch("/api/jadwal").then((r) => r.json()),
       ]);
@@ -56,6 +63,27 @@ export default function InputJadwalPage() {
     } catch {
       // ignore
     }
+  }
+
+  async function checkStreamerStats(karyawanId: string) {
+    if (!karyawanId) { setStreamerStats(null); return; }
+    setStatsLoading(true);
+    try {
+      const r = await fetch(`/api/scheduler-tools?view=streamer-stats&karyawanId=${karyawanId}`).then((x) => x.json());
+      if (r.status === "success") setStreamerStats(r.data);
+    } catch { /* ignore */ } finally { setStatsLoading(false); }
+  }
+
+  async function checkBlacklist(karyawanId: string, clientId: string) {
+    if (!karyawanId || !clientId) { setBlacklistWarning(null); return; }
+    try {
+      const r = await fetch(`/api/scheduler-tools?view=blacklist&karyawanId=${karyawanId}&clientId=${clientId}`).then((x) => x.json());
+      if (r.status === "success" && r.data.isBlacklisted) {
+        setBlacklistWarning(`⛔ Streamer ini ada di daftar BLACKLIST untuk klien ini${r.data.alasan ? `: ${r.data.alasan}` : "."}`);
+      } else {
+        setBlacklistWarning(null);
+      }
+    } catch { setBlacklistWarning(null); }
   }
 
   function generateIdJadwal(dateStr: string) {
@@ -135,6 +163,50 @@ export default function InputJadwalPage() {
       }
     } catch {
       setError("Terjadi kesalahan koneksi");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleAssignSubmit() {
+    if (!assignStreamerId) {
+      setError("Pilih streamer terlebih dahulu");
+      return;
+    }
+    const target = recentJadwal.find(j => j.id === assignJadwalId);
+    if (!target) return;
+
+    setLoading(true);
+    setError("");
+    
+    try {
+      const payload = {
+        idJadwal: target.idJadwal,
+        tanggal: new Date(target.tanggal).toISOString(),
+        jamMulaiLive: new Date(target.jamMulaiLive).toISOString(),
+        jamSelesaiLive: new Date(target.jamSelesaiLive).toISOString(),
+        cabangStudio: target.cabangStudio,
+        nomorStudio: target.nomorStudio,
+        platform: target.platform,
+        clientId: target.clientId,
+        streamerKaryawanId: assignStreamerId
+      };
+
+      const res = await fetch(`/api/jadwal?id=${assignJadwalId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("Streamer berhasil di-assign ke jadwal!");
+        setAssignModalOpen(false);
+        fetchData();
+      } else {
+        setError(d.message ?? "Gagal assign streamer");
+      }
+    } catch {
+      setError("Terjadi kesalahan koneksi saat assign");
     } finally {
       setLoading(false);
     }
@@ -245,24 +317,43 @@ export default function InputJadwalPage() {
               </select>
             </div>
 
-            {/* Streamer Selector */}
-            <div>
-              <label htmlFor="streamerHost" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Streamer / Host
-              </label>
-              <select
-                id="streamerHost"
-                value={form.streamerKaryawanId}
-                onChange={(e) => setForm({ ...form, streamerKaryawanId: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white"
-              >
-                <option value="">-- Pilih Streamer --</option>
-                {streamers.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.namaLengkap} ({s.idKaryawan}) - {s.jabatan ?? "Streamer"}
-                  </option>
-                ))}
-              </select>
+            {/* Streamer Filter & Selector */}
+            <div className="sm:col-span-2 lg:col-span-3 border-t border-slate-100 pt-4">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <i className="fa-solid fa-filter text-blue-500" /> Filter Streamer by Tag / Klasifikasi
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={tagFilter}
+                    onChange={(e) => setTagFilter(e.target.value)}
+                    placeholder="Cari tag: Hijab, FMCG, Tech, Energetik..."
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition"
+                  />
+                </div>
+                <div className="flex-1">
+                  <select
+                    id="streamerHost"
+                    value={form.streamerKaryawanId}
+                    onChange={(e) => {
+                      setForm({ ...form, streamerKaryawanId: e.target.value });
+                      checkStreamerStats(e.target.value);
+                      checkBlacklist(e.target.value, form.clientId);
+                    }}
+                    className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white"
+                  >
+                    <option value="">-- Pilih Streamer --</option>
+                    {streamers
+                      .filter((s) => !tagFilter || (s.tags ?? "").toLowerCase().includes(tagFilter.toLowerCase()) || (s.namaLengkap ?? "").toLowerCase().includes(tagFilter.toLowerCase()))
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.namaLengkap} ({s.idKaryawan}){s.tags ? ` [${s.tags}]` : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
             </div>
 
             {/* Client Brand */}
@@ -272,7 +363,10 @@ export default function InputJadwalPage() {
               </label>
               <select
                 value={form.clientId}
-                onChange={(e) => setForm({ ...form, clientId: e.target.value })}
+                onChange={(e) => {
+                  setForm({ ...form, clientId: e.target.value });
+                  checkBlacklist(form.streamerKaryawanId, e.target.value);
+                }}
                 className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white"
               >
                 <option value="">-- Pilih Klien / Brand --</option>
@@ -380,6 +474,61 @@ export default function InputJadwalPage() {
             </div>
           </div>
 
+          {/* Scheduler Simulation Panel */}
+          {(blacklistWarning || streamerStats) && (
+            <div className="space-y-3 border-t border-slate-100 pt-4">
+              {blacklistWarning && (
+                <div className="bg-red-50 border-2 border-red-400 rounded-xl p-3 flex items-start gap-2 text-xs text-red-700 font-semibold">
+                  <i className="fa-solid fa-ban text-red-500 mt-0.5" />
+                  {blacklistWarning}
+                </div>
+              )}
+              {streamerStats && (
+                <div className={`rounded-xl border-2 p-4 text-xs ${streamerStats.isOverlimit ? "bg-red-50 border-red-400" : streamerStats.isNearTier4 ? "bg-amber-50 border-amber-400" : "bg-emerald-50 border-emerald-300"}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-slate-700 flex items-center gap-2">
+                      <i className="fa-solid fa-calculator" /> Simulasi Jam Bulan Ini — {streamerStats.namaLengkap}
+                    </span>
+                    {statsLoading && <span className="text-slate-400 italic">Memuat...</span>}
+                    {streamerStats.isOverlimit && (
+                      <span className="bg-red-600 text-white font-black px-2 py-0.5 rounded-full text-[10px] uppercase animate-pulse">⚠ OVERLIMIT GOLONGAN 5</span>
+                    )}
+                    {!streamerStats.isOverlimit && streamerStats.isNearTier4 && (
+                      <span className="bg-amber-500 text-white font-black px-2 py-0.5 rounded-full text-[10px] uppercase">⚠ Mendekati Golongan 4</span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <div className="text-slate-500">Total Jam</div>
+                      <div className="text-base font-black text-slate-800">{streamerStats.totalJam} <span className="text-xs font-normal">jam</span></div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">Tier Saat Ini</div>
+                      <div className="font-bold text-slate-800">{streamerStats.activeTier?.nama ?? "—"}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-500">Batas Gol. 5</div>
+                      <div className="font-bold text-slate-800">{streamerStats.tier5Threshold ?? "—"} jam</div>
+                    </div>
+                  </div>
+                  {streamerStats.isOverlimit && (
+                    <p className="mt-2 text-red-700 font-semibold">Jam streamer ini sudah melebihi batas Golongan 5. Harap distribusikan ke streamer lain agar tidak over-budget!</p>
+                  )}
+                  {!streamerStats.isOverlimit && streamerStats.isNearTier4 && (
+                    <p className="mt-2 text-amber-700 font-semibold">Akumulasi jam mendekati batas kenaikan Golongan 4. Segera laporkan ke HR/Owner.</p>
+                  )}
+                  {streamerStats.tags && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {streamerStats.tags.split(",").map((t: string) => (
+                        <span key={t} className="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-200">{t.trim()}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs text-slate-500">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -387,7 +536,7 @@ export default function InputJadwalPage() {
             </div>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !!blacklistWarning || streamerStats?.isOverlimit}
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50 text-sm"
             >
               {loading ? "Menyimpan..." : "Simpan & Jadwalkan Sesi"}
@@ -483,6 +632,7 @@ export default function InputJadwalPage() {
                 <th className="px-4 py-3">Waktu</th>
                 <th className="px-4 py-3">Live State</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -501,8 +651,13 @@ export default function InputJadwalPage() {
                     {j.cabangStudio ? `${j.cabangStudio} #${j.nomorStudio ?? "01"}` : "-"}
                   </td>
                   <td className="px-4 py-3 text-slate-600">
-                    {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                    {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                    <div className="font-semibold text-slate-800">
+                      {new Date(j.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                    </div>
+                    <div className="text-[11px]">
+                      {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
+                      {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <span
@@ -524,12 +679,79 @@ export default function InputJadwalPage() {
                       {j.status}
                     </span>
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    {!j.streamerKaryawanId && j.status !== "SELESAI" && j.liveState !== "CLOSED" && (
+                      <button
+                        onClick={() => {
+                          setAssignJadwalId(j.id);
+                          setAssignStreamerId("");
+                          setAssignModalOpen(true);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition shadow-sm"
+                      >
+                        Assign Streamer
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Assign Modal */}
+      {assignModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900">Assign Streamer</h3>
+              <button onClick={() => { setAssignModalOpen(false); setError(""); }} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            
+            {error && (
+              <div className="text-xs text-rose-800 bg-rose-50 border border-rose-200 rounded-lg p-3 flex items-start gap-2 leading-snug">
+                <i className="fa-solid fa-circle-exclamation mt-0.5 text-rose-600" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pilih Streamer</label>
+              <select
+                value={assignStreamerId}
+                onChange={(e) => setAssignStreamerId(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">-- Pilih Streamer --</option>
+                {streamers.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.namaLengkap} ({s.idKaryawan})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => { setAssignModalOpen(false); setError(""); }}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={handleAssignSubmit}
+                disabled={loading || !assignStreamerId}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50"
+              >
+                {loading ? "Menyimpan..." : "Assign Sesi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

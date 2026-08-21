@@ -16,8 +16,8 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   // Overview
   { href: "/dashboard", label: "Overview Utama", icon: "fa-chart-pie", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER", "CLIENT", "STREAMER", "STAFF", "OTS"], section: "Menu Utama" },
-  { href: "/streamer-dashboard", label: "Streamer Hub", icon: "fa-video", roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], section: "Menu Utama" },
-  { href: "/staff-dashboard", label: "Staff & OTS Hub", icon: "fa-id-badge", roles: ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Menu Utama" },
+  { href: "/streamer-dashboard", label: "Streamer Hub", icon: "fa-video", roles: ["STREAMER"], section: "Menu Utama" },
+  { href: "/staff-dashboard", label: "Staff & OTS Hub", icon: "fa-id-badge", roles: ["STAFF", "OTS"], section: "Menu Utama" },
 
   // Operasional
   { href: "/input-jadwal", label: "Jadwal Live", icon: "fa-calendar-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },

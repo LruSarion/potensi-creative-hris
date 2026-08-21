@@ -25,7 +25,7 @@ export default function TukarShiftPage() {
   async function loadData() {
     try {
       const [empRes, histRes] = await Promise.all([
-        fetch("/api/employees").then((r) => r.json()),
+        fetch("/api/employees?kategori=STREAMER").then((r) => r.json()),
         fetch("/api/tukar-shift").then((r) => r.json()),
       ]);
 
@@ -154,7 +154,9 @@ export default function TukarShiftPage() {
                 required
               >
                 <option value="">-- Pilih Streamer Pengganti --</option>
-                {streamers.map((s) => (
+                {streamers
+                  .filter((s) => s.id !== form.requesterId)
+                  .map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.namaLengkap} ({s.idKaryawan})
                   </option>
@@ -246,23 +248,29 @@ export default function TukarShiftPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {t.status === "PENDING" ? (
-                        <div className="flex justify-end gap-1.5">
-                          <button
-                            onClick={() => handleAction(t.id, true)}
-                            className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                          >
-                            Setujui
-                          </button>
-                          <button
-                            onClick={() => handleAction(t.id, false)}
-                            className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                          >
-                            Tolak
-                          </button>
-                        </div>
+                      {(session?.user?.role === "SUPER_ADMIN" || session?.user?.role === "ADMIN_OPERASIONAL") ? (
+                        t.status === "PENDING" ? (
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              onClick={() => handleAction(t.id, true)}
+                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                            >
+                              Setujui
+                            </button>
+                            <button
+                              onClick={() => handleAction(t.id, false)}
+                              className="px-2.5 py-1 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                            >
+                              Tolak
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-[11px] text-slate-400 font-mono">Selesai</span>
+                        )
                       ) : (
-                        <span className="text-[11px] text-slate-400 font-mono">Selesai</span>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {t.status === "PENDING" ? "Menunggu Approval" : "Selesai"}
+                        </span>
                       )}
                     </td>
                   </tr>
