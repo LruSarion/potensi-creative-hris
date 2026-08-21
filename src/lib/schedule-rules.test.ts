@@ -8,6 +8,7 @@ import {
   validateStudioRoomConflict,
   isTimeOverlapping,
   computeLastSessionEnd,
+  resolveTransitionGapMinutes,
 } from "@/lib/schedule-rules";
 
 function d(h: number, m = 0): Date {
@@ -172,6 +173,73 @@ describe("validateTokenJeda configurable rest gap", () => {
     const prior = { start: d(14, 0), end: d(15, 30) };
     expect(validateTokenJeda(d(15, 40), [prior], 10)).toBe("TIDAK"); // exactly 10m
     expect(validateTokenJeda(d(15, 41), [prior], 10)).toBe("BISA_TOKEN");
+  });
+});
+
+describe("resolveTransitionGapMinutes — studio/branch transitions", () => {
+  const timoho1 = { cabang: "Timoho", nomor: "01" };
+  const timoho2 = { cabang: "Timoho", nomor: "02" };
+  const berbah1 = { cabang: "Berbah", nomor: "01" };
+
+  it("same studio room -> fastest turnaround (default 15m)", () => {
+    expect(resolveTransitionGapMinutes(timoho1, timoho1)).toBe(15);
+  });
+
+  it("same branch, different studio -> medium gap (default 20m)", () => {
+    expect(resolveTransitionGapMinutes(timoho1, timoho2)).toBe(20);
+  });
+
+  it("different branch -> cross-branch travel gap (default 30m)", () => {
+    expect(resolveTransitionGapMinutes(timoho1, berbah1)).toBe(30);
+  });
+
+  it("respects tenant config overrides", () => {
+    const cfg = { sameStudioGapMinutes: 5, sameBranchGapMinutes: 10, crossBranchGapMinutes: 25 };
+    expect(resolveTransitionGapMinutes(timoho1, timoho1, cfg)).toBe(5);
+    expect(resolveTransitionGapMinutes(timoho1, timoho2, cfg)).toBe(10);
+    expect(resolveTransitionGapMinutes(timoho1, berbah1, cfg)).toBe(25);
+  });
+
+  it("falls back to restGapMinutes when studio info is missing", () => {
+    expect(resolveTransitionGapMinutes(null, { cabang: "Timoho", nomor: "01" }, { restGapMinutes: 45 })).toBe(45);
+    expect(resolveTransitionGapMinutes(timoho1, null, { restGapMinutes: 45 })).toBe(45);
+  });
+
+  it("treats studio references case-insensitively", () => {
+    expect(resolveTransitionGapMinutes({ cabang: "timoho", nomor: "01" }, { cabang: "Timoho", nomor: "01" })).toBe(15);
+  });
+});
+
+describe("validateTokenJeda — studio-aware transition gaps", () => {
+  const timoho1 = { cabang: "Timoho", nomor: "01" };
+  const berbah1 = { cabang: "Berbah", nomor: "01" };
+
+  it("allows same-studio turnaround with a short 15m gap", () => {
+    // Prior ends 15:30; next starts 15:50 in the same studio (20m gap > 15m) -> OK.
+    const prior = { start: d(14, 0), end: d(15, 30), studio: timoho1 };
+    expect(validateTokenJeda(d(15, 50), [prior], 30, {}, timoho1)).toBe("BISA_TOKEN");
+  });
+
+  it("rejects same-studio booking with less than the 15m turnaround", () => {
+    const prior = { start: d(14, 0), end: d(15, 30), studio: timoho1 };
+    expect(validateTokenJeda(d(15, 40), [prior], 30, {}, timoho1)).toBe("TIDAK");
+  });
+
+  it("requires a longer gap when switching branches (travel time)", () => {
+    // Prior ends 15:30 in Timoho; next starts 15:45 in Berbah -> only 15m < 30m travel -> rejected.
+    const prior = { start: d(14, 0), end: d(15, 30), studio: timoho1 };
+    expect(validateTokenJeda(d(15, 45), [prior], 30, {}, berbah1)).toBe("TIDAK");
+    // 31m gap is enough for cross-branch travel.
+    expect(validateTokenJeda(d(16, 1), [prior], 30, {}, berbah1)).toBe("BISA_TOKEN");
+  });
+
+  it("uses tenant transition config when provided", () => {
+    const cfg = { sameStudioGapMinutes: 5, sameBranchGapMinutes: 10, crossBranchGapMinutes: 20 };
+    const prior = { start: d(14, 0), end: d(15, 30), studio: timoho1 };
+    // 10m gap same studio (>= 5) -> OK with config.
+    expect(validateTokenJeda(d(15, 40), [prior], 30, cfg, timoho1)).toBe("BISA_TOKEN");
+    // Same 10m gap but cross-branch (needs 20m) -> rejected.
+    expect(validateTokenJeda(d(15, 40), [prior], 30, cfg, berbah1)).toBe("TIDAK");
   });
 });
 

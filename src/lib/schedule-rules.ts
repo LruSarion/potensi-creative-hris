@@ -10,6 +10,55 @@ export const BATAS_TERLAMBAT_MINUTES = 24;
 /** Agency-level rest gap override (minutes). Set in Tenant.config or env. */
 export const DEFAULT_REST_GAP_MINUTES = TOKEN_JEDA_MINUTES;
 
+// Context-aware transition gaps (minutes) for back-to-back sessions.
+// The schedule is customer-driven, so the streamer adapts; the app enforces the
+// minimum buffer needed for the transition type.
+export const DEFAULT_SAME_STUDIO_GAP_MINUTES = 15; // quick check-out -> check-in
+export const DEFAULT_SAME_BRANCH_GAP_MINUTES = 20; // move between studios in one branch
+export const DEFAULT_CROSS_BRANCH_GAP_MINUTES = 30; // travel between branches (Timoho/Berbah)
+
+export interface TransitionGapConfig {
+  restGapMinutes?: number;          // legacy single-gap fallback
+  sameStudioGapMinutes?: number;    // turnaround in the same studio room
+  sameBranchGapMinutes?: number;    // move between studios within a branch
+  crossBranchGapMinutes?: number;   // travel to a different branch
+}
+
+export type StudioRef = { cabang: string | null; nomor: string | null };
+
+/**
+ * Resolve the minimum transition gap (minutes) between a prior session and a new
+ * one based on their studio/branch relationship:
+ *  - same cabang + same nomor  -> sameStudioGap (fastest turnaround)
+ *  - same cabang, diff nomor   -> sameBranchGap
+ *  - different cabang          -> crossBranchGap (travel time)
+ * Falls back to restGapMinutes (legacy) when studio info is unavailable.
+ */
+export function resolveTransitionGapMinutes(
+  prior: StudioRef | null | undefined,
+  next: StudioRef | null | undefined,
+  config: TransitionGapConfig = {}
+): number {
+  const fallback = config.restGapMinutes ?? TOKEN_JEDA_MINUTES;
+
+  if (!prior || !next || !next.cabang) return fallback;
+
+  const sameCabang =
+    !!prior.cabang && prior.cabang.trim().toLowerCase() === next.cabang.trim().toLowerCase();
+  const sameNomor =
+    sameCabang &&
+    !!prior.nomor &&
+    !!next.nomor &&
+    prior.nomor.trim().toLowerCase() === next.nomor.trim().toLowerCase();
+
+  if (sameCabang) {
+    return sameNomor
+      ? (config.sameStudioGapMinutes ?? DEFAULT_SAME_STUDIO_GAP_MINUTES)
+      : (config.sameBranchGapMinutes ?? DEFAULT_SAME_BRANCH_GAP_MINUTES);
+  }
+  return config.crossBranchGapMinutes ?? DEFAULT_CROSS_BRANCH_GAP_MINUTES;
+}
+
 /**
  * Compute live duration in minutes. `jamMulaiLive`/`jamSelesaiLive` are absolute
  * ISO datetimes, so a plain difference is correct even for overnight/multi-day
@@ -32,20 +81,28 @@ export function computeBatasTerlambat(start: Date): Date {
 
 /**
  * VALIDASI_TOKEN_JEDA: returns "BISA_TOKEN" if the karyawan has NO other
- * schedule whose end falls within `restGapMinutes` before this start.
- * `restGapMinutes` is configurable (defaults to TOKEN_JEDA_MINUTES).
- * start/end are absolute ISO datetimes, so a plain epoch-ms comparison is
- * correct for overnight/multi-day 24/7 operations (no +24h rollover).
+ * schedule whose end falls within the required transition gap before this
+ * start. The required gap is context-aware: same studio (fast turnaround),
+ * same branch (studio change), or different branch (travel). Falls back to a
+ * single `restGapMinutes` when studio refs are absent.
+ * start/end are absolute ISO datetimes; no +24h rollover needed.
  */
 export function validateTokenJeda(
   start: Date,
-  otherSchedules: { start: Date; end: Date }[],
-  restGapMinutes: number = TOKEN_JEDA_MINUTES
+  otherSchedules: { start: Date; end: Date; studio?: StudioRef | null }[],
+  restGapMinutes: number = TOKEN_JEDA_MINUTES,
+  config: TransitionGapConfig = {},
+  nextStudio?: StudioRef | null
 ): "BISA_TOKEN" | "TIDAK" {
   const startMs = start.getTime();
-  const windowStart = startMs - restGapMinutes * 60 * 1000;
 
   for (const s of otherSchedules) {
+    // Use the context-aware gap only when BOTH the prior session and the next
+    // one carry studio/branch info; otherwise use the legacy single gap.
+    const gap = s.studio && nextStudio
+      ? resolveTransitionGapMinutes(s.studio, nextStudio, config)
+      : (config.restGapMinutes ?? restGapMinutes);
+    const windowStart = startMs - gap * 60 * 1000;
     const endMs = s.end.getTime();
     if (endMs >= windowStart && endMs <= startMs) {
       return "TIDAK";
