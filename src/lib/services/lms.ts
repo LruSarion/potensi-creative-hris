@@ -361,35 +361,44 @@ export async function submitVideoLesson(input: { enrollmentId: string; lessonId:
   return { scorePct, totalCorrect, totalQuestions: gradedQuestions.length };
 }
 
-/** Trainer reviews streamer submissions for a video lesson. */
+/** Trainer reviews streamer submissions for video lessons and module quizzes. */
 export async function listVideoSubmissions(input: { courseId?: string; lessonId?: string }) {
   await requireRole(...TRAINER_ROLES);
+
+  // 1. Fetch VideoWatch submissions
   const watches = await db.videoWatch.findMany({
     where: {
       ...(input.lessonId ? { lessonId: input.lessonId } : {}),
-      submittedAt: { not: null },
       ...(input.courseId ? { enrollment: { courseId: input.courseId } } : {}),
     },
     include: {
       lesson: { include: { module: true } },
       enrollment: { include: { karyawan: { select: { id: true, namaLengkap: true, idKaryawan: true } } } },
     },
-    orderBy: { submittedAt: "desc" },
+    orderBy: { createdAt: "desc" },
   });
 
-  const results = [];
+  const results: any[] = [];
+  const processedKeys = new Set<string>();
+
   for (const w of watches) {
+    if (!w.enrollment?.karyawan) continue;
+    const key = `${w.enrollmentId}_${w.lesson.moduleId}`;
+    processedKeys.add(key);
+
     const questions = await db.quizQuestion.findMany({
-      where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, lessonId: w.lessonId },
+      where: { moduleId: w.lesson.moduleId, isNote: false },
     });
     const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
     let correctCount = 0;
     const gradedQuestions = questions.filter((q) => q.correctAnswer != null);
     for (const q of gradedQuestions) {
       const a = attempts.find((x) => x.questionId === q.id);
-      if (a && a.score === 100) correctCount += 1;
+      if (a && (a.score === 100 || (a.answerText && q.correctAnswer && a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()))) {
+        correctCount += 1;
+      }
     }
-    const scorePercent = gradedQuestions.length > 0 ? Math.round((correctCount / gradedQuestions.length) * 100) : 0;
+    const scorePercent = gradedQuestions.length > 0 ? Math.round((correctCount / gradedQuestions.length) * 100) : 100;
     results.push({
       id: w.id,
       lessonId: w.lessonId,
@@ -398,7 +407,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
       courseId: w.lesson.module.courseId,
       studentId: w.enrollment.karyawan.id,
       studentName: w.enrollment.karyawan.namaLengkap,
-      submittedAt: w.submittedAt,
+      submittedAt: w.submittedAt ?? w.createdAt,
       watchPercentage: w.watchPct,
       totalQuestions: gradedQuestions.length,
       correctCount,
@@ -406,12 +415,142 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
       status: scorePercent >= (w.lesson.module.passingScore ?? 70) ? "PASSED" : "FAILED",
     });
   }
+
+  // 2. Fetch QuizAttempt submissions that don't have a VideoWatch entry
+  const attempts = await db.quizAttempt.findMany({
+    where: {
+      ...(input.courseId ? { enrollment: { courseId: input.courseId } } : {}),
+    },
+    include: {
+      enrollment: {
+        include: {
+          karyawan: { select: { id: true, namaLengkap: true, idKaryawan: true } },
+          course: { include: { modules: { include: { lessons: true, questions: true } } } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  // Group attempts by enrollmentId + moduleId
+  const groupedAttempts = new Map<string, { enrollment: any; moduleId: string; createdAt: Date; attempts: any[] }>();
+  for (const a of attempts) {
+    if (!a.enrollment?.karyawan) continue;
+    const key = `${a.enrollmentId}_${a.moduleId}`;
+    if (processedKeys.has(key)) continue;
+
+    if (!groupedAttempts.has(key)) {
+      groupedAttempts.set(key, {
+        enrollment: a.enrollment,
+        moduleId: a.moduleId,
+        createdAt: a.createdAt,
+        attempts: [a],
+      });
+    } else {
+      groupedAttempts.get(key)!.attempts.push(a);
+    }
+  }
+
+  for (const [key, group] of Array.from(groupedAttempts.entries())) {
+    const mod = group.enrollment.course.modules.find((m: any) => m.id === group.moduleId);
+    if (!mod) continue;
+    if (input.lessonId && !mod.lessons.some((l: any) => l.id === input.lessonId)) continue;
+
+    const questions = mod.questions.filter((q: any) => !q.isNote);
+    const gradedQuestions = questions.filter((q: any) => q.correctAnswer != null);
+    let correctCount = 0;
+    for (const q of gradedQuestions) {
+      const a = group.attempts.find((x: any) => x.questionId === q.id);
+      if (a && (a.score === 100 || (a.answerText && q.correctAnswer && a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()))) {
+        correctCount += 1;
+      }
+    }
+    const scorePercent = gradedQuestions.length > 0 ? Math.round((correctCount / gradedQuestions.length) * 100) : 100;
+    const firstLesson = mod.lessons[0];
+
+    results.push({
+      id: `quiz_${group.enrollment.id}_${mod.id}`,
+      lessonId: firstLesson?.id ?? mod.id,
+      lessonTitle: firstLesson?.title ?? mod.title,
+      moduleTitle: mod.title,
+      courseId: group.enrollment.courseId,
+      studentId: group.enrollment.karyawan.id,
+      studentName: group.enrollment.karyawan.namaLengkap,
+      submittedAt: group.createdAt,
+      watchPercentage: 100,
+      totalQuestions: gradedQuestions.length,
+      correctCount,
+      scorePercent,
+      status: scorePercent >= (mod.passingScore ?? 70) ? "PASSED" : "FAILED",
+    });
+  }
+
   return results;
 }
 
 /** Trainer fetches the detailed per-question answer breakdown for a submission. */
 export async function getVideoSubmissionDetail(watchId: string) {
   await requireRole(...TRAINER_ROLES);
+
+  if (watchId.startsWith("quiz_")) {
+    const parts = watchId.split("_");
+    const enrollmentId = parts[1];
+    const moduleId = parts[2];
+
+    const enroll = await db.enrollment.findUnique({
+      where: { id: enrollmentId },
+      include: { karyawan: true, course: { include: { modules: true } } },
+    });
+    if (!enroll) throw AppError.notFound("Enrollment tidak ditemukan");
+
+    const mod = await db.module.findUnique({ where: { id: moduleId }, include: { lessons: true } });
+    if (!mod) throw AppError.notFound("Modul tidak ditemukan");
+
+    const questions = await db.quizQuestion.findMany({
+      where: { moduleId: mod.id, isNote: false },
+      orderBy: { createdAt: "asc" },
+    });
+    const attempts = await db.quizAttempt.findMany({ where: { enrollmentId, moduleId: mod.id } });
+
+    const detailedResults = questions.map((q) => {
+      const a = attempts.find((x) => x.questionId === q.id);
+      let isCorrect = false;
+      if (q.correctAnswer != null && a?.answerText != null) {
+        isCorrect = a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase();
+      }
+      return {
+        questionId: q.id,
+        question: q.question,
+        eventTime: q.eventTime,
+        options: q.options as string[] | null,
+        correctAnswer: q.correctAnswer,
+        studentAnswer: a?.answerText ?? null,
+        score: a?.score ?? null,
+        isCorrect,
+      };
+    });
+
+    const correctCount = detailedResults.filter((d) => d.isCorrect).length;
+    const scorePercent = detailedResults.length > 0 ? Math.round((correctCount / detailedResults.length) * 100) : 0;
+    const latestAttempt = attempts[attempts.length - 1];
+
+    return {
+      id: watchId,
+      lessonId: mod.lessons[0]?.id ?? mod.id,
+      lessonTitle: mod.lessons[0]?.title ?? mod.title,
+      moduleTitle: mod.title,
+      studentId: enroll.karyawan.id,
+      studentName: enroll.karyawan.namaLengkap,
+      submittedAt: latestAttempt?.createdAt ?? enroll.updatedAt,
+      watchPercentage: 100,
+      passingScore: mod.passingScore ?? 70,
+      scorePercent,
+      correctCount,
+      totalQuestions: detailedResults.length,
+      detailedResults,
+    };
+  }
+
   const w = await db.videoWatch.findUnique({
     where: { id: watchId },
     include: { lesson: { include: { module: true } }, enrollment: { include: { karyawan: true } } },
@@ -419,8 +558,8 @@ export async function getVideoSubmissionDetail(watchId: string) {
   if (!w) throw AppError.notFound("Submission tidak ditemukan");
 
   const questions = await db.quizQuestion.findMany({
-    where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, lessonId: w.lessonId },
-    orderBy: { eventTime: "asc" },
+    where: { moduleId: w.lesson.moduleId, isNote: false },
+    orderBy: { createdAt: "asc" },
   });
   const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
 
@@ -451,7 +590,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
     moduleTitle: w.lesson.module.title,
     studentId: w.enrollment.karyawan.id,
     studentName: w.enrollment.karyawan.namaLengkap,
-    submittedAt: w.submittedAt,
+    submittedAt: w.submittedAt ?? w.createdAt,
     watchPercentage: w.watchPct,
     passingScore: w.lesson.module.passingScore ?? 70,
     scorePercent,

@@ -81,7 +81,7 @@ export default function HasilJawabanPage() {
   const filtered = submissions.filter((s) => {
     if (filterLesson !== "ALL" && s.lessonId !== filterLesson) return false;
     if (filterStatus === "PASSED" && s.scorePercent < 70) return false;
-    if (filterStatus === "FAILED" && s.scorePercent >= 70) return false;
+    if (filterStatus === "FAILED" && s.scorePercent < 70) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!s.studentName.toLowerCase().includes(q) && !s.lessonTitle.toLowerCase().includes(q)) return false;
@@ -97,41 +97,41 @@ export default function HasilJawabanPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Hasil Jawaban & Rekap Nilai Streamer</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Skor pengerjaan kuis video interaktif, persentase tontonan, dan rincian lembar jawaban streamer.
+        <p className="text-sm text-slate-600 mt-0.5 font-medium">
+          Skor pengerjaan kuis video interaktif, modul akademi, persentase tontonan, dan rincian lembar jawaban streamer.
         </p>
       </div>
 
       {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Pengerjaan</p>
-          <p className="text-2xl font-bold text-slate-900 mt-1">{submissions.length}</p>
+        <div className="bg-white rounded-2xl border border-slate-300 p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Total Pengerjaan</p>
+          <p className="text-3xl font-black text-slate-900 mt-1">{submissions.length}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lulus</p>
-          <p className="text-2xl font-bold text-emerald-600 mt-1">{passedCount}</p>
+        <div className="bg-white rounded-2xl border border-slate-300 p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Lulus</p>
+          <p className="text-3xl font-black text-emerald-600 mt-1">{passedCount}</p>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Rata-rata Nilai</p>
-          <p className="text-2xl font-bold text-blue-600 mt-1">{avgScore}/100</p>
+        <div className="bg-white rounded-2xl border border-slate-300 p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Rata-rata Nilai</p>
+          <p className="text-3xl font-black text-blue-600 mt-1">{avgScore}<span className="text-sm font-bold text-slate-600">/100</span></p>
         </div>
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tingkat Kelulusan</p>
-          <p className="text-2xl font-bold text-purple-600 mt-1">{passRate}%</p>
+        <div className="bg-white rounded-2xl border border-slate-300 p-4 shadow-sm">
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wider">Tingkat Kelulusan</p>
+          <p className="text-3xl font-black text-purple-600 mt-1">{passRate}%</p>
         </div>
       </div>
 
-      {error && <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4">⚠ {error}</div>}
+      {error && <div className="text-xs font-bold text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4">⚠ {error}</div>}
 
       {/* Filters */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="block font-semibold text-slate-700 text-xs mb-1.5">Materi Video</label>
+          <label className="block font-bold text-slate-800 text-xs mb-1.5">Materi Video / Modul</label>
           <select
             value={filterLesson}
             onChange={(e) => setFilterLesson(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+            className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-purple-500 bg-white text-slate-800"
           >
             <option value="ALL">Semua Materi</option>
             {lessons.map(([id, title]) => (
@@ -140,11 +140,11 @@ export default function HasilJawabanPage() {
           </select>
         </div>
         <div>
-          <label className="block font-semibold text-slate-700 text-xs mb-1.5">Status</label>
+          <label className="block font-bold text-slate-800 text-xs mb-1.5">Status</label>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+            className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-purple-500 bg-white text-slate-800"
           >
             <option value="ALL">Semua Status</option>
             <option value="PASSED">Lulus</option>
@@ -152,57 +152,57 @@ export default function HasilJawabanPage() {
           </select>
         </div>
         <div>
-          <label className="block font-semibold text-slate-700 text-xs mb-1.5">Cari Streamer</label>
+          <label className="block font-bold text-slate-800 text-xs mb-1.5">Cari Streamer</label>
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Cari nama streamer..."
-            className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:ring-2 focus:ring-purple-500 bg-white"
+            className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-purple-500 bg-white text-slate-800"
           />
         </div>
       </div>
 
       {/* Submissions table */}
-      <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+      <div className="overflow-x-auto bg-white rounded-2xl border border-slate-300 shadow-sm">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+          <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-300">
             <tr>
-              <th className="px-4 py-3">Streamer</th>
-              <th className="px-4 py-3">Materi Video</th>
-              <th className="px-4 py-3">Ditonton</th>
-              <th className="px-4 py-3">Nilai</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Waktu</th>
-              <th className="px-4 py-3">Aksi</th>
+              <th className="px-4 py-3.5">Streamer</th>
+              <th className="px-4 py-3.5">Materi / Modul</th>
+              <th className="px-4 py-3.5">Progress</th>
+              <th className="px-4 py-3.5">Nilai</th>
+              <th className="px-4 py-3.5">Status</th>
+              <th className="px-4 py-3.5">Waktu Submit</th>
+              <th className="px-4 py-3.5 text-center">Aksi</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-200">
             {filtered.map((s) => (
-              <tr key={s.id} className="hover:bg-slate-50/80 transition">
-                <td className="px-4 py-3 font-bold text-slate-800">{s.studentName}</td>
-                <td className="px-4 py-3 text-slate-600 max-w-[180px] truncate">{s.lessonTitle}</td>
-                <td className="px-4 py-3 text-slate-600">
+              <tr key={s.id} className="hover:bg-slate-50 transition">
+                <td className="px-4 py-3.5 font-bold text-slate-900">{s.studentName}</td>
+                <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[200px] truncate">{s.lessonTitle}</td>
+                <td className="px-4 py-3.5 text-slate-700 font-semibold">
                   <span className="flex items-center gap-1.5">
-                    <i className="fa-solid fa-eye text-slate-400 text-[10px]" />
+                    <i className="fa-solid fa-eye text-blue-600 text-[10px]" />
                     {s.watchPercentage}%
                   </span>
                 </td>
-                <td className="px-4 py-3 font-bold">{s.scorePercent}/100</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    s.status === "PASSED" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                <td className="px-4 py-3.5 font-black text-slate-900 text-sm">{s.scorePercent}<span className="text-xs font-medium text-slate-600">/100</span></td>
+                <td className="px-4 py-3.5">
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    s.status === "PASSED" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300"
                   }`}>
-                    {s.status === "PASSED" ? "LULUS" : "BELUM LULUS"}
+                    {s.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-slate-400">
+                <td className="px-4 py-3.5 text-slate-700 font-medium">
                   {s.submittedAt ? new Date(s.submittedAt).toLocaleString("id-ID") : "-"}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3.5 text-center">
                   <button
                     onClick={() => openDetail(s.id)}
-                    className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100"
+                    className="text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-200 shadow-sm transition"
                   >
                     Lihat Jawaban
                   </button>
@@ -212,56 +212,56 @@ export default function HasilJawabanPage() {
           </tbody>
         </table>
         {filtered.length === 0 && !loading && (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            <i className="fa-solid fa-file-circle-check text-3xl text-slate-300 block mb-2" />
-            Belum ada data pengerjaan kuis video interaktif.
+          <div className="p-12 text-center text-slate-600 text-xs font-semibold">
+            <i className="fa-solid fa-file-circle-check text-3xl text-slate-400 block mb-2" />
+            Belum ada data pengerjaan kuis atau modul.
           </div>
         )}
       </div>
 
-      {loading && <p className="text-xs text-slate-500 text-center py-4">Memuat hasil jawaban...</p>}
+      {loading && <p className="text-xs font-semibold text-slate-600 text-center py-4">Memuat hasil jawaban...</p>}
 
       {/* Detail modal */}
       {detail && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-slate-300 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-4 sm:px-6 bg-slate-100 border-b border-slate-300 flex items-center justify-between flex-shrink-0">
               <div>
-                <h3 className="font-bold text-slate-900 text-sm">{detail.studentName}</h3>
-                <p className="text-[10px] text-slate-500">{detail.lessonTitle} • Modul {detail.moduleTitle}</p>
+                <h3 className="font-bold text-slate-900 text-base">{detail.studentName}</h3>
+                <p className="text-xs text-slate-700 font-semibold">{detail.lessonTitle} • Modul {detail.moduleTitle}</p>
               </div>
-              <button onClick={() => setDetail(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button onClick={() => setDetail(null)} className="text-slate-500 hover:text-slate-800 text-lg font-bold">✕</button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
-              <div className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-between ${
+              <div className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
                 detail.scorePercent >= (detail.passingScore || 70)
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                  : "bg-red-50 text-red-800 border-red-200"
+                  ? "bg-emerald-50 text-emerald-900 border-emerald-300"
+                  : "bg-red-50 text-red-900 border-red-300"
               }`}>
                 <span>Nilai: {detail.scorePercent}/100</span>
-                <span>Ditonton: {detail.watchPercentage}%</span>
+                <span>Progres: {detail.watchPercentage}%</span>
                 <span>{detail.scorePercent >= (detail.passingScore || 70) ? "LULUS" : "BELUM LULUS"}</span>
               </div>
               {detail.detailedResults.map((r, idx) => (
-                <div key={r.questionId} className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="font-bold text-slate-800">
+                <div key={r.questionId} className="p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-bold text-slate-900 text-sm">
                       {idx + 1}. {r.question}
                       {r.eventTime != null && (
-                        <span className="ml-2 text-[10px] font-bold text-purple-600 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded-full">
+                        <span className="ml-2 text-[10px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-2 py-0.5 rounded-full">
                           @ {formatTime(r.eventTime)}
                         </span>
                       )}
                     </p>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      r.isCorrect ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                      r.isCorrect ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-red-100 text-red-800 border border-red-300"
                     }`}>
                       {r.isCorrect ? "BENAR" : "SALAH"}
                     </span>
                   </div>
-                  <div className="text-slate-500">
-                    <p>Jawaban streamer: <strong>{r.studentAnswer || "-"}</strong></p>
-                    <p>Kunci jawaban: <strong className="text-emerald-700">{r.correctAnswer || "-"}</strong></p>
+                  <div className="text-slate-700 space-y-1 font-medium bg-white p-2.5 rounded-lg border border-slate-200">
+                    <p>Jawaban streamer: <strong className="text-slate-900 font-bold">{r.studentAnswer || "-"}</strong></p>
+                    <p>Kunci jawaban: <strong className="text-emerald-800 font-bold">{r.correctAnswer || "-"}</strong></p>
                   </div>
                 </div>
               ))}
