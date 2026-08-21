@@ -191,8 +191,9 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
   function handleEventAnswer() {
     if (!activeEvent) return;
-    const next = nextUnansweredEvent();
-    setActiveEvent(next ?? null);
+    // Clear the modal and resume playback; the poll will surface the next
+    // question only when the video actually reaches its eventTime.
+    setActiveEvent(null);
     playerRef.current?.playVideo();
   }
 
