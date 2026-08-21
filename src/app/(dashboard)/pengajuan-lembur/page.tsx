@@ -110,7 +110,8 @@ export default function PengajuanLemburPage() {
               <select
                 value={form.karyawanId}
                 onChange={(e) => setForm({ ...form, karyawanId: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                disabled={session?.user?.role === "STREAMER" || session?.user?.role === "STAFF" || session?.user?.role === "OTS"}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100 disabled:text-slate-500"
                 required
               >
                 <option value="">-- Pilih Karyawan --</option>

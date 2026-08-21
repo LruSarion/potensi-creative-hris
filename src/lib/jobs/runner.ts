@@ -14,7 +14,7 @@ import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums"
 const LOCAL_LOCKS = new Set<string>();
 const LOCK_TTL_MS = 60 * 60 * 1000; // 1h safety valve
 
-type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate" | "check-in-reminders" | "auto-checkout" | "telegram-poll";
+type JobId = "payout-run" | "billing-close" | "lms-reminders" | "qc-assign" | "report-refresh" | "incident-escalate" | "check-in-reminders" | "auto-checkout" | "telegram-poll" | "hr-reminders";
 
 export async function runJob(id: JobId, fn: () => Promise<void>): Promise<{ status: string; started: string }> {
   const started = new Date();
@@ -303,6 +303,67 @@ async function runAutoCheckout(): Promise<void> {
   }
 }
 
+// ---------- HR Reminders: Contract expiry + Payroll near-limit alerts ----------
+
+async function runHrReminders() {
+  const now = new Date();
+  const in30days = new Date(now);
+  in30days.setDate(in30days.getDate() + 30);
+
+  // 1. Contract expiry: find employees whose contract ends within 30 days
+  const expiring = await db.karyawan.findMany({
+    where: { endDate: { gte: now, lte: in30days }, status: "ACTIVE" },
+    select: { id: true, namaLengkap: true, endDate: true },
+  });
+
+  for (const k of expiring) {
+    const daysLeft = Math.ceil(((k.endDate?.getTime() ?? 0) - now.getTime()) / (1000 * 60 * 60 * 24));
+    await db.notification.create({
+      data: {
+        targetKaryawanId: null,
+        title: `⚠️ Kontrak Hampir Berakhir: ${k.namaLengkap}`,
+        message: `Kontrak ${k.namaLengkap} akan berakhir dalam ${daysLeft} hari. Segera proses perpanjangan.`,
+        link: "/view-data",
+        type: "SYSTEM",
+      },
+    }).catch(() => undefined);
+  }
+
+  // 2. Payroll near Tier 4: find streamers whose current month gross pay is >= 90% of tier4 threshold
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const tieringList = await db.tiering.findMany({ orderBy: { jamMinimal: "asc" } });
+  const tier4 = tieringList.length >= 4 ? tieringList[3] : null;
+  if (tier4) {
+    const threshold90 = tier4.jamMinimal * 0.9;
+    const jadwalRows = await db.jadwal.groupBy({
+      by: ["streamerKaryawanId"],
+      where: { tanggal: { gte: monthStart, lt: monthEnd }, status: { notIn: ["DIBATALKAN", "REJECTED"] }, streamerKaryawanId: { not: null } },
+      _sum: { durationSec: true },
+    });
+    for (const row of jadwalRows) {
+      const totalJam = (row._sum.durationSec ?? 0) / 3600;
+      if (totalJam >= threshold90 && row.streamerKaryawanId) {
+        const k = await db.karyawan.findUnique({ where: { id: row.streamerKaryawanId }, select: { namaLengkap: true } });
+        await db.notification.create({
+          data: {
+            targetKaryawanId: null,
+            title: `🚨 Streamer Mendekati Batas Tier 4: ${k?.namaLengkap}`,
+            message: `${k?.namaLengkap} sudah akumulasi ${totalJam.toFixed(1)} jam bulan ini (ambang Tier 4: ${tier4.jamMinimal} jam). Pertimbangkan pengendalian jadwal.`,
+            link: "/input-jadwal",
+            type: "SYSTEM",
+          },
+        }).catch(() => undefined);
+      }
+    }
+  }
+
+  await logAktivitas({
+    aksi: "CRON_hr-reminders",
+    detail: JSON.stringify({ contractsExpiring: expiring.length }),
+  });
+}
+
 export type { JobId };
 
 export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
@@ -339,5 +400,8 @@ export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
   },
   "auto-checkout": async () => {
     await runAutoCheckout();
+  },
+  "hr-reminders": async () => {
+    await runHrReminders();
   },
 };

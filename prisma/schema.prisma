@@ -1263,7 +1263,7 @@ model SopTaskCompletion {
 // QC LIVE VIOLATIONS (monitoring pelanggaran live streaming)
 // ============================================================
 
-enum ViolationCategory {
+enum QcViolationCategory {
   GROOMING
   ATTITUDE
   LANGUAGE
@@ -1286,7 +1286,7 @@ model QcViolation {
   tenantId      String?
   jadwalId      String?
   streamerKaryawanId String
-  category      ViolationCategory
+  category      QcViolationCategory
   severity      ViolationSeverity @default(MEDIUM)
   description   String?
   photoUrl      String?           // bukti capture foto dari live streaming
