@@ -133,6 +133,8 @@ model Tenant {
   qcReviews     SessionReview[]
   revenueEntries RevenueEntry[]
   attachments   Attachment[]
+  streamerProfiles StreamerProfile[]
+  marketplaceListings MarketplaceListing[]
 
   @@map("tenants")
 }
@@ -220,6 +222,9 @@ model Karyawan {
   incidents         Incident[]      @relation("IncidentStreamer")
   incidentsAssigned Incident[]      @relation("IncidentAssignee")
   enrollments       Enrollment[]
+  certificates      Certificate[]
+  streamerProfile   StreamerProfile?
+  projectApplications ProjectApplication[]
 
   @@map("karyawan")
 }
@@ -277,6 +282,9 @@ model Client {
   produk      Produk[]
   jadwal      Jadwal[]
   billingDocs BillingDoc[]
+  courses     Course[]
+  listings    MarketplaceListing[]
+  certificates Certificate[]
 
   @@map("clients")
 }
@@ -739,12 +747,17 @@ model Course {
   description String?  @db.Text
   coverDriveId String?
   status      String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
+  isCertification Boolean @default(false) // passed exam grants brand certification
+  clientId    String?  // brand client this certification course certifies for
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  client      Client?  @relation(fields: [clientId], references: [id])
   modules     Module[]
   enrollments Enrollment[]
+  certificates Certificate[]
+  listings    MarketplaceListing[]
 
   @@map("course")
 }
@@ -834,12 +847,91 @@ model Certificate {
   id          String    @id @default(cuid())
   code        String    @unique
   enrollmentId String
+  courseId    String
+  clientId    String?   // brand client this certification grants eligibility for
+  streamerKaryawanId String
   issuedAt    DateTime  @default(now())
+  validTo     DateTime? // expiry; null = lifetime
   revokedAt   DateTime?
 
   enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course      Course     @relation(fields: [courseId], references: [id])
+  client      Client?    @relation(fields: [clientId], references: [id])
+  streamer    Karyawan   @relation(fields: [streamerKaryawanId], references: [id])
 
+  @@index([streamerKaryawanId, clientId])
   @@map("certificate")
+}
+
+// ============================================================
+// STREAMER DIRECTORY + PROJECT MARKETPLACE
+// ============================================================
+
+enum ListingStatus {
+  OPEN
+  CLOSED
+  FILLED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  PICKED
+  DECLINED
+}
+
+model StreamerProfile {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  karyawanId    String   @unique
+  rating        Decimal  @default(0) @db.Decimal(3, 2)
+  totalSessions Int      @default(0)
+  availability  String   @default("FLEXIBLE") // FULL_TIME | PART_TIME | FLEXIBLE
+  bio           String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan      Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@map("streamer_profile")
+}
+
+model MarketplaceListing {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  clientId      String
+  courseId      String?  // required certification course to be eligible
+  title         String
+  description   String?  @db.Text
+  platform      String?
+  ratePerSesi   Decimal  @default(0) @db.Decimal(12, 2)
+  quota         Int      @default(1)
+  status        ListingStatus @default(OPEN)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+  client        Client   @relation(fields: [clientId], references: [id])
+  course        Course?  @relation(fields: [courseId], references: [id])
+  applications  ProjectApplication[]
+
+  @@map("marketplace_listing")
+}
+
+model ProjectApplication {
+  id            String   @id @default(cuid())
+  listingId     String
+  streamerKaryawanId String
+  status        ApplicationStatus @default(APPLIED)
+  note          String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  listing       MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  streamer      Karyawan @relation(fields: [streamerKaryawanId], references: [id])
+
+  @@unique([listingId, streamerKaryawanId])
+  @@map("project_application")
 }
 
 // ============================================================

@@ -14,12 +14,14 @@ import {
   issueCertificate,
   revokeCertificate,
 } from "@/lib/services/lms";
+import { listCertifications } from "@/lib/services/marketplace";
 
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const view = url.searchParams.get("view") ?? "courses";
   const courseId = url.searchParams.get("courseId") ?? undefined;
   if (view === "enrollments") return listEnrollments(courseId);
+  if (view === "certifications") return listCertifications();
   return listCourses();
 });
 

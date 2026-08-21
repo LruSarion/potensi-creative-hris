@@ -115,13 +115,21 @@ async function main() {
   // --- LMS Courses & Modules & Questions ---
   const course = await prisma.course.upsert({
     where: { id: "course-onboarding-01" },
-    update: { title: "Mastering Hard-Selling & Flash Sale Pitching", status: "ACTIVE", tenantId: agency.id },
+    update: {
+      title: "Mastering Hard-Selling & Flash Sale Pitching",
+      status: "ACTIVE",
+      tenantId: agency.id,
+      isCertification: true,
+      clientId: client.id,
+    },
     create: {
       id: "course-onboarding-01",
       title: "Mastering Hard-Selling & Flash Sale Pitching",
       description: "Panduan komprehensif teknik opening 30 detik pertama, demo produk interaktif, dan cara mendongkrak GMV di Shopee Live & TikTok Shop.",
       status: "ACTIVE",
       tenantId: agency.id,
+      isCertification: true,
+      clientId: client.id,
     },
   });
 
@@ -178,15 +186,58 @@ async function main() {
   // Enroll demo streamer PCS002
   const streamerKaryawan = await prisma.karyawan.findUnique({ where: { idKaryawan: "PCS002" } });
   if (streamerKaryawan) {
-    await prisma.enrollment.upsert({
+    const enrollment = await prisma.enrollment.upsert({
       where: { id: "enroll-pcs002-c01" },
-      update: { progressPct: 50, status: "IN_PROGRESS" },
+      update: { progressPct: 100, status: "COMPLETED" },
       create: {
         id: "enroll-pcs002-c01",
         courseId: course.id,
         karyawanId: streamerKaryawan.id,
-        progressPct: 50,
-        status: "IN_PROGRESS",
+        progressPct: 100,
+        status: "COMPLETED",
+      },
+    });
+    // Issue the certification (passing the exam) for the brand client.
+    await prisma.certificate.upsert({
+      where: { code: "CERT-PCS002-BRAND" },
+      update: {},
+      create: {
+        code: "CERT-PCS002-BRAND",
+        enrollmentId: enrollment.id,
+        courseId: course.id,
+        clientId: client.id,
+        streamerKaryawanId: streamerKaryawan.id,
+        validTo: new Date("2027-12-31"),
+      },
+    });
+    // Streamer profile (for the client hub).
+    await prisma.streamerProfile.upsert({
+      where: { karyawanId: streamerKaryawan.id },
+      update: {},
+      create: {
+        tenantId: agency.id,
+        karyawanId: streamerKaryawan.id,
+        rating: 4.5,
+        totalSessions: 42,
+        availability: "FLEXIBLE",
+        bio: "Host berpengalaman untuk brand FMCG & fashion di Shopee Live / TikTok Shop.",
+      },
+    });
+    // Sample marketplace listing for the demo brand.
+    await prisma.marketplaceListing.upsert({
+      where: { id: "listing-brand-01" },
+      update: {},
+      create: {
+        id: "listing-brand-01",
+        tenantId: agency.id,
+        clientId: client.id,
+        courseId: course.id,
+        title: "Kampanye Flash Sale 8.8 — Shopee Live",
+        description: "Dibutuhkan host bersertifikasi untuk sesi live flash sale 8.8.",
+        platform: "Shopee Live",
+        ratePerSesi: 150000,
+        quota: 2,
+        status: "OPEN",
       },
     });
   }

@@ -13,6 +13,8 @@ const courseSchema = z.object({
   description: z.string().optional().nullable(),
   coverDriveId: z.string().optional().nullable(),
   status: z.string().optional().nullable(),
+  isCertification: z.coerce.boolean().optional().default(false),
+  clientId: z.string().optional().nullable(),
 });
 
 export type CourseInput = z.infer<typeof courseSchema>;
@@ -21,7 +23,12 @@ export async function createCourse(input: CourseInput) {
   const user = await requireRole(...TRAINER_ROLES);
   const parsed = courseSchema.parse(input);
   return db.course.create({
-    data: { ...parsed, tenantId: user.tenantId || undefined, status: parsed.status ?? "ACTIVE" },
+    data: {
+      ...parsed,
+      tenantId: user.tenantId || undefined,
+      status: parsed.status ?? "ACTIVE",
+      clientId: parsed.clientId ?? null,
+    },
   });
 }
 
@@ -201,15 +208,24 @@ export async function listEnrollments(courseId?: string) {
 
 // ---------- T21: Certificates ----------
 
-export async function issueCertificate(enrollmentId: string) {
+export async function issueCertificate(enrollmentId: string, opts?: { validTo?: string }) {
   const user = await requireRole(...TRAINER_ROLES);
-  const enroll = await db.enrollment.findUnique({ where: { id: enrollmentId } });
+  const enroll = await db.enrollment.findUnique({ where: { id: enrollmentId }, include: { course: true } });
   if (!enroll) throw AppError.notFound("Enrollment tidak ditemukan");
   if (enroll.status !== "COMPLETED") throw AppError.conflict("Course belum selesai");
   const existing = await db.certificate.findFirst({ where: { enrollmentId } });
   if (existing) return existing;
   const code = `CERT-${Date.now().toString(36).toUpperCase()}`;
-  return db.certificate.create({ data: { code, enrollmentId } });
+  return db.certificate.create({
+    data: {
+      code,
+      enrollmentId,
+      courseId: enroll.courseId,
+      clientId: enroll.course.clientId,
+      streamerKaryawanId: enroll.karyawanId,
+      validTo: opts?.validTo ? new Date(opts.validTo) : undefined,
+    },
+  });
 }
 
 export async function revokeCertificate(id: string) {

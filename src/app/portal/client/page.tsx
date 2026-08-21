@@ -29,7 +29,9 @@ export default function ClientPortalPage() {
   const [kpi, setKpi] = useState<any>(null);
   const [schedules, setSchedules] = useState<Jadwal[]>([]);
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"schedules" | "feedback" | "propose">("schedules");
+  const [activeTab, setActiveTab] = useState<"schedules" | "feedback" | "propose" | "streamers" | "projects">("schedules");
+  const [streamers, setStreamers] = useState<any[]>([]);
+  const [listings, setListings] = useState<any[]>([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -63,15 +65,19 @@ export default function ClientPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [kpiRes, schRes, fbRes] = await Promise.all([
+      const [kpiRes, schRes, fbRes, strRes, listRes] = await Promise.all([
         fetch("/api/client-portal?view=kpi").then((r) => r.json()),
         fetch("/api/client-portal?view=schedules").then((r) => r.json()),
         fetch("/api/client-portal?view=feedback").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/streamer-directory").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/marketplace?view=listings").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
       ]);
 
       if (kpiRes.status === "success") setKpi(kpiRes.data);
       if (schRes.status === "success") setSchedules(schRes.data);
       if (fbRes.status === "success") setFeedbackList(fbRes.data);
+      if (strRes.status === "success") setStreamers(strRes.data);
+      if (listRes.status === "success") setListings(listRes.data);
       else if (kpiRes.status === "error") setError(kpiRes.message ?? "Akses ditolak");
     } catch {
       setError("Gagal memuat data portal brand partner");
@@ -192,6 +198,24 @@ export default function ClientPortalPage() {
           >
             <i className="fa-solid fa-plus" />
             <span>Ajukan Jadwal Baru</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("streamers")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "streamers" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-users" />
+            <span>Certified Streamers</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("projects")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "projects" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-briefcase" />
+            <span>My Projects ({listings.length})</span>
           </button>
         </div>
       </div>
@@ -611,6 +635,118 @@ export default function ClientPortalPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Tab 4: Certified Streamers Hub */}
+      {activeTab === "streamers" && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-900 text-lg">Hub Streamer Bersertifikat</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Streamer dengan sertifikasi brand yang valid untuk proyek Anda.
+              </p>
+            </div>
+            <span className="text-xs text-slate-500">{streamers.length} streamer</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {streamers.map((s) => {
+              const certCount = s.certifiedFor?.length ?? 0;
+              return (
+                <div key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-blue-600/10 border border-blue-200 flex items-center justify-center text-lg font-black text-blue-600">
+                        {s.namaLengkap?.charAt(0) ?? "?"}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm">{s.namaLengkap}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{s.idKaryawan}</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-amber-500">★ {s.rating?.toFixed(1) ?? "0.0"}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {certCount > 0 ? (
+                      s.certifiedFor.map((c: any, i: number) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 bg-emerald-50 text-emerald-700"
+                        >
+                          ✓ {c.clientName ?? "Brand"}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-500">
+                        Belum bersertifikasi
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[11px] text-slate-500">{s.totalSessions ?? 0} sesi</span>
+                    <span className="text-[11px] text-slate-500">{s.availability ?? "FLEXIBLE"}</span>
+                  </div>
+                </div>
+              );
+            })}
+            {streamers.length === 0 && (
+              <div className="col-span-2 p-10 text-center text-slate-400 text-xs">
+                Belum ada data streamer.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: My Projects (Listings) */}
+      {activeTab === "projects" && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-lg">Proyek Brand Saya</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Listing proyek live yang Anda buka untuk direkrut streamer bersertifikat.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {listings.map((l) => (
+              <div key={l.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <div className="flex items-center justify-between">
+                  <div className="font-bold text-slate-900">{l.title}</div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                      l.status === "OPEN"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        : l.status === "FILLED"
+                          ? "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-slate-50 text-slate-500 border-slate-200"
+                    }`}
+                  >
+                    {l.status}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">{l.description}</div>
+                <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-slate-600">
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100">{l.platform ?? "-"}</span>
+                  <span className="font-mono">Rp {Number(l.ratePerSesi).toLocaleString("id-ID")}/sesi</span>
+                  <span>Kuota: {l.quota}</span>
+                  <span>{l.applications?.length ?? 0} aplikasi</span>
+                  {l.course && (
+                    <span className="text-emerald-600 font-semibold">
+                      Sertifikasi: {l.course.title}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+            {listings.length === 0 && (
+              <div className="p-10 text-center text-slate-400 text-xs">
+                Belum ada proyek. Ajukan jadwal atau hubungi admin untuk membuka listing.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
