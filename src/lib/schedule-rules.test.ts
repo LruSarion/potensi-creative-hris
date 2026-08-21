@@ -18,11 +18,11 @@ describe("computeDurationMinutes", () => {
   it("computes same-day duration", () => {
     expect(computeDurationMinutes(d(16, 0), d(18, 0))).toBe(120);
   });
-  it("handles overnight (23:00 -> 02:00 = 3h)", () => {
-    expect(computeDurationMinutes(d(23, 0), d(2, 0))).toBe(180);
+  it("handles overnight (23:00 day10 -> 02:00 day11 = 3h)", () => {
+    expect(computeDurationMinutes(new Date(2026, 4, 10, 23, 0), new Date(2026, 4, 11, 2, 0))).toBe(180);
   });
   it("handles midnight boundary (00:00 -> 02:00)", () => {
-    expect(computeDurationMinutes(d(0, 0), d(2, 0))).toBe(120);
+    expect(computeDurationMinutes(new Date(2026, 4, 11, 0, 0), new Date(2026, 4, 11, 2, 0))).toBe(120);
   });
 });
 
@@ -70,6 +70,28 @@ describe("validateTokenJeda", () => {
   });
 });
 
+describe("isTimeOverlapping — 24/7 overnight edge cases", () => {
+  const d = (day: number, h: number) => new Date(2026, 7, day, h);
+  it("same-day overlap", () => {
+    expect(isTimeOverlapping(d(25, 10), d(25, 12), d(25, 11), d(25, 13))).toBe(true);
+  });
+  it("same-day adjacent (no overlap)", () => {
+    expect(isTimeOverlapping(d(25, 10), d(25, 12), d(25, 12), d(25, 14))).toBe(false);
+  });
+  it("overnight 23:00->02:00 overlaps 01:00->03:00 next day", () => {
+    expect(isTimeOverlapping(d(25, 23), d(26, 2), d(26, 1), d(26, 3))).toBe(true);
+  });
+  it("overnight 23:00->02:00 does NOT overlap 03:00->05:00 next day", () => {
+    expect(isTimeOverlapping(d(25, 23), d(26, 2), d(26, 3), d(26, 5))).toBe(false);
+  });
+  it("overnight session does NOT overlap the next night's overnight session", () => {
+    expect(isTimeOverlapping(d(25, 23), d(26, 2), d(26, 23), d(27, 2))).toBe(false);
+  });
+  it("two overnight sessions on the SAME night overlap", () => {
+    expect(isTimeOverlapping(d(25, 22), d(26, 1), d(25, 23), d(26, 2))).toBe(true);
+  });
+});
+
 describe("validateStudioRoomConflict & isTimeOverlapping", () => {
   it("detects direct time collision in the same room", () => {
     const existing = [
@@ -111,22 +133,20 @@ describe("computeLastSessionEnd (JAM_SELESAI_TERAKHIR)", () => {
     expect(end!.getMinutes()).toBe(0);
   });
 
-  it("handles an overnight session (end < start) by rolling to the next day", () => {
-    // Session 23:00 -> 02:00 crosses midnight.
+  it("handles an overnight session with an absolute end on the next day", () => {
+    // Overnight 23:00 day10 -> 02:00 day11 (end is an absolute datetime on day 11).
     const end = computeLastSessionEnd([
-      { start: new Date(2026, 4, 10, 23, 0), end: new Date(2026, 4, 10, 2, 0) },
+      { start: new Date(2026, 4, 10, 23, 0), end: new Date(2026, 4, 11, 2, 0) },
     ]);
-    // 23:00 start on day 10, 02:00 end on day 11.
     expect(end!.getDate()).toBe(11);
     expect(end!.getHours()).toBe(2);
   });
 
-  it("picks the max across mixed same-day + overnight sessions", () => {
+  it("picks the max end across sessions (same-day + next-day overnight)", () => {
     const end = computeLastSessionEnd([
-      { start: d(14, 0), end: d(16, 0) }, // day 10 16:00
-      { start: new Date(2026, 4, 10, 23, 0), end: new Date(2026, 4, 10, 1, 0) }, // day 11 01:00
+      { start: new Date(2026, 4, 10, 14, 0), end: new Date(2026, 4, 10, 16, 0) }, // day 10 16:00
+      { start: new Date(2026, 4, 10, 23, 0), end: new Date(2026, 4, 11, 1, 0) }, // day 11 01:00
     ]);
-    // 01:00 on day 11 is later than 16:00 on day 10.
     expect(end!.getDate()).toBe(11);
     expect(end!.getHours()).toBe(1);
   });

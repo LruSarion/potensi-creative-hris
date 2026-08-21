@@ -11,12 +11,12 @@ export const BATAS_TERLAMBAT_MINUTES = 24;
 export const DEFAULT_REST_GAP_MINUTES = TOKEN_JEDA_MINUTES;
 
 /**
- * Compute live duration handling overnight (MOD(K-J;1) equivalent).
- * start/end are Date objects; returns duration in minutes.
+ * Compute live duration in minutes. `jamMulaiLive`/`jamSelesaiLive` are absolute
+ * ISO datetimes, so a plain difference is correct even for overnight/multi-day
+ * sessions. The legacy `+24h if negative` rollover is intentionally NOT applied.
  */
 export function computeDurationMinutes(start: Date, end: Date): number {
-  let ms = end.getTime() - start.getTime();
-  if (ms < 0) ms += 24 * 60 * 60 * 1000; // overnight
+  const ms = end.getTime() - start.getTime();
   return Math.round(ms / 60000);
 }
 
@@ -32,9 +32,10 @@ export function computeBatasTerlambat(start: Date): Date {
 
 /**
  * VALIDASI_TOKEN_JEDA: returns "BISA_TOKEN" if the karyawan has NO other
- * schedule whose [end + day-rollover] falls within `restGapMinutes` before
- * this start. `restGapMinutes` is configurable (defaults to TOKEN_JEDA_MINUTES),
- * matching the client's JAM_SELESAI_TERAKHIR rest-tracking rule.
+ * schedule whose end falls within `restGapMinutes` before this start.
+ * `restGapMinutes` is configurable (defaults to TOKEN_JEDA_MINUTES).
+ * start/end are absolute ISO datetimes, so a plain epoch-ms comparison is
+ * correct for overnight/multi-day 24/7 operations (no +24h rollover).
  */
 export function validateTokenJeda(
   start: Date,
@@ -45,8 +46,7 @@ export function validateTokenJeda(
   const windowStart = startMs - restGapMinutes * 60 * 1000;
 
   for (const s of otherSchedules) {
-    let endMs = s.end.getTime();
-    if (endMs < s.start.getTime()) endMs += 24 * 60 * 60 * 1000;
+    const endMs = s.end.getTime();
     if (endMs >= windowStart && endMs <= startMs) {
       return "TIDAK";
     }
@@ -55,37 +55,28 @@ export function validateTokenJeda(
 }
 
 /**
- * JAM_SELESAI_TERAKHIR (last real session end, with overnight rollover).
- * Ports the client sheet's LET/MAP/MAX logic:
- *   riil = if end < start then date + 1 + end else date + end
- *   max  = max(riil) across the streamer's sessions
- * Returns the absolute timestamp of the latest moment a streamer finished.
+ * JAM_SELESAI_TERAKHIR (last real session end). start/end are absolute ISO
+ * datetimes, so the latest end is simply the max of `end` across sessions —
+ * no +24h rollover needed (overnight/multi-day ends already carry their date).
  */
 export function computeLastSessionEnd(
   sessions: { start: Date; end: Date }[]
 ): Date | null {
   if (!sessions.length) return null;
-
   let maxMs = 0;
   for (const s of sessions) {
-    const startMs = s.start.getTime();
     const endMs = s.end.getTime();
-    // Midnights of each date (start's day and end's day).
-    const startMidnight = new Date(s.start.getFullYear(), s.start.getMonth(), s.start.getDate()).getTime();
-    const endMidnight = new Date(s.end.getFullYear(), s.end.getMonth(), s.end.getDate()).getTime();
-    const startTimeOfDay = startMs - startMidnight;
-    const endTimeOfDay = endMs - endMidnight;
-    // Overnight when the end time-of-day is earlier than the start time-of-day.
-    const overnight = endTimeOfDay < startTimeOfDay ? 24 * 60 * 60 * 1000 : 0;
-    // Absolute end: session's start-day midnight + (overnight rollover) + end time-of-day.
-    const sessionEndAbsolute = startMidnight + overnight + endTimeOfDay;
-    if (sessionEndAbsolute > maxMs) maxMs = sessionEndAbsolute;
+    if (endMs > maxMs) maxMs = endMs;
   }
   return new Date(maxMs);
 }
 
 /**
- * Validates whether two time intervals overlap (including overnight sessions).
+ * Validates whether two time intervals overlap.
+ * `jamMulaiLive`/`jamSelesaiLive` are full absolute ISO datetimes, so a plain
+ * epoch-ms interval overlap is correct — including overnight (23:00->02:00) and
+ * multi-day sessions in a 24/7 operation. The legacy +24h rollover is NOT applied
+ * because the inputs already carry their absolute calendar date.
  */
 export function isTimeOverlapping(
   startA: Date,
@@ -93,13 +84,14 @@ export function isTimeOverlapping(
   startB: Date,
   endB: Date
 ): boolean {
-  let aEnd = endA.getTime();
-  if (aEnd < startA.getTime()) aEnd += 24 * 60 * 60 * 1000;
+  const aStart = startA.getTime();
+  const aEnd = endA.getTime();
+  const bStart = startB.getTime();
+  const bEnd = endB.getTime();
 
-  let bEnd = endB.getTime();
-  if (bEnd < startB.getTime()) bEnd += 24 * 60 * 60 * 1000;
-
-  return startA.getTime() < bEnd && aEnd > startB.getTime();
+  // Adjacent sessions (end == start) do not overlap; true overlap requires both
+  // endpoints to strictly interleave.
+  return aStart < bEnd && aEnd > bStart;
 }
 
 /**
