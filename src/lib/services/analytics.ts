@@ -185,3 +185,69 @@ export async function scheduleRollup(params?: { tanggal?: string; periode?: stri
     byPlatform: Object.fromEntries(Object.entries(byPlatform).map(([k, v]) => [k, { sessions: v.sessions, hours: hours(v.hours) }])),
   };
 }
+
+/**
+ * GMV Analytics: aggregate reported GMV from absensi CHECK_OUT records.
+ * Groups by client, platform, and streamer.
+ */
+export async function gmvAnalytics(params?: { periode?: string }) {
+  const user = await requireRole();
+  const where: Record<string, unknown> = { ...tenantWhere(user), tipe: "CHECK_OUT" };
+  if (params?.periode) {
+    const { start, end } = periodRange(params.periode);
+    where.waktu = { gte: start, lt: end };
+  }
+
+  const rows = await db.absensi.findMany({
+    where,
+    select: {
+      reportedGmv: true,
+      karyawan: { select: { namaLengkap: true, idKaryawan: true } },
+      jadwal: {
+        select: {
+          platform: true,
+          client: { select: { namaClient: true } },
+        },
+      },
+    },
+  });
+
+  const byClient: Record<string, { namaClient: string; totalGmv: number; sessions: number }> = {};
+  const byPlatform: Record<string, { totalGmv: number; sessions: number }> = {};
+  const byStreamer: Record<string, { namaLengkap: string; idKaryawan: string; totalGmv: number; sessions: number }> = {};
+  let totalGmv = 0;
+
+  for (const r of rows) {
+    const gmv = Number(r.reportedGmv ?? 0);
+    totalGmv += gmv;
+
+    // By client
+    const clientName = r.jadwal?.client?.namaClient ?? "Tanpa Klien";
+    const c = byClient[clientName] ?? { namaClient: clientName, totalGmv: 0, sessions: 0 };
+    c.totalGmv += gmv; c.sessions++;
+    byClient[clientName] = c;
+
+    // By platform
+    const platform = r.jadwal?.platform ?? "Lainnya";
+    const p = byPlatform[platform] ?? { totalGmv: 0, sessions: 0 };
+    p.totalGmv += gmv; p.sessions++;
+    byPlatform[platform] = p;
+
+    // By streamer
+    const nama = r.karyawan?.namaLengkap ?? "—";
+    const s = byStreamer[nama] ?? { namaLengkap: nama, idKaryawan: r.karyawan?.idKaryawan ?? "—", totalGmv: 0, sessions: 0 };
+    s.totalGmv += gmv; s.sessions++;
+    byStreamer[nama] = s;
+  }
+
+  return {
+    totalGmv,
+    totalSessions: rows.length,
+    byClient: Object.values(byClient).sort((a, b) => b.totalGmv - a.totalGmv),
+    byPlatform: Object.values(Object.entries(byPlatform).reduce<Record<string, { platform: string; totalGmv: number; sessions: number }>>((acc, [k, v]) => {
+      acc[k] = { platform: k, ...v };
+      return acc;
+    }, {})).sort((a, b) => b.totalGmv - a.totalGmv),
+    byStreamer: Object.values(byStreamer).sort((a, b) => b.totalGmv - a.totalGmv).slice(0, 20),
+  };
+}

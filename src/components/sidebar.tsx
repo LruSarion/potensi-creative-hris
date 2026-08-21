@@ -24,6 +24,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/input-karyawan", label: "Data Karyawan", icon: "fa-user-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Operasional & Jadwal" },
   { href: "/client", label: "Brand & Klien", icon: "fa-building", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },
   { href: "/view-data", label: "Master Data Explorer", icon: "fa-database", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Operasional & Jadwal" },
+  { href: "/analytics-gmv", label: "Analytics GMV Bulanan", icon: "fa-chart-line", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "CLIENT", "CLIENT_ADMIN"], section: "Operasional & Jadwal" },
   { href: "/approval", label: "Approval Center", icon: "fa-check-double", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },
 
   // Pengajuan & SDM
@@ -32,6 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/tukar-shift", label: "Tukar Shift Live", icon: "fa-arrows-rotate", roles: ["STREAMER", "STAFF", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "SDM & Kompensasi" },
   { href: "/penilaian-sdm", label: "Evaluasi KPI Host", icon: "fa-star", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"], section: "SDM & Kompensasi" },
   { href: "/payroll", label: "Payroll & Kompensasi", icon: "fa-money-bill-wave", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "SDM & Kompensasi" },
+  { href: "/finance-insentif", label: "Rekap Denda & Insentif Pelapor", icon: "fa-receipt", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "SDM & Kompensasi" },
   { href: "/suara-karyawan", label: "Suara Karyawan", icon: "fa-comment-dots", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "QC_REVIEWER"], section: "SDM & Kompensasi" },
 
   // Portals

@@ -146,7 +146,7 @@ export default function LmsAkademiPage() {
                   {q.type === "MCQ" && q.options ? (
                     <div className="space-y-2">
                       {q.options.map((opt, oi) => (
-                        <label key={oi} className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer text-xs transition ${answers[q.id] === String(oi) ? "border-blue-500 bg-blue-50 text-blue-800 font-semibold" : "border-slate-200 hover:bg-slate-50"}`}>
+                        <label key={oi} className={`flex items-center gap-2.5 p-2.5 rounded-xl border-2 cursor-pointer text-xs font-medium transition ${answers[q.id] === String(oi) ? "border-blue-500 bg-blue-50 text-blue-800 font-semibold" : "border-slate-300 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/40"}`}>
                           <input type="radio" name={q.id} value={String(oi)} checked={answers[q.id] === String(oi)} onChange={() => setAnswers((a) => ({ ...a, [q.id]: String(oi) }))} className="accent-blue-600" />
                           {opt}
                         </label>

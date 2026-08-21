@@ -91,6 +91,21 @@ export default function TukarShiftPage() {
     }
   }
 
+  async function handleConfirm(id: string) {
+    try {
+      const res = await fetch(`/api/tukar-shift?id=${id}&action=confirm`, { method: "PATCH" });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("Kamu telah mengkonfirmasi bersedia menggantikan jadwal ini. Menunggu approval admin.");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal mengkonfirmasi");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -241,16 +256,21 @@ export default function TukarShiftPage() {
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                             : t.status === "REJECTED"
                             ? "bg-red-50 text-red-700 border-red-200"
+                            : t.status === "TARGET_CONFIRMED"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
                             : "bg-amber-50 text-amber-700 border-amber-200"
                         }`}
                       >
-                        {t.status}
+                        {t.status === "TARGET_CONFIRMED" ? "✓ Pengganti Setuju" : t.status}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
                       {(session?.user?.role === "SUPER_ADMIN" || session?.user?.role === "ADMIN_OPERASIONAL") ? (
-                        t.status === "PENDING" ? (
+                        (t.status === "PENDING" || t.status === "TARGET_CONFIRMED") ? (
                           <div className="flex justify-end gap-1.5">
+                            {t.status === "PENDING" && (
+                              <span className="text-[10px] text-amber-600 italic mr-1">Menunggu konfirmasi pengganti</span>
+                            )}
                             <button
                               onClick={() => handleAction(t.id, true)}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
@@ -267,9 +287,16 @@ export default function TukarShiftPage() {
                         ) : (
                           <span className="text-[11px] text-slate-400 font-mono">Selesai</span>
                         )
+                      ) : session?.user?.karyawanId === t.targetId && t.status === "PENDING" ? (
+                        <button
+                          onClick={() => handleConfirm(t.id)}
+                          className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1"
+                        >
+                          <i className="fa-solid fa-check" /> Konfirmasi Bersedia
+                        </button>
                       ) : (
                         <span className="text-[11px] text-slate-400 font-mono">
-                          {t.status === "PENDING" ? "Menunggu Approval" : "Selesai"}
+                          {t.status === "PENDING" ? "Menunggu Konfirmasi" : t.status === "TARGET_CONFIRMED" ? "Menunggu Approval" : "Selesai"}
                         </span>
                       )}
                     </td>

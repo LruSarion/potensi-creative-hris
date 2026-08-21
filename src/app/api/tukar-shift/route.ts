@@ -1,5 +1,5 @@
 import { apiHandler } from "@/lib/api-handler";
-import { requestTukarShift, processTukarShift, listTukarShift } from "@/lib/services/tukar-shift";
+import { requestTukarShift, confirmTukarShift, processTukarShift, listTukarShift } from "@/lib/services/tukar-shift";
 
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
@@ -15,7 +15,10 @@ export const POST = apiHandler(async (req: Request) => {
 export const PATCH = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
-  const approve = url.searchParams.get("approve") === "true";
+  const approve = url.searchParams.get("approve");
+  const action = url.searchParams.get("action");
   if (!id) throw new Error("id required");
-  return processTukarShift(id, approve);
+  if (action === "confirm") return confirmTukarShift(id);
+  if (approve !== null) return processTukarShift(id, approve === "true");
+  throw new Error("unknown action");
 });

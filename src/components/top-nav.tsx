@@ -49,6 +49,11 @@ export default function TopNav() {
     "/portal/streamer/lms": "LMS & Akademi Host",
     "/admin": "Admin Control Center",
     "/history-log": "Audit & History Log",
+    "/analytics-gmv": "Analytics GMV Bulanan",
+    "/finance-insentif": "Rekap Denda & Insentif Pelapor",
+    "/qc-violations": "Pelanggaran QC Live",
+    "/sop-management": "Manajemen SOP & Tugas",
+    "/streamer-directory": "Direktori Streamer & Sertifikasi",
   };
 
   const currentTitle = pathTitles[pathname] ?? "HRIS Potensi Creative";

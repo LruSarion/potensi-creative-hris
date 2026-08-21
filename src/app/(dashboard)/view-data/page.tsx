@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 export default function ViewDataPage() {
   const [data, setData] = useState<any>(null);
@@ -131,9 +132,13 @@ export default function ViewDataPage() {
                   <tr key={row.id ?? idx} className="hover:bg-slate-50/80 transition">
                     {Object.keys(row)
                       .filter((k) => typeof row[k] !== "object")
-                      .map((col) => (
+                      .map((col, colIdx) => (
                         <td key={col} className="px-4 py-3 font-mono text-slate-700 max-w-xs truncate">
-                          {String(row[col] ?? "-")}
+                          {activeTab === "karyawan" && colIdx === 0 ? (
+                            <Link href={`/karyawan/${row.id}`} className="text-blue-600 hover:underline font-semibold">{String(row[col] ?? "-")}</Link>
+                          ) : (
+                            String(row[col] ?? "-")
+                          )}
                         </td>
                       ))}
                   </tr>

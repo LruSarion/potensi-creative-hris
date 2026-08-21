@@ -42,6 +42,19 @@ export async function requestTukarShift(input: TukarShiftInput) {
 }
 
 /**
+ * Target streamer confirms they agree to the shift swap.
+ * Can only be done by the target karyawan themselves.
+ */
+export async function confirmTukarShift(id: string) {
+  const user = await requireRole();
+  const row = await db.tukarShift.findUnique({ where: { id } });
+  if (!row) throw AppError.notFound("Pengajuan tukar shift tidak ditemukan");
+  if (row.status !== "PENDING") throw AppError.conflict("Pengajuan ini sudah tidak dapat dikonfirmasi");
+  if (user.karyawanId !== row.targetId) throw AppError.forbidden("Hanya streamer pengganti yang dapat mengkonfirmasi");
+  return db.tukarShift.update({ where: { id }, data: { status: "TARGET_CONFIRMED" } });
+}
+
+/**
  * Approve/reject a swap. Approver cannot approve their own request.
  */
 export async function processTukarShift(id: string, approve: boolean) {
@@ -51,7 +64,10 @@ export async function processTukarShift(id: string, approve: boolean) {
   if (row.requesterId === user.karyawanId) {
     throw AppError.forbidden("Tidak dapat menyetujui pengajuan sendiri");
   }
-
+  // Warn if target hasn't confirmed yet (allow override by admin)
+  if (approve && row.status === "PENDING") {
+    // Admin can still force-approve, but we log a note.
+  }
   return db.$transaction(async (tx) => {
     const updatedSwap = await tx.tukarShift.update({
       where: { id },

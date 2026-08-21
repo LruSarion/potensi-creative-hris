@@ -86,6 +86,7 @@ enum StatusIzin {
 
 enum StatusTukarShift {
   PENDING
+  TARGET_CONFIRMED
   APPROVED
   REJECTED
 }
