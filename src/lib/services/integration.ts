@@ -48,7 +48,8 @@ export async function createNotification(input: NotifyInput) {
   return row;
 }
 
-async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenantId?: string) {  try {
+async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenantId?: string) {
+  try {
     const type = parsed.type as NotificationType;
     const title = parsed.title;
     const message = parsed.message ?? "";

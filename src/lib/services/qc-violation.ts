@@ -2,6 +2,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
+import { getTelegramConfig, sendTelegramMessage } from "@/lib/services/telegram";
+import { normalizeNotifPrefs } from "@/lib/notification-types";
 import type { Role } from "@/generated/prisma/enums";
 
 const QC_ROLES: Role[] = ["QC_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
@@ -68,12 +70,44 @@ export async function createViolation(input: QcViolationInput) {
           title,
           message,
           link,
+          type: "QC_VIOLATION",
         }),
       },
     }).catch(() => {});
   }
 
+  // Push to bound Telegram chats (respects per-user prefs for QC_VIOLATION).
+  await pushViolationTelegram(recipients, title, message, link, user.tenantId);
+
   return violation;
+}
+
+async function pushViolationTelegram(
+  recipients: { userId?: string; karyawanId?: string }[],
+  title: string,
+  message: string,
+  link: string,
+  tenantId?: string
+) {
+  try {
+    const userIds = recipients.map((r) => r.userId).filter(Boolean) as string[];
+    if (userIds.length === 0) return;
+    const users = await db.user.findMany({
+      where: { id: { in: userIds }, telegramChatId: { not: null } },
+      select: { telegramChatId: true, telegramNotifPrefs: true },
+    });
+    if (users.length === 0) return;
+    const cfg = await getTelegramConfig({ tenantId });
+    const text = [`📢 ${title}`, message, link ? `🔗 ${link}` : null].filter(Boolean).join("\n");
+    for (const u of users) {
+      if (!u.telegramChatId) continue;
+      const prefs = normalizeNotifPrefs(u.telegramNotifPrefs);
+      if (prefs.QC_VIOLATION === false) continue;
+      await sendTelegramMessage(u.telegramChatId, text, cfg);
+    }
+  } catch {
+    // Telegram delivery must never break QC recording.
+  }
 }
 
 /** List violations (QC sees all; streamer sees own). */
