@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { handleTelegramUpdate } from "@/lib/services/telegram-bot";
-
-const SECRET = process.env.TELEGRAM_BOT_TOKEN || "";
+import { getBotConfig } from "@/lib/services/telegram";
 
 export async function POST(req: Request) {
-  if (!SECRET) {
+  const cfg = await getBotConfig();
+  if (!cfg.botToken) {
     return NextResponse.json({ ok: false }, { status: 503 });
   }
 
@@ -15,7 +15,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false });
   }
 
-  const cfg = { botToken: SECRET, botUsername: process.env.TELEGRAM_BOT_USERNAME || "" };
   await handleTelegramUpdate(body, cfg);
   return NextResponse.json({ ok: true });
 }

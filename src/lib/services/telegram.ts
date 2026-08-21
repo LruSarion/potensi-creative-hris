@@ -40,6 +40,31 @@ export async function getTelegramConfig(user: { tenantId?: string }): Promise<Te
   return { botToken, botUsername };
 }
 
+/**
+ * Sessionless bot config for webhook/polling handlers (no authenticated user).
+ * Reads the first tenant that has a Telegram bot token configured (or env as
+ * fallback). Webhooks/polling have no session, so they can't use getTelegramConfig(user).
+ */
+export async function getBotConfig(): Promise<TelegramConfig> {
+  const tenants = await db.tenant.findMany({ select: { config: true } });
+  let saved: TelegramConfig = {};
+  for (const t of tenants) {
+    const tg = (t.config as { telegram?: TelegramConfig } | null)?.telegram;
+    if (tg?.botToken) {
+      saved = tg;
+      break;
+    }
+  }
+  const botToken = saved.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+  const savedUsername = saved.botUsername || process.env.TELEGRAM_BOT_USERNAME || "";
+  let botUsername = savedUsername.replace(/^@/, "");
+  if (botToken) {
+    const live = await resolveBotUsername(botToken);
+    if (live) botUsername = live;
+  }
+  return { botToken, botUsername };
+}
+
 export async function sendTelegramMessage(chatId: string, text: string, cfg: TelegramConfig): Promise<boolean> {
   if (!cfg.botToken) return false;
   try {

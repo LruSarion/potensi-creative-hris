@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { logAktivitas } from "@/lib/audit";
 import { INCIDENT_SLA_MIN, slaLate } from "@/lib/services/operations";
 import { processTelegramBot } from "@/lib/services/telegram-bot";
+import { getBotConfig } from "@/lib/services/telegram";
 import type { IncidentStatus, IncidentSeverity } from "@/generated/prisma/enums";
 
 /**
@@ -140,9 +141,9 @@ export type { JobId };
 
 export const JOB_REGISTRY: Record<JobId, () => Promise<void>> = {
   "telegram-poll": async () => {
-    const token = process.env.TELEGRAM_BOT_TOKEN || "";
-    if (!token) return;
-    const processed = await processTelegramBot({ botToken: token, botUsername: process.env.TELEGRAM_BOT_USERNAME || "" });
+    const cfg = await getBotConfig();
+    if (!cfg.botToken) return;
+    const processed = await processTelegramBot(cfg);
     await logAktivitas({ aksi: "CRON_telegram-poll", detail: JSON.stringify({ processed }) });
   },
   "payout-run": async () => {
