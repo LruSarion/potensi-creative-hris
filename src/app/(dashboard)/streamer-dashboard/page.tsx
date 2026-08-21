@@ -26,6 +26,7 @@ export default function StreamerDashboardPage() {
   const [success, setSuccess] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const [activeSession, setActiveSession] = useState<{ id: string; waktu: string } | null>(null);
+  const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
 
   // Checkin modal/inputs
   const [checkinModalOpen, setCheckinModalOpen] = useState(false);
@@ -40,15 +41,24 @@ export default function StreamerDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes] = await Promise.all([
+      const [jRes, sRes, tRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
         fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
+        fetch("/api/payroll?tiering=1").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);
       else setError(jRes.message ?? "Gagal memuat jadwal streamer");
 
       if (sRes.status === "success") setActiveSession(sRes.data);
+      if (tRes.status === "success") {
+        setTiering((tRes.data ?? []).map((b: any) => ({
+          tier: b.tier,
+          jamMinimal: b.jamMinimal,
+          jamMaksimal: b.jamMaksimal,
+          ratePerJam: Number(b.ratePerJam),
+        })));
+      }
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
     } finally {
@@ -131,6 +141,12 @@ export default function StreamerDashboardPage() {
 
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
 
+  // Resolve the current tier + rate from the REAL tiering config (DB), so the
+  // displayed tier is always accurate and matches payroll.
+  const matchedTier = tiering.find((b) => totalLiveHours >= b.jamMinimal && totalLiveHours <= b.jamMaksimal);
+  const currentTier = matchedTier?.tier ?? (tiering.length ? "Tidak ada tier" : "Basic");
+  const currentRate = matchedTier?.ratePerJam ?? 25000;
+
   return (
     <div className="space-y-6">
       {/* Header & Host Profile */}
@@ -182,10 +198,10 @@ export default function StreamerDashboardPage() {
             <span className="text-slate-400 block mb-1">Tier Pencapaian</span>
             <div className="flex items-center gap-2">
               <span className="text-base font-extrabold text-white">
-                {totalLiveHours >= 156 ? "Advance" : totalLiveHours >= 121 ? "Optimal" : totalLiveHours >= 81 ? "Standard" : "Basic"}
+                {currentTier}
               </span>
               <span className="text-[10px] text-amber-300 font-semibold bg-amber-400/20 px-2 py-0.5 rounded-full">
-                Rp 28.500/jam
+                Rp {currentRate.toLocaleString("id-ID")}/jam
               </span>
             </div>
           </div>
@@ -193,7 +209,7 @@ export default function StreamerDashboardPage() {
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Total Jam Live Bulan Ini</span>
             <div className="text-base font-extrabold text-blue-300">
-              {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ 120 Jam Target</span>
+              {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ {matchedTier?.jamMaksimal ?? 80} Jam Target</span>
             </div>
           </div>
 
