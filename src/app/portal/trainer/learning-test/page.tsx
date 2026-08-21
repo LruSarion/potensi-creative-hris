@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 type Question = {
   id: string;
   moduleId: string;
+  lessonId: string | null;
   type: string;
   question: string;
   options: string[] | null;
@@ -21,6 +22,7 @@ type Lesson = {
   order: number;
   videoId: string | null;
   videoDuration: number | null;
+  questions?: Question[];
 };
 
 type Module = {
@@ -45,6 +47,7 @@ export default function LearningTestPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
+  const [selectedLessonId, setSelectedLessonId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -69,10 +72,15 @@ export default function LearningTestPage() {
       if (d.status === "success") {
         setCourses(d.data ?? []);
         if (d.data?.length) {
-          const c = d.data[0];
+          const c = d.data[0] as Course;
           if (!selectedCourseId) {
             setSelectedCourseId(c.id);
-            if (c.modules?.length) setSelectedModuleId(c.modules[0].id);
+            const m = c.modules?.[0];
+            if (m) {
+              setSelectedModuleId(m.id);
+              const v = m.lessons?.find((l) => l.videoId);
+              setSelectedLessonId(v?.id ?? "");
+            }
           }
         }
       } else {
@@ -126,9 +134,11 @@ export default function LearningTestPage() {
       const d = await r.json();
       if (d.status === "success") {
         setSuccess(editingLesson ? "Materi video diperbarui." : "Materi video interaktif baru berhasil dibuat!");
+        const savedId = d.data?.id;
         setLessonModal(false);
         setLessonForm({ title: "", videoUrl: "", duration: 60 });
         setEditingLesson(null);
+        setSelectedLessonId(savedId ?? "");
         load();
       } else {
         setError(d.message ?? "Gagal menyimpan materi video.");
@@ -150,6 +160,7 @@ export default function LearningTestPage() {
       const d = await r.json();
       if (d.status === "success") {
         setSuccess("Materi video dihapus.");
+        setSelectedLessonId("");
         load();
       } else {
         setError(d.message ?? "Gagal menghapus materi video.");
@@ -184,6 +195,10 @@ export default function LearningTestPage() {
       setError("Pilih modul tujuan terlebih dahulu.");
       return;
     }
+    if (!selectedLessonId) {
+      setError("Pilih materi video terlebih dahulu, lalu tambahkan pertanyaannya.");
+      return;
+    }
     const options = qOptions.map((o) => o.trim()).filter(Boolean);
     const correctIndex = qCorrect.charCodeAt(0) - 65;
     const correctAnswer = options[correctIndex] ?? options[0] ?? "";
@@ -195,6 +210,7 @@ export default function LearningTestPage() {
       const payload: Record<string, unknown> = {
         action: "question",
         moduleId: selectedModuleId,
+        lessonId: selectedLessonId,
         id: editingQuestion?.id,
         type: "MCQ",
         question: qQuestion.trim(),
@@ -223,8 +239,12 @@ export default function LearningTestPage() {
 
   const selectedCourse = courses.find((c) => c.id === selectedCourseId);
   const selectedModule = selectedCourse?.modules.find((m) => m.id === selectedModuleId);
-  const sortedQuestions = (selectedModule?.questions ?? [])
-    .filter((q) => q.eventTime != null)
+  const videoLessons = (selectedModule?.lessons ?? []).filter((l) => l.videoId);
+  const selectedLesson = videoLessons.find((l) => l.id === selectedLessonId) ?? videoLessons[0];
+  const activeLessonId = selectedLesson?.id ?? "";
+
+  const lessonQuestions = (selectedModule?.questions ?? [])
+    .filter((q) => q.eventTime != null && (q.lessonId === activeLessonId || (activeLessonId && q.lessonId == null)))
     .sort((a, b) => (a.eventTime ?? 0) - (b.eventTime ?? 0));
 
   return (
@@ -232,7 +252,7 @@ export default function LearningTestPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Learning Test — Materi Video Interaktif</h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          Buat materi video YouTube dengan pertanyaan yang muncul di waktu tertentu. Streamer menjawab sambil menonton.
+          Buat materi video YouTube, lalu pasang pertanyaan di waktu tertentu langsung di bawahnya — semuanya dalam satu layar.
         </p>
       </div>
 
@@ -257,8 +277,10 @@ export default function LearningTestPage() {
             value={selectedCourseId}
             onChange={(e) => {
               const c = courses.find((x) => x.id === e.target.value);
+              const m = c?.modules?.[0];
               setSelectedCourseId(e.target.value);
-              setSelectedModuleId(c?.modules?.[0]?.id ?? "");
+              setSelectedModuleId(m?.id ?? "");
+              setSelectedLessonId(m?.lessons?.find((l) => l.videoId)?.id ?? "");
             }}
             className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 bg-white"
           >
@@ -271,7 +293,11 @@ export default function LearningTestPage() {
           <label className="block font-semibold text-slate-700 text-xs mb-1.5">Pilih Modul</label>
           <select
             value={selectedModuleId}
-            onChange={(e) => setSelectedModuleId(e.target.value)}
+            onChange={(e) => {
+              const m = selectedCourse?.modules.find((x) => x.id === e.target.value);
+              setSelectedModuleId(e.target.value);
+              setSelectedLessonId(m?.lessons?.find((l) => l.videoId)?.id ?? "");
+            }}
             className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 bg-white"
           >
             {(selectedCourse?.modules ?? []).map((m) => (
@@ -281,124 +307,162 @@ export default function LearningTestPage() {
         </div>
       </div>
 
-      {/* Lessons (video) */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-sm">
-            Materi Video ({selectedModule?.lessons?.filter((l) => l.videoId)?.length ?? 0})
-          </h3>
-          <button
-            onClick={() => {
-              setEditingLesson(null);
-              setLessonForm({ title: "", videoUrl: "", duration: 60 });
-              setLessonModal(true);
-            }}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-1.5"
-          >
-            <i className="fa-solid fa-plus text-xs" /> Tambah Video
-          </button>
+      {/* Unified editor: videos on the left, questions for selected video on the right */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Video list */}
+        <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="font-bold text-slate-800 text-sm">Materi Video</h3>
+            <button
+              onClick={() => {
+                setEditingLesson(null);
+                setLessonForm({ title: "", videoUrl: "", duration: 60 });
+                setLessonModal(true);
+              }}
+              className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-plus text-xs" /> Video
+            </button>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {videoLessons.map((l) => (
+              <button
+                key={l.id}
+                onClick={() => setSelectedLessonId(l.id)}
+                className={`w-full text-left p-4 flex items-center gap-3 transition ${
+                  activeLessonId === l.id ? "bg-purple-50/70 border-l-4 border-purple-600" : "hover:bg-slate-50"
+                }`}
+              >
+                <i className={`fa-solid fa-circle-play text-lg flex-shrink-0 ${activeLessonId === l.id ? "text-purple-600" : "text-slate-400"}`} />
+                <div className="min-w-0 flex-1">
+                  <p className={`font-bold text-sm truncate ${activeLessonId === l.id ? "text-purple-800" : "text-slate-800"}`}>{l.title}</p>
+                  <p className="text-[10px] text-slate-400">{l.videoDuration ?? 0} detik</p>
+                </div>
+              </button>
+            ))}
+            {videoLessons.length === 0 && (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                <i className="fa-solid fa-video text-3xl text-slate-300 block mb-2" />
+                Belum ada video. Tambahkan video YouTube terlebih dahulu.
+              </div>
+            )}
+          </div>
         </div>
-        <div className="divide-y divide-slate-100">
-          {(selectedModule?.lessons ?? [])
-            .filter((l) => l.videoId)
-            .map((l) => (
-              <div key={l.id} className="p-4 sm:px-6 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <i className="fa-solid fa-circle-play text-purple-500 text-lg flex-shrink-0" />
+
+        {/* Selected video editor */}
+        <div className="lg:col-span-8 space-y-5">
+          {activeLessonId && selectedLesson ? (
+            <>
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="font-bold text-sm text-slate-800 truncate">{l.title}</p>
+                    <h3 className="font-bold text-slate-800 text-sm truncate">{selectedLesson.title}</h3>
                     <p className="text-[10px] text-slate-400">
-                      Video ID: <span className="font-mono">{l.videoId}</span> • {l.videoDuration ?? 0} detik
+                      Video ID: <span className="font-mono">{selectedLesson.videoId}</span> • {selectedLesson.videoDuration ?? 0} detik
                     </p>
                   </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        setEditingLesson(selectedLesson);
+                        setLessonForm({ title: selectedLesson.title, videoUrl: selectedLesson.videoId ?? "", duration: selectedLesson.videoDuration ?? 60 });
+                        setLessonModal(true);
+                      }}
+                      className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100"
+                    >
+                      Edit Video
+                    </button>
+                    <button
+                      onClick={() => deleteLesson(selectedLesson.id)}
+                      className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"
+                    >
+                      Hapus Video
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <button
-                    onClick={() => {
-                      setEditingLesson(l);
-                      setLessonForm({ title: l.title, videoUrl: l.videoId ?? "", duration: l.videoDuration ?? 60 });
-                      setLessonModal(true);
-                    }}
-                    className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => deleteLesson(l.id)}
-                    className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"
-                  >
-                    Hapus
-                  </button>
+                <div className="p-4 sm:p-6">
+                  <div className="aspect-video rounded-xl bg-black overflow-hidden">
+                    <iframe
+                      src={`https://www.youtube-nocookie.com/embed/${selectedLesson.videoId}?rel=0&modestbranding=1`}
+                      title={selectedLesson.title}
+                      className="w-full h-full border-0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    />
+                  </div>
                 </div>
               </div>
-            ))}
-          {selectedModule && (selectedModule.lessons ?? []).filter((l) => l.videoId).length === 0 && (
-            <div className="p-10 text-center text-slate-400 text-xs">
-              <i className="fa-solid fa-video text-3xl text-slate-300 block mb-2" />
-              Belum ada materi video. Tambahkan video YouTube dan pasang pertanyaan di waktu tertentu.
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Timed questions */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-sm">Pertanyaan Terjadwal ({sortedQuestions.length})</h3>
-          <button
-            onClick={() => openQuestionModal()}
-            className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-1.5"
-          >
-            <i className="fa-solid fa-clock text-xs" /> Tambah Pertanyaan
-          </button>
-        </div>
-        <div className="divide-y divide-slate-100">
-          {sortedQuestions.map((q) => (
-            <div key={q.id} className="p-4 sm:px-6 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="px-2 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-[10px] font-bold flex-shrink-0">
-                  @ {formatTime(q.eventTime ?? 0)}
-                </span>
-                <p className="text-xs text-slate-700 font-medium truncate">{q.question}</p>
+              {/* Questions for this video */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+                  <h3 className="font-bold text-slate-800 text-sm">
+                    Pertanyaan di Video Ini ({lessonQuestions.length})
+                  </h3>
+                  <button
+                    onClick={() => openQuestionModal()}
+                    className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition flex items-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-clock text-xs" /> Tambah Pertanyaan
+                  </button>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {lessonQuestions.map((q, qi) => (
+                    <div key={q.id} className="p-4 sm:px-6 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className="px-2 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-[10px] font-bold flex-shrink-0">
+                          @ {formatTime(q.eventTime ?? 0)}
+                        </span>
+                        <p className="text-xs text-slate-700 font-medium truncate">{qi + 1}. {q.question}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => openQuestionModal(q)}
+                          className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!confirm("Hapus pertanyaan ini?")) return;
+                            try {
+                              const r = await fetch("/api/lms", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ action: "question-delete", id: q.id }),
+                              });
+                              const d = await r.json();
+                              if (d.status === "success") {
+                                setSuccess("Pertanyaan dihapus.");
+                                load();
+                              } else {
+                                setError(d.message ?? "Gagal menghapus pertanyaan.");
+                              }
+                            } catch {
+                              setError("Terjadi kesalahan jaringan.");
+                            }
+                          }}
+                          className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"
+                        >
+                          Hapus
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {lessonQuestions.length === 0 && (
+                    <div className="p-10 text-center text-slate-400 text-xs">
+                      <i className="fa-solid fa-clock text-3xl text-slate-300 block mb-2" />
+                      Belum ada pertanyaan untuk video ini. Tambahkan soal yang muncul di detik tertentu.
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  onClick={() => openQuestionModal(q)}
-                  className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-1 rounded-lg hover:bg-purple-100"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={async () => {
-                    if (!confirm("Hapus pertanyaan ini?")) return;
-                    try {
-                      const r = await fetch("/api/lms", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ action: "question-delete", id: q.id }),
-                      });
-                      const d = await r.json();
-                      if (d.status === "success") {
-                        setSuccess("Pertanyaan dihapus.");
-                        load();
-                      } else {
-                        setError(d.message ?? "Gagal menghapus pertanyaan.");
-                      }
-                    } catch {
-                      setError("Terjadi kesalahan jaringan.");
-                    }
-                  }}
-                  className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"
-                >
-                  Hapus
-                </button>
-              </div>
-            </div>
-          ))}
-          {selectedModule && sortedQuestions.length === 0 && (
-            <div className="p-10 text-center text-slate-400 text-xs">
-              <i className="fa-solid fa-clock text-3xl text-slate-300 block mb-2" />
-              Belum ada pertanyaan terjadwal. Tambahkan soal yang muncul di detik tertentu video.
+            </>
+          ) : (
+            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs space-y-3">
+              <i className="fa-solid fa-video text-4xl text-slate-300 block" />
+              <p className="text-sm font-semibold text-slate-600">Belum ada materi video.</p>
+              <p>Klik "Tambah Video" untuk membuat materi video interaktif baru.</p>
             </div>
           )}
         </div>
@@ -464,7 +528,9 @@ export default function LearningTestPage() {
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-900 text-sm">{editingQuestion ? "Edit Pertanyaan Terjadwal" : "Tambah Pertanyaan Terjadwal"}</h3>
+              <h3 className="font-bold text-slate-900 text-sm">
+                {editingQuestion ? "Edit Pertanyaan" : `Tambah Pertanyaan — ${selectedLesson?.title ?? ""}`}
+              </h3>
               <button onClick={() => setQuestionModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <form onSubmit={saveQuestion} className="space-y-3.5 text-xs">

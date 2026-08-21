@@ -800,6 +800,7 @@ model Lesson {
 
   module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   videoWatches VideoWatch[]
+  questions   QuizQuestion[]
 
   @@map("course_lesson")
 }
@@ -807,6 +808,7 @@ model Lesson {
 model QuizQuestion {
   id          String            @id @default(cuid())
   moduleId    String
+  lessonId    String?            // optional: bind a timed question to a specific video lesson
   type        QuizQuestionType  @default(MCQ)
   question    String            @db.Text
   options     Json?             // MCQ: string[] ; ESSAY: null
@@ -816,6 +818,7 @@ model QuizQuestion {
   isNote      Boolean           @default(false) // note event (not graded)
 
   module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lesson      Lesson?           @relation(fields: [lessonId], references: [id], onDelete: SetNull)
   attempts    QuizAttempt[]
 
   @@map("quiz_question")

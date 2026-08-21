@@ -6,6 +6,7 @@ import VideoLessonPlayer from "@/components/lms/video-lesson-player";
 type Question = {
   id: string;
   moduleId: string;
+  lessonId: string | null;
   type: string;
   question: string;
   options: string[] | null;
@@ -368,7 +369,7 @@ export default function StreamerLmsPage() {
                           enrollmentId={selectedEnrollment.id}
                           questions={
                             selectedEnrollment.course.modules[activeModuleIdx]?.questions?.filter(
-                              (q) => q.eventTime != null && q.moduleId === les.moduleId
+                              (q) => q.eventTime != null && (q.lessonId === les.id || q.lessonId == null)
                             ) ?? []
                           }
                           onSubmitted={() => loadData()}

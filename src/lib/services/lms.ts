@@ -85,6 +85,7 @@ export async function deleteQuestion(id: string) {
 
 const questionSchema = z.object({
   moduleId: z.string().min(1),
+  lessonId: z.string().optional().nullable(),
   type: z.enum(["MCQ", "ESSAY"]),
   question: z.string().min(1),
   options: z.array(z.string()).optional().nullable(),
@@ -97,6 +98,7 @@ export async function addQuestion(input: z.infer<typeof questionSchema> & { id?:
   await requireRole(...TRAINER_ROLES);
   const parsed = questionSchema.parse(input);
   const data = {
+    lessonId: parsed.lessonId ?? null,
     type: parsed.type,
     question: parsed.question,
     options: parsed.options && parsed.options.length > 0 ? parsed.options : undefined,
@@ -323,7 +325,7 @@ export async function submitVideoLesson(input: { enrollmentId: string; lessonId:
   if (!lesson) throw AppError.notFound("Lesson tidak ditemukan");
 
   const questions = await db.quizQuestion.findMany({
-    where: { moduleId: lesson.moduleId, isNote: false, eventTime: { not: null } },
+    where: { moduleId: lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: input.lessonId }, { lessonId: null }] },
   });
 
   let totalCorrect = 0;
@@ -378,7 +380,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
   const results = [];
   for (const w of watches) {
     const questions = await db.quizQuestion.findMany({
-      where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null } },
+      where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: w.lessonId }, { lessonId: null }] },
     });
     const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
     let correctCount = 0;
@@ -417,7 +419,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
   if (!w) throw AppError.notFound("Submission tidak ditemukan");
 
   const questions = await db.quizQuestion.findMany({
-    where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null } },
+    where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: w.lessonId }, { lessonId: null }] },
     orderBy: { eventTime: "asc" },
   });
   const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
