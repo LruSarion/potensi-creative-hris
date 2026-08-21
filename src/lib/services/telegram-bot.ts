@@ -159,29 +159,39 @@ async function answerCallback(callbackQueryId: string, cfg: TelegramConfig) {
 
 export async function processTelegramBot(cfg: TelegramConfig): Promise<number> {
   if (!cfg.botToken) return 0;
-  const me = await fetch(`https://api.telegram.org/bot${cfg.botToken}/getMe`, { cache: "no-store" });
-  const meJson = await me.json().catch(() => null);
-  if (!meJson?.ok) return 0;
+  // In-process lock: overlapping getUpdates calls make Telegram return 409
+  // Conflict (updates empty), silently dropping messages. Serialize polls.
+  if (pollLock.current) return 0;
+  pollLock.current = true;
+  try {
+    const me = await fetch(`https://api.telegram.org/bot${cfg.botToken}/getMe`, { cache: "no-store" });
+    const meJson = await me.json().catch(() => null);
+    if (!meJson?.ok) return 0;
 
-  // getUpdates long-poll with offset; max 30s.
-  const upd = await fetch(`https://api.telegram.org/bot${cfg.botToken}/getUpdates?timeout=30`, {
-    cache: "no-store",
-  });
-  const data = await upd.json().catch(() => null);
-  const updates: TelegramUpdate[] = data?.ok ? (data.result ?? []) : [];
-  let processed = 0;
-  for (const u of updates) {
-    try {
-      await handleTelegramUpdate(u, cfg);
-      processed++;
-    } catch {
-      // continue
+    // Short timeout (not long-poll) so the 5s auto-poll never overlaps itself.
+    const upd = await fetch(`https://api.telegram.org/bot${cfg.botToken}/getUpdates?timeout=1`, {
+      cache: "no-store",
+    });
+    const data = await upd.json().catch(() => null);
+    const updates: TelegramUpdate[] = data?.ok ? (data.result ?? []) : [];
+    let processed = 0;
+    for (const u of updates) {
+      try {
+        await handleTelegramUpdate(u, cfg);
+        processed++;
+      } catch {
+        // continue
+      }
     }
+    // Acknowledge by setting offset to last processed + 1 so Telegram won't resend.
+    if (updates.length > 0) {
+      const lastId = updates[updates.length - 1].update_id ?? 0;
+      await fetch(`https://api.telegram.org/bot${cfg.botToken}/getUpdates?offset=${lastId + 1}`, { cache: "no-store" });
+    }
+    return processed;
+  } finally {
+    pollLock.current = false;
   }
-  // Acknowledge by setting offset to last processed + 1 so Telegram won't resend.
-  if (updates.length > 0) {
-    const lastId = updates[updates.length - 1].update_id ?? 0;
-    await fetch(`https://api.telegram.org/bot${cfg.botToken}/getUpdates?offset=${lastId + 1}`, { cache: "no-store" });
-  }
-  return processed;
 }
+
+const pollLock = { current: false };
