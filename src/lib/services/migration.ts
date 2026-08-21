@@ -232,7 +232,7 @@ export async function importClientRows(rows: Record<string, string>[]) {
   const user = await requireRole(...IMPORT_ROLES);
   let imported = 0, skipped = 0;
   for (const r of rows) {
-    const namaClient = pick(["nama client", "nama client", "client", "nama brand", "brand"], r) ?? "";
+    const namaClient = pick(["nama client", "client", "nama brand", "brand"], r) ?? "";
     if (!namaClient) { skipped++; continue; }
     const existing = await db.client.findFirst({ where: { namaClient, tenantId: user.tenantId || undefined } });
     const data = {
@@ -251,6 +251,93 @@ export async function importClientRows(rows: Record<string, string>[]) {
   return { imported, skipped, errors: [] };
 }
 
+const pickPayroll = {
+  karyawan: (r: Record<string, string>) => pick(["id karyawan", "idkaryawan", "id_karyawan", "nik", "nama karyawan", "nama", "host"], r),
+  periode: (r: Record<string, string>) => pick(["periode", "bulan", "bulan tahun", "period"], r),
+  totalJam: (r: Record<string, string>) => pick(["total jam", "total_jam", "jam", "hours"], r),
+  tier: (r: Record<string, string>) => pick(["tier", "tingkat"], r),
+  ratePerJam: (r: Record<string, string>) => pick(["rate per jam", "rate", "tarif", "rate_per_jam"], r),
+  grossPay: (r: Record<string, string>) => pick(["gross pay", "gaji", "gross", "gross_pay", "total gaji", "honor"], r),
+};
+
+const pickAbsensi = {
+  karyawan: (r: Record<string, string>) => pick(["id karyawan", "idkaryawan", "id_karyawan", "nik", "nama karyawan", "nama", "host"], r),
+  tipe: (r: Record<string, string>) => pick(["tipe", "jenis", "type", "masuk pulang", "keterangan"], r),
+  kategori: (r: Record<string, string>) => pick(["kategori", "category", "tipe karyawan"], r),
+  waktu: (r: Record<string, string>) => pick(["waktu", "tanggal", "jam", "datetime", "timestamp", "check in", "checkin", "check out", "checkout"], r),
+  catatan: (r: Record<string, string>) => pick(["catatan", "note", "keterangan", "catatan"], r),
+};
+
+/** Import payroll (historical) from legacy CSV/Excel. */
+export async function importPayroll(rows: Record<string, string>[]) {
+  const user = await requireRole(...IMPORT_ROLES);
+  if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
+  let imported = 0, skipped = 0;
+  const errors: string[] = [];
+  for (const r of rows) {
+    try {
+      const karyawanRef = pickPayroll.karyawan(r) ?? "";
+      const periode = pickPayroll.periode(r) ?? "";
+      if (!karyawanRef || !periode) { skipped++; continue; }
+      const karyawan = await db.karyawan.findFirst({ where: { OR: [{ idKaryawan: karyawanRef }, { namaLengkap: karyawanRef }] } });
+      if (!karyawan) { skipped++; errors.push(`Karyawan "${karyawanRef}" tidak ditemukan`); continue; }
+      const totalJam = Number(pickPayroll.totalJam(r) ?? 0);
+      const ratePerJam = Number(pickPayroll.ratePerJam(r) ?? 0);
+      const grossPay = Number(pickPayroll.grossPay(r) ?? 0);
+      const tier = pickPayroll.tier(r) ?? null;
+      await db.payroll.upsert({
+        where: { karyawanId_periode: { karyawanId: karyawan.id, periode } },
+        update: { totalJam, tier, ratePerJam, grossPay, tenantId: user.tenantId },
+        create: { tenantId: user.tenantId, karyawanId: karyawan.id, periode, totalJam, tier, ratePerJam, grossPay },
+      });
+      imported++;
+    } catch (e) {
+      skipped++;
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  return { imported, skipped, errors: errors.slice(0, 20) };
+}
+
+/** Import historical absensi (attendance) records. */
+export async function importAbsensi(rows: Record<string, string>[]) {
+  const user = await requireRole(...IMPORT_ROLES);
+  if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
+  let imported = 0, skipped = 0;
+  const errors: string[] = [];
+  for (const r of rows) {
+    try {
+      const karyawanRef = pickAbsensi.karyawan(r) ?? "";
+      const waktuStr = pickAbsensi.waktu(r) ?? "";
+      if (!karyawanRef || !waktuStr) { skipped++; continue; }
+      const karyawan = await db.karyawan.findFirst({ where: { OR: [{ idKaryawan: karyawanRef }, { namaLengkap: karyawanRef }] } });
+      if (!karyawan) { skipped++; errors.push(`Karyawan "${karyawanRef}" tidak ditemukan`); continue; }
+      const tipeRaw = (pickAbsensi.tipe(r) ?? "").toUpperCase();
+      const tipe = tipeRaw.includes("OUT") || tipeRaw.includes("PULANG") ? "CHECK_OUT" : "CHECK_IN";
+      const kategoriRaw = (pickAbsensi.kategori(r) ?? "STREAMER").toUpperCase();
+      const kategori = kategoriRaw.includes("STAFF") ? "STAFF" : kategoriRaw.includes("OTS") ? "OTS" : "STREAMER";
+      // Parse date: support YYYY-MM-DD, DD/MM/YYYY, or full datetime.
+      const waktu = new Date(waktuStr);
+      if (isNaN(waktu.getTime())) { skipped++; errors.push(`Waktu "${waktuStr}" tidak valid`); continue; }
+      await db.absensi.create({
+        data: {
+          tenantId: user.tenantId,
+          karyawanId: karyawan.id,
+          tipe,
+          kategori,
+          waktu,
+          catatan: pickAbsensi.catatan(r) ?? null,
+        },
+      });
+      imported++;
+    } catch (e) {
+      skipped++;
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+  }
+  return { imported, skipped, errors: errors.slice(0, 20) };
+}
+
 /** Top-level dispatcher: parse + import into the chosen module. */
 export async function runMigration(params: { module: string; fileContent: string; fileName: string }) {
   const parsed = parseImportFile(params.fileContent, params.fileName);
@@ -260,6 +347,8 @@ export async function runMigration(params: { module: string; fileContent: string
     case "karyawan": return importKaryawan(parsed.rows);
     case "jadwal": return importJadwalRows(parsed.rows);
     case "client": return importClientRows(parsed.rows);
+    case "payroll": return importPayroll(parsed.rows);
+    case "absensi": return importAbsensi(parsed.rows);
     default: throw AppError.badRequest(`Modul "${params.module}" belum didukung`);
   }
 }

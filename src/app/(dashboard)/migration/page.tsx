@@ -21,6 +21,18 @@ const MODULES = [
     desc: "Nama brand, platform, PIC, kontak",
     icon: "fa-building",
   },
+  {
+    key: "payroll",
+    label: "Payroll / Kompensasi",
+    desc: "Periode, total jam, tier, rate, gaji — untuk Finance",
+    icon: "fa-money-bill-wave",
+  },
+  {
+    key: "absensi",
+    label: "Absensi / Presensi",
+    desc: "Riwayat check-in/out karyawan",
+    icon: "fa-fingerprint",
+  },
 ];
 
 type PreviewRow = Record<string, string>;
