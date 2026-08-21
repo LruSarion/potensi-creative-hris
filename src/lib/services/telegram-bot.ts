@@ -49,14 +49,44 @@ export async function handleTelegramUpdate(update: TelegramUpdate, cfg: Telegram
 
 async function handleStart(chatId: number, text: string, cfg: TelegramConfig) {
   const token = text.split(/\s+/)[1] ?? "";
-  if (!token) return;
+
+  // If user types /start without token
+  if (!token) {
+    const existingUser = await db.user.findFirst({ where: { telegramChatId: String(chatId) } });
+    if (existingUser) {
+      await sendTelegramText(chatId, `Halo ${existingUser.name || existingUser.email}! 👋\nAkun kamu sudah terhubung dengan HRIS.`, cfg);
+      await sendTelegramKeyboard(
+        chatId,
+        "📋 Absensi HRIS — pilih aksi:",
+        {
+          inline_keyboard: [
+            [{ text: "✅ Absen Masuk", callback_data: "ABSEN_IN" }],
+            [{ text: "🚪 Absen Pulang", callback_data: "ABSEN_OUT" }],
+          ],
+        },
+        cfg
+      );
+      return;
+    }
+
+    await sendTelegramText(
+      chatId,
+      "Halo! 👋 Untuk mengaitkan akun Telegram kamu ke HRIS:\n\n1. Buka aplikasi web HRIS\n2. Masuk ke Profil / Pengaturan\n3. Klik tombol 'Hubungkan Telegram'",
+      cfg
+    );
+    return;
+  }
 
   const user = await db.user.findFirst({
     where: { telegramBindToken: token, telegramBindExpires: { gt: new Date() } },
   });
 
   if (!user) {
-    await sendTelegramText(chatId, "Tautan tidak valid atau sudah kedaluwarsa. Buka ulang dari aplikasi HRIS.", cfg);
+    await sendTelegramText(
+      chatId,
+      "Tautan kedaluwarsa (berlaku 10 menit). Silakan klik ulang tombol 'Hubungkan Telegram' di web HRIS.",
+      cfg
+    );
     return;
   }
 
@@ -73,7 +103,7 @@ async function handleStart(chatId: number, text: string, cfg: TelegramConfig) {
     }),
   ]);
 
-  await sendTelegramText(chatId, `Terhubung sebagai ${user.name || user.email}.\nKamu akan menerima notifikasi di sini.`, cfg);
+  await sendTelegramText(chatId, `🎉 Berhasil! Terhubung sebagai ${user.name || user.email}.\nKamu akan menerima notifikasi & bisa absen langsung di sini.`, cfg);
 
   // Immediately offer the absensi menu so the user can check in/out in one tap.
   await sendTelegramKeyboard(
