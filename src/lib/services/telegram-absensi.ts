@@ -38,7 +38,11 @@ export async function handleTelegramAbsensiMessage(
 
   if (state.step === "awaiting_photo") {
     if (!photoFileId) {
-      await sendTelegramMessage(String(chatId), "Kirim foto selfie kamu untuk bukti absensi.", cfg);
+      await sendTelegramMessage(
+        String(chatId),
+        "⚠️ **Foto Selfie Wajib!**\nSilakan ambil & kirimkan foto selfie kamu terlebih dahulu untuk bukti absensi fisik.",
+        cfg
+      );
       return;
     }
     const photoUrl = await resolvePhotoUrl(photoFileId, cfg);
@@ -48,7 +52,7 @@ export async function handleTelegramAbsensiMessage(
     });
     await sendTelegramMessage(
       String(chatId),
-      "Foto diterima ✅\nSekarang bagikan lokasi kamu: tekan ikon 📎 → Lokasi.",
+      "✅ Foto selfie diterima!\n\n📍 **Langkah 2/2 — Bagikan Lokasi Saat Ini (Wajib)**\nSilakan bagikan lokasi GPS kamu sekarang:\n1. Tekan ikon 📎 (Lampiran)\n2. Pilih **Lokasi**\n3. Tekan **Bagikan Lokasi Saat Ini**.",
       cfg
     );
     return;
@@ -56,7 +60,11 @@ export async function handleTelegramAbsensiMessage(
 
   if (state.step === "awaiting_location") {
     if (!location) {
-      await sendTelegramMessage(String(chatId), "Bagikan lokasi kamu: tekan ikon 📎 → Lokasi.", cfg);
+      await sendTelegramMessage(
+        String(chatId),
+        "⚠️ **Lokasi GPS Wajib!**\nSilakan bagikan lokasi kamu dengan menekan ikon 📎 → **Lokasi** → **Bagikan Lokasi Saat Ini**.",
+        cfg
+      );
       return;
     }
     const result = await recordAbsensi(user, state, location, cfg);
@@ -66,17 +74,19 @@ export async function handleTelegramAbsensiMessage(
 }
 
 async function recordAbsensi(
-  user: { id: string; karyawan: { id: string } | null; role?: string; tenantId?: string | null },
+  user: { id: string; name?: string | null; email: string; karyawan: { id: string } | null; role?: string; tenantId?: string | null },
   state: AbsensiState,
   location: { latitude: number; longitude: number },
   cfg: Awaited<ReturnType<typeof getTelegramConfig>>
 ) {
   const karyawanId = user.karyawan?.id ?? null;
-  if (!karyawanId) return { message: "Akun tidak terhubung ke karyawan. Hubungi admin." };
+  if (!karyawanId) return { message: "❌ Akun kamu belum terhubung ke data Karyawan HRIS. Hubungi Admin." };
 
   const tipe = state.tipe === "CHECK_IN" ? "CHECK_IN" : "CHECK_OUT";
-  const catatan = `Telegram: ${location.latitude},${location.longitude} · via bot`;
+  const mapsUrl = `https://maps.google.com/?q=${location.latitude},${location.longitude}`;
+  const catatan = `Telegram: ${location.latitude},${location.longitude} | 📍 Maps: ${mapsUrl}`;
   const kategori = (await resolveKategori(user.role)) as any;
+  const userName = user.name || user.email;
 
   if (tipe === "CHECK_IN") {
     const open = await db.absensi.findFirst({
@@ -87,7 +97,7 @@ async function recordAbsensi(
       },
       orderBy: { waktu: "desc" },
     });
-    if (open) return { message: "Sesi absensi masih aktif. Lakukan check-out terlebih dahulu." };
+    if (open) return { message: "⚠️ Sesi Absen Masuk kamu masih aktif. Lakukan Absen Pulang terlebih dahulu." };
     const record = await db.absensi.create({
       data: {
         tenantId: user.tenantId ?? undefined,
@@ -100,15 +110,17 @@ async function recordAbsensi(
     });
     // Sync any SCHEDULED session for this karyawan to LIVE (mirrors web check-in).
     await syncLiveStateOnCheckIn(record.jadwalId, user.id, user.tenantId ?? undefined).catch(() => undefined);
-    await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_IN", karyawanId, lat: location.latitude, lon: location.longitude }) });
-    return { message: "✅ Absen Masuk tercatat!\nLokasi: " + `${location.latitude},${location.longitude}` };
+    await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_IN", karyawanId, lat: location.latitude, lon: location.longitude, mapsUrl, photoUrl: state.photoUrl }) });
+    return {
+      message: `🎉 **Absen Masuk Berhasil!**\n\n👤 Karyawan: ${userName}\n📸 Foto Selfie: Bukti Tersimpan\n📍 Lokasi: ${mapsUrl}\n\nData absensi kamu sudah otomatis terverifikasi & masuk ke Dashboard HRIS Admin.`,
+    };
   }
 
   const openIn = await db.absensi.findFirst({
     where: { karyawanId, tipe: "CHECK_IN" },
     orderBy: { waktu: "desc" },
   });
-  if (!openIn) return { message: "Belum ada check-in hari ini. Lakukan Absen Masuk dulu." };
+  if (!openIn) return { message: "⚠️ Belum ada data Absen Masuk hari ini. Lakukan Absen Masuk terlebih dahulu." };
   await db.absensi.create({
     data: {
       tenantId: user.tenantId ?? undefined,
@@ -124,8 +136,10 @@ async function recordAbsensi(
   if (openIn.jadwalId) {
     await syncLiveStateOnCheckOut(openIn.jadwalId, user.id, user.tenantId ?? undefined).catch(() => undefined);
   }
-  await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_OUT", karyawanId, lat: location.latitude, lon: location.longitude }) });
-  return { message: "🚪 Absen Pulang tercatat!\nLokasi: " + `${location.latitude},${location.longitude}` };
+  await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_OUT", karyawanId, lat: location.latitude, lon: location.longitude, mapsUrl, photoUrl: state.photoUrl }) });
+  return {
+    message: `🚪 **Absen Pulang Berhasil!**\n\n👤 Karyawan: ${userName}\n📸 Foto Selfie: Bukti Tersimpan\n📍 Lokasi: ${mapsUrl}\n\nTerima kasih atas kerja kerasnya hari ini!`,
+  };
 }
 
 async function syncLiveStateOnCheckIn(jadwalId: string | null, userId: string, tenantId?: string) {
