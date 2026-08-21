@@ -39,7 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/finance", label: "Portal Keuangan", icon: "fa-wallet", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "Portals Khusus" },
   { href: "/portal/qc", label: "Portal Quality Control", icon: "fa-clipboard-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"], section: "Portals Khusus" },
   { href: "/portal/trainer", label: "Portal Trainer", icon: "fa-chalkboard-user", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
-  { href: "/portal/client", label: "Portal Brand Client", icon: "fa-chart-line", roles: ["SUPER_ADMIN", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
+  { href: "/portal/client", label: "Portal Klien & Proyek Saya", icon: "fa-briefcase", roles: ["SUPER_ADMIN", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
   { href: "/streamer-directory", label: "Direktori Streamer & Sertifikasi", icon: "fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
   { href: "/portal/streamer", label: "Marketplace Proyek", icon: "fa-store", roles: ["STREAMER", "OTS", "SUPER_ADMIN"], section: "Portals Khusus" },
   { href: "/portal/streamer/lms", label: "LMS & Akademi Host", icon: "fa-graduation-cap", roles: ["SUPER_ADMIN", "STREAMER", "OTS"], section: "Portals Khusus" },

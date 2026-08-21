@@ -236,7 +236,7 @@ export default function ClientPortalPage() {
             }`}
           >
             <i className="fa-solid fa-briefcase" />
-            <span>My Projects ({listings.length})</span>
+            <span>Proyek Saya & Rekrutmen ({listings.length})</span>
           </button>
         </div>
       </div>
@@ -725,9 +725,9 @@ export default function ClientPortalPage() {
       {activeTab === "projects" && (
         <div className="space-y-4">
           <div>
-            <h3 className="font-bold text-slate-900 text-lg">Proyek Brand Saya</h3>
+            <h3 className="font-bold text-slate-900 text-lg">Proyek Saya & Rekrutmen Streamer</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Listing proyek live, lamaran streamer, dan persetujuan rekrutmen.
+              Listing proyek live, lamaran streamer bersertifikat, dan persetujuan rekrutmen.
             </p>
           </div>
 
