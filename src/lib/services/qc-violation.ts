@@ -14,6 +14,7 @@ const violationSchema = z.object({
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional().default("MEDIUM"),
   description: z.string().optional().nullable(),
   photoUrl: z.string().optional().nullable(),
+  videoUrl: z.string().optional().nullable(),
 });
 
 export type QcViolationInput = z.infer<typeof violationSchema>;
@@ -35,6 +36,7 @@ export async function createViolation(input: QcViolationInput) {
       severity: parsed.severity ?? "MEDIUM",
       description: parsed.description ?? null,
       photoUrl: parsed.photoUrl ?? null,
+      videoUrl: parsed.videoUrl ?? null,
       capturedById: user.id,
     },
     include: { streamer: true },

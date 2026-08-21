@@ -451,6 +451,10 @@ export default function StreamerDashboardPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={v.photoUrl} alt="Bukti" className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
                 )}
+                {v.videoUrl && !v.photoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <video src={v.videoUrl} controls className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                )}
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">

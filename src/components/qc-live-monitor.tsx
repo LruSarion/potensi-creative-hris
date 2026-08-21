@@ -51,6 +51,7 @@ type Violation = {
   severity: string;
   description: string | null;
   photoUrl: string | null;
+  videoUrl: string | null;
   createdAt: string;
   streamer: { namaLengkap: string } | null;
 };
@@ -68,6 +69,7 @@ export default function QcLiveMonitor() {
   const [category, setCategory] = useState("");
   const [severity, setSeverity] = useState("MEDIUM");
   const [photoUrl, setPhotoUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
   const [description, setDescription] = useState("");
 
   async function load() {
@@ -130,13 +132,15 @@ export default function QcLiveMonitor() {
           severity,
           description: description || null,
           photoUrl: photoUrl || null,
+          videoUrl: videoUrl || null,
         }),
       });
       const d = await r.json();
       if (d.status === "success") {
-        setSuccess("Pelanggaran tercatat! Bukti foto terlampir.");
+        setSuccess("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
         setCategory("");
         setPhotoUrl("");
+        setVideoUrl("");
         setDescription("");
         load();
       } else {
@@ -229,10 +233,13 @@ export default function QcLiveMonitor() {
             </div>
           </div>
 
-          {/* Step 4: photo evidence */}
+          {/* Step 4: photo/video evidence */}
           <div>
-            <label className="block font-semibold text-slate-700 mb-1.5">4. Bukti Foto (Capture)</label>
-            <CameraCapture value={photoUrl} onChange={setPhotoUrl} label="📷 Ambil Foto Bukti" />
+            <label className="block font-semibold text-slate-700 mb-1.5">4. Bukti Foto / Video (Capture)</label>
+            <div className="space-y-2">
+              <CameraCapture value={photoUrl} onChange={setPhotoUrl} label="📷 Ambil Foto Bukti" />
+              <CameraCapture value={videoUrl} onChange={setVideoUrl} label="🎥 Rekam Video Bukti" mode="video" />
+            </div>
           </div>
 
           {/* Step 5: note */}
@@ -271,7 +278,10 @@ export default function QcLiveMonitor() {
             <div key={v.id} className="p-4 flex items-start gap-3">
               {v.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={v.photoUrl} alt="Bukti" className="w-16 h-16 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                <img src={v.photoUrl} alt="Bukti foto" className="w-16 h-16 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+              ) : v.videoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <video src={v.videoUrl} controls className="w-16 h-16 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
               ) : (
                 <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 flex-shrink-0">
                   <i className="fa-solid fa-image" />

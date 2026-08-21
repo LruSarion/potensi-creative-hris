@@ -106,6 +106,9 @@ export default function QcViolationsPage() {
                     {v.photoUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={v.photoUrl} alt="Bukti" className="w-12 h-12 rounded-lg object-cover border border-slate-200" />
+                    ) : v.videoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <video src={v.videoUrl} controls className="w-12 h-12 rounded-lg object-cover border border-slate-200" />
                     ) : (
                       <span className="text-slate-300">-</span>
                     )}

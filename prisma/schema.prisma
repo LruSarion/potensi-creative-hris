@@ -1218,7 +1218,8 @@ model QcViolation {
   category      ViolationCategory
   severity      ViolationSeverity @default(MEDIUM)
   description   String?
-  photoUrl      String?           // bukti capture dari live streaming
+  photoUrl      String?           // bukti capture foto dari live streaming
+  videoUrl      String?           // bukti capture video dari live streaming
   capturedById  String?           // QC reviewer user id
   status        String            @default("OPEN") // OPEN | REVIEWED | CLOSED
   createdAt     DateTime          @default(now())
