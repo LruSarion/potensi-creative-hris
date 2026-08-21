@@ -11,9 +11,32 @@ const IMPORT_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FI
 
 /**
  * Data migration wizard backend.
- * Accepts CSV or Excel (xlsx/xls) and imports into the chosen module.
+ * Accepts CSV, Excel (xlsx/xls), or a public Google Sheets URL.
  * Non-tech friendly: parse file -> preview rows -> auto-map common columns -> import.
  */
+
+/** Extract a Google Sheets file id from any share/edit URL, then build its CSV export URL. */
+export function googleSheetCsvUrl(input: string): string | null {
+  const idMatch = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if (!idMatch) return null;
+  const sheetId = idMatch[1];
+  // Optional gid for a specific tab; default to first sheet.
+  const gidMatch = input.match(/[?&]gid=(\d+)/);
+  const gid = gidMatch ? `&gid=${gidMatch[1]}` : "";
+  return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv${gid}`;
+}
+
+/** Fetch a public Google Sheet and return its rows (as CSV -> parsed). */
+export async function fetchGoogleSheet(url: string): Promise<Record<string, string>[]> {
+  const csvUrl = googleSheetCsvUrl(url);
+  if (!csvUrl) throw AppError.badRequest("URL Google Sheets tidak valid");
+  const res = await fetch(csvUrl, { cache: "no-store" });
+  if (!res.ok) {
+    throw AppError.badRequest("Tidak dapat mengakses sheet. Pastikan di-share ke 'siapa saja yang memiliki link'.");
+  }
+  const csv = await res.text();
+  return parseCsv(csv);
+}
 
 /** Parse CSV text into rows of { header: value }. */
 export function parseCsv(csv: string): Record<string, string>[] {
@@ -339,8 +362,14 @@ export async function importAbsensi(rows: Record<string, string>[]) {
 }
 
 /** Top-level dispatcher: parse + import into the chosen module. */
-export async function runMigration(params: { module: string; fileContent: string; fileName: string }) {
-  const parsed = parseImportFile(params.fileContent, params.fileName);
+export async function runMigration(params: { module: string; fileContent: string; fileName: string; googleSheetUrl?: string }) {
+  let parsed: { rows: Record<string, string>[]; headers: string[] };
+  if (params.googleSheetUrl) {
+    const rows = await fetchGoogleSheet(params.googleSheetUrl);
+    parsed = { rows, headers: rows.length ? Object.keys(rows[0]) : [] };
+  } else {
+    parsed = parseImportFile(params.fileContent, params.fileName);
+  }
   if (!parsed.rows.length) throw AppError.badRequest("File kosong atau tidak ada baris data");
 
   switch (params.module) {
@@ -353,9 +382,15 @@ export async function runMigration(params: { module: string; fileContent: string
   }
 }
 
-/** Preview: parse file + return headers + first N rows (no DB write). */
-export function previewMigration(params: { fileContent: string; fileName: string }) {
-  const parsed = parseImportFile(params.fileContent, params.fileName);
+/** Preview: parse file or Google Sheet + return headers + first N rows (no DB write). */
+export async function previewMigration(params: { fileContent: string; fileName: string; googleSheetUrl?: string }) {
+  let parsed: { rows: Record<string, string>[]; headers: string[]; sheetName?: string };
+  if (params.googleSheetUrl) {
+    const rows = await fetchGoogleSheet(params.googleSheetUrl);
+    parsed = { rows, headers: rows.length ? Object.keys(rows[0]) : [] };
+  } else {
+    parsed = parseImportFile(params.fileContent, params.fileName);
+  }
   return {
     sheetName: parsed.sheetName ?? null,
     headers: parsed.headers,

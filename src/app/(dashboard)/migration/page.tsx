@@ -42,13 +42,49 @@ export default function MigrationWizardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [module, setModule] = useState("karyawan");
+  const [source, setSource] = useState<"file" | "sheet">("file");
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
+  const [sheetUrl, setSheetUrl] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
+
+  async function runPreview(payload: { fileContent?: string; fileName?: string; googleSheetUrl?: string }) {
+    setBusy(true);
+    setError("");
+    try {
+      const r = await fetch("/api/migration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "preview", ...payload }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setPreview(d.data);
+        setStep(3);
+      } else {
+        setError(d.message ?? "Gagal membaca data");
+      }
+    } catch {
+      setError("Gagal membaca data");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSheetUrl() {
+    setError("");
+    setSuccess("");
+    setResult(null);
+    if (!sheetUrl.trim()) {
+      setError("Tempel URL Google Sheets terlebih dahulu");
+      return;
+    }
+    runPreview({ googleSheetUrl: sheetUrl.trim() });
+  }
 
   function handleFile(file: File | undefined | null) {
     setError("");
@@ -62,24 +98,7 @@ export default function MigrationWizardPage() {
       // For Excel, pass base64; for CSV, pass text.
       const content = isExcel ? (reader.result as string).split(",")[1] ?? "" : (reader.result as string);
       setFileContent(content);
-      // Auto-preview
-      setBusy(true);
-      fetch("/api/migration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", fileContent: content, fileName: file.name }),
-      })
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.status === "success") {
-            setPreview(d.data);
-            setStep(3);
-          } else {
-            setError(d.message ?? "Gagal membaca file");
-          }
-        })
-        .catch(() => setError("Gagal membaca file"))
-        .finally(() => setBusy(false));
+      runPreview({ fileContent: content, fileName: file.name });
     };
     if (isExcel) reader.readAsDataURL(file);
     else reader.readAsText(file);
@@ -94,7 +113,13 @@ export default function MigrationWizardPage() {
       const r = await fetch("/api/migration", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "import", module, fileContent, fileName }),
+        body: JSON.stringify({
+          action: "import",
+          module,
+          fileContent: source === "file" ? fileContent : undefined,
+          fileName: source === "file" ? fileName : undefined,
+          googleSheetUrl: source === "sheet" ? sheetUrl.trim() : undefined,
+        }),
       });
       const d = await r.json();
       if (d.status === "success") {
@@ -182,23 +207,68 @@ export default function MigrationWizardPage() {
         </div>
       )}
 
-      {/* Step 2: upload */}
+      {/* Step 2: pilih sumber */}
       {step === 2 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center space-y-4">
-          <i className="fa-solid fa-file-arrow-up text-4xl text-blue-500" />
-          <div>
-            <p className="text-sm font-bold text-slate-800">Unggah file Excel (.xlsx/.xls) atau CSV</p>
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-5">
+          <div className="text-center">
+            <i className="fa-solid fa-cloud-arrow-up text-4xl text-blue-500" />
+            <p className="text-sm font-bold text-slate-800 mt-2">Pilih sumber data lama</p>
             <p className="text-xs text-slate-500 mt-1">Kolom akan dikenali otomatis dari judul (mis. "Nama", "Email", "Jabatan").</p>
           </div>
-          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => handleFile(e.target.files?.[0])} className="hidden" />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={busy}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50"
-          >
-            {busy ? "Membaca file..." : "Pilih File"}
-          </button>
-          {fileName && <p className="text-xs text-emerald-600 font-semibold">✓ {fileName}</p>}
+
+          {/* Source toggle */}
+          <div className="flex bg-slate-100 p-1 rounded-xl w-fit mx-auto">
+            <button
+              onClick={() => setSource("sheet")}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${source === "sheet" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600"}`}
+            >
+              Google Sheets
+            </button>
+            <button
+              onClick={() => setSource("file")}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${source === "file" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600"}`}
+            >
+              Excel / CSV
+            </button>
+          </div>
+
+          {source === "sheet" ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Link Google Sheets</label>
+                <input
+                  type="url"
+                  value={sheetUrl}
+                  onChange={(e) => setSheetUrl(e.target.value)}
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Pastikan sheet di-share ke "siapa saja yang memiliki link". Data akan dibaca langsung dari sheet.
+                </p>
+              </div>
+              <button
+                onClick={handleSheetUrl}
+                disabled={busy}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50"
+              >
+                {busy ? "Membaca sheet..." : "Baca Google Sheets"}
+              </button>
+            </div>
+          ) : (
+            <div className="text-center space-y-3">
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv,.txt" onChange={(e) => handleFile(e.target.files?.[0])} className="hidden" />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={busy}
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50"
+              >
+                {busy ? "Membaca file..." : "Pilih File Excel / CSV"}
+              </button>
+              {fileName && <p className="text-xs text-emerald-600 font-semibold">✓ {fileName}</p>}
+            </div>
+          )}
+
           <button onClick={() => setStep(1)} className="block mx-auto text-xs text-slate-500 hover:underline">← Kembali</button>
         </div>
       )}
