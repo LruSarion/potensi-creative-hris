@@ -29,7 +29,11 @@ type YTPlayer = {
   getDuration: () => number;
   pauseVideo: () => void;
   playVideo: () => void;
+  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 };
+
+const POLL_MS = 500;
+const TOLERANCE_S = 0.8;
 
 export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onSubmitted }: VideoLessonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -38,7 +42,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [watchSeconds, setWatchSeconds] = useState(0);
   const [videoDuration, setVideoDuration] = useState(lesson.videoDuration ?? 0);
-  const [completed, setCompleted] = useState(false);
+  const [videoPlayable, setVideoPlayable] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [result, setResult] = useState<{ scorePct: number; totalQuestions: number } | null>(null);
@@ -48,6 +52,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
   const answersRef = useRef<Record<string, string>>({});
   const durationRef = useRef(lesson.videoDuration ?? 0);
   const timedRef = useRef<VideoQuestion[]>([]);
+  const playableRef = useRef(false);
 
   useEffect(() => {
     activeEventRef.current = activeEvent;
@@ -84,6 +89,14 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     }
   }
 
+  function nextUnansweredEvent(): VideoQuestion | null {
+    return (
+      timedRef.current.find(
+        (q) => !answersRef.current[q.id] && activeEventRef.current?.id !== q.id
+      ) ?? null
+    );
+  }
+
   useEffect(() => {
     if (!lesson.videoId || typeof window === "undefined") return;
     const container = containerRef.current;
@@ -99,22 +112,32 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
       if (cancelled) return;
       try {
         const t = playerRef.current?.getCurrentTime() ?? 0;
+        const playing = t > 0.5;
+        if (playing && !playableRef.current) {
+          playableRef.current = true;
+          setVideoPlayable(true);
+        }
         setWatchSeconds(Math.round(t));
         reportWatch(Math.round(t));
-        const due = timedRef.current.find(
-          (q) => (q.eventTime ?? 0) <= Math.floor(t) + 1 && !answersRef.current[q.id] && activeEventRef.current?.id !== q.id
-        );
-        if (due) {
-          setActiveEvent(due);
+
+        const nextQ = nextUnansweredEvent();
+        if (!nextQ) return;
+        const qTime = nextQ.eventTime ?? 0;
+
+        if (t > qTime + TOLERANCE_S) {
+          setActiveEvent(nextQ);
+          playerRef.current?.pauseVideo();
+          playerRef.current?.seekTo(qTime, true);
+        } else if (t >= qTime - TOLERANCE_S) {
+          setActiveEvent(nextQ);
           playerRef.current?.pauseVideo();
         }
       } catch {
         // player not ready yet
       }
-    }, 1000);
+    }, POLL_MS);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (window as any).onYouTubeIframeAPIReady = () => {
+    const onApiReady = () => {
       if (cancelled || !container) return;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -134,8 +157,8 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
             },
             onStateChange: (e: { data: number }) => {
               if (e.data === 0) {
-                setCompleted(true);
-                reportWatch(videoDuration || 99999, true);
+                reportWatch(durationRef.current || 99999, true);
+                setVideoPlayable(true);
               }
             },
           },
@@ -144,6 +167,14 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
         // API load failed
       }
     };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (typeof (window as any).YT?.Player !== "undefined") {
+      onApiReady();
+    } else {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (window as any).onYouTubeIframeAPIReady = onApiReady;
+    }
 
     return () => {
       cancelled = true;
@@ -160,7 +191,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
   function handleEventAnswer() {
     if (!activeEvent) return;
-    const next = timedQuestions.find((q) => (q.eventTime ?? 0) > (activeEvent.eventTime ?? 0));
+    const next = nextUnansweredEvent();
     setActiveEvent(next ?? null);
     playerRef.current?.playVideo();
   }
@@ -184,7 +215,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
       if (d.status === "success") {
         setResult(d.data);
         setSubmitted(true);
-        setCompleted(true);
+        setCompletedRef();
         onSubmitted?.();
       } else {
         setError(d.message ?? "Gagal mengirim jawaban");
@@ -194,6 +225,10 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function setCompletedRef() {
+    setWatchSeconds(durationRef.current || watchSeconds);
   }
 
   if (!lesson.videoId) {
@@ -206,12 +241,20 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
   }
 
   const watchPct = videoDuration > 0 ? Math.round((watchSeconds / videoDuration) * 100) : 0;
+  const fallbackMode = !videoPlayable;
 
   return (
     <div className="space-y-4">
       <div ref={containerRef} className="w-full aspect-video rounded-2xl border border-slate-200 bg-black" />
 
-      {activeEvent && !submitted && (
+      {fallbackMode && (
+        <div className="text-[10px] text-slate-400 flex items-center gap-1.5 -mt-2">
+          <i className="fa-solid fa-shield-halved text-amber-500" />
+          Video tidak bisa diputar di sini. Jawab pertanyaan di bawah ini.
+        </div>
+      )}
+
+      {activeEvent && !submitted && !fallbackMode && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -249,7 +292,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
         </div>
       )}
 
-      {(submitted || completed) && result && (
+      {(submitted || result) && result && (
         <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between ${
           result.scorePct >= 70 ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-800 border-red-200"
         }`}>
@@ -260,8 +303,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
       {error && <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl p-3">⚠ {error}</div>}
 
-      {/* Always-visible timed questions so they show even if the video can't autoplay */}
-      {!submitted && !result && timedQuestions.length > 0 && (
+      {!submitted && !result && timedQuestions.length > 0 && (fallbackMode || !activeEvent) && (
         <div className="space-y-3">
           <h5 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <i className="fa-solid fa-clock text-purple-500 text-xs" />
