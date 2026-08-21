@@ -43,7 +43,7 @@ export const POST = apiHandler(async (req: Request) => {
   if (action === "module") return upsertModule(body);
   if (action === "lesson") return upsertLesson(body);
   if (action === "lesson-delete") return deleteLesson(body.id);
-  if (action === "question") return addQuestion(body.question ?? body);
+  if (action === "question") return addQuestion(body.question && typeof body.question === "object" ? body.question : body);
   if (action === "question-delete") return deleteQuestion(body.id);
   if (action === "answer") return submitAnswer(body.enrollmentId, body.questionId, body.answerText);
   if (action === "grade") return gradeEssay(body.attemptId, body.score);
