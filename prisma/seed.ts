@@ -330,6 +330,31 @@ async function main() {
     },
   });
 
+  // --- SOP Task Checklists ---
+  const sopTemplate = await prisma.sopTemplate.upsert({
+    where: { id: "sop-studio-prep" },
+    update: { title: "Persiapan Studio Sebelum Live", tenantId: agency.id },
+    create: {
+      id: "sop-studio-prep",
+      title: "Persiapan Studio Sebelum Live",
+      description: "Checklist harian sebelum sesi live streaming dimulai.",
+      tenantId: agency.id,
+    },
+  });
+  const sopTasks = [
+    { id: "sop-task-01", title: "Nyalakan lighting, mic, dan verifikasi koneksi internet studio.", requiresPhoto: false },
+    { id: "sop-task-02", title: "Periksa ketersediaan sample produk klien di studio.", requiresPhoto: false },
+    { id: "sop-task-03", title: "Foto setup studio (lighting & layar) sebagai bukti kesiapan.", requiresPhoto: true },
+  ];
+  for (const [idx, t] of sopTasks.entries()) {
+    await prisma.sopTask.upsert({
+      where: { id: t.id },
+      update: { templateId: sopTemplate.id, order: idx + 1 },
+      create: { id: t.id, templateId: sopTemplate.id, title: t.title, order: idx + 1, requiresPhoto: t.requiresPhoto },
+    });
+  }
+  console.log("  SOP checklist templates seeded!");
+
   console.log("  LMS, QC Rubrics, and Live Schedule seeded successfully!");
   console.log("Seed complete.");
 }

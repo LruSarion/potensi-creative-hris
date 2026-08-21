@@ -135,6 +135,7 @@ model Tenant {
   attachments   Attachment[]
   streamerProfiles StreamerProfile[]
   marketplaceListings MarketplaceListing[]
+  sopTemplates    SopTemplate[]
 
   @@map("tenants")
 }
@@ -226,6 +227,7 @@ model Karyawan {
   streamerProfile   StreamerProfile?
   projectApplications ProjectApplication[]
   shortlistedBy     ClientShortlist[]
+  sopCompletions    SopTaskCompletion[]
 
   @@map("karyawan")
 }
@@ -1129,6 +1131,58 @@ model RevenueEntry {
   jadwal         Jadwal?     @relation(fields: [jadwalId], references: [id])
 
   @@map("revenue_entry")
+}
+
+// ============================================================
+// SOP TASK CHECKLISTS (staff/OTS daily operational tasks)
+// ============================================================
+
+model SopTemplate {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  title       String    // e.g. "Persiapan Studio Sebelum Live"
+  description String?   @db.Text
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  tasks       SopTask[]
+
+  @@map("sop_template")
+}
+
+model SopTask {
+  id          String    @id @default(cuid())
+  templateId  String
+  title       String    // specific task/checklist item
+  order       Int       @default(1)
+  requiresPhoto Boolean  @default(false)
+  createdAt   DateTime  @default(now())
+
+  template    SopTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  completions SopTaskCompletion[]
+
+  @@index([templateId, order])
+  @@map("sop_task")
+}
+
+model SopTaskCompletion {
+  id            String    @id @default(cuid())
+  taskId        String
+  karyawanId    String
+  tanggal       DateTime  @default(now())
+  completed     Boolean   @default(false)
+  photoUrl      String?   // photo evidence (required if task.requiresPhoto)
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  task          SopTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  karyawan      Karyawan  @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, karyawanId, tanggal])
+  @@index([karyawanId, tanggal])
+  @@map("sop_task_completion")
 }
 
 // ============================================================

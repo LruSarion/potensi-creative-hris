@@ -3,6 +3,22 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 
+type SopTask = {
+  id: string;
+  title: string;
+  requiresPhoto: boolean;
+  completed: boolean;
+  photoUrl: string | null;
+  note: string | null;
+  completionId: string | null;
+};
+type SopTemplate = {
+  id: string;
+  title: string;
+  description: string | null;
+  tasks: SopTask[];
+};
+
 export default function StaffDashboardPage() {
   const { data: session } = useSession();
   const [sesi, setSesi] = useState<{ id: string; waktu: string } | null>(null);
@@ -12,9 +28,51 @@ export default function StaffDashboardPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [fotoBuktiUrl, setFotoBuktiUrl] = useState("");
 
+  const [sop, setSop] = useState<SopTemplate[]>([]);
+  const [sopLoading, setSopLoading] = useState(false);
+  const [photoInputs, setPhotoInputs] = useState<Record<string, string>>({});
+
   useEffect(() => {
     loadSession();
+    loadSop();
   }, []);
+
+  async function loadSop() {
+    setSopLoading(true);
+    try {
+      const r = await fetch("/api/sop?view=checklist");
+      const d = await r.json();
+      if (d.status === "success") setSop(d.data ?? []);
+    } catch {
+      // ignore
+    } finally {
+      setSopLoading(false);
+    }
+  }
+
+  async function toggleSopTask(task: SopTask, checked: boolean) {
+    setSopLoading(true);
+    setError("");
+    try {
+      const photoUrl = task.requiresPhoto ? (photoInputs[task.id] ?? "") : undefined;
+      const r = await fetch("/api/sop", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "complete-task", taskId: task.id, completed: checked, photoUrl }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setSuccess(checked ? "Tugas SOP ditandai selesai ✓" : "Tugas SOP dibatalkan.");
+        loadSop();
+      } else {
+        setError(d.message ?? "Gagal menyimpan tugas SOP");
+      }
+    } catch {
+      setError("Gagal menyimpan tugas SOP");
+    } finally {
+      setSopLoading(false);
+    }
+  }
 
   async function loadSession() {
     setLoading(true);
@@ -163,15 +221,72 @@ export default function StaffDashboardPage() {
           </div>
         </div>
 
-        {/* Operational Guidelines & Quick Links (5 cols) */}
+        {/* Operational Guidelines & SOP Checklist (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
-            <h3 className="font-bold text-slate-900 text-sm">SOP & Tugas Operasional Staff</h3>
-            <ul className="text-xs text-slate-600 space-y-2.5 list-disc list-inside">
-              <li>Pastikan setup lighting, mic, dan koneksi internet studio aktif 30 menit sebelum sesi live.</li>
-              <li>Periksa ketersediaan sample produk klien di studio.</li>
-              <li>Laporkan jika ada kendala teknis atau streamer berhalangan hadir ke Ops Lead.</li>
-            </ul>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-sm">SOP & Tugas Operasional Staff</h3>
+              <button
+                onClick={loadSop}
+                className="text-[11px] text-blue-600 hover:underline font-semibold"
+              >
+                <i className="fa-solid fa-arrows-rotate mr-1" />
+                Refresh
+              </button>
+            </div>
+
+            {sopLoading && <p className="text-xs text-slate-500">Memuat checklist...</p>}
+
+            {!sopLoading && sop.length === 0 && (
+              <p className="text-xs text-slate-400">
+                Belum ada checklist SOP aktif. Admin/Operasional dapat membuat template tugas.
+              </p>
+            )}
+
+            {sop.map((tpl) => (
+              <div key={tpl.id} className="border border-slate-100 rounded-xl p-3 space-y-2">
+                <div className="font-bold text-slate-800 text-xs">
+                  {tpl.title}
+                  <span className="text-slate-400 font-normal ml-1">({tpl.tasks.filter((t) => t.completed).length}/{tpl.tasks.length} selesai)</span>
+                </div>
+                {tpl.description && <p className="text-[11px] text-slate-500">{tpl.description}</p>}
+                <div className="space-y-1.5">
+                  {tpl.tasks.map((task) => (
+                    <div key={task.id} className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        checked={task.completed}
+                        onChange={(e) => toggleSopTask(task, e.target.checked)}
+                        disabled={sopLoading}
+                        className="mt-0.5 accent-emerald-600"
+                      />
+                      <div className="flex-1">
+                        <div className={`text-[11px] ${task.completed ? "line-through text-slate-400" : "text-slate-700"}`}>
+                          {task.title}
+                          {task.requiresPhoto && (
+                            <span className="ml-1 text-[9px] font-bold text-amber-600">📷 wajib foto</span>
+                          )}
+                        </div>
+                        {task.requiresPhoto && !task.completed && (
+                          <input
+                            type="url"
+                            value={photoInputs[task.id] ?? ""}
+                            onChange={(e) => setPhotoInputs({ ...photoInputs, [task.id]: e.target.value })}
+                            placeholder="Tempel URL bukti foto (Drive / gambar)"
+                            className="mt-1 w-full border border-slate-200 rounded-lg px-2 py-1 text-[10px] outline-none focus:ring-2 focus:ring-amber-400"
+                          />
+                        )}
+                        {task.photoUrl && (
+                          <div className="mt-1">
+                            <span className="text-[9px] text-emerald-600 font-semibold">✓ Bukti foto terlampir</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </div>
