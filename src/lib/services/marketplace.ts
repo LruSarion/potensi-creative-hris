@@ -139,6 +139,17 @@ export async function decideApplication(applicationId: string, decision: "PICKED
           data: { status: "FILLED" },
         });
       }
+      // Assign the picked streamer to the linked jadwal so the approved
+      // schedule actually has a host (closes the client->streamer dataflow).
+      if (app.listing.jadwalId) {
+        const linked = await tx.jadwal.findUnique({ where: { id: app.listing.jadwalId } });
+        if (linked) {
+          await tx.jadwal.update({
+            where: { id: app.listing.jadwalId },
+            data: { streamerKaryawanId: app.streamerKaryawanId },
+          });
+        }
+      }
     }
     return res;
   });
@@ -147,6 +158,46 @@ export async function decideApplication(applicationId: string, decision: "PICKED
 }
 
 // ---------- Client/HR: listing management ----------
+
+/** HR/ops pipeline view: every listing with its applications and the linked
+ *  jadwal's approval status, so operations can manage the whole flow. */
+export async function listPipeline() {
+  const user = await requireRole(...HR_ROLES, ...CLIENT_ROLES);
+  const listings = await db.marketplaceListing.findMany({
+    where: { ...tenantWhere(user) },
+    include: {
+      client: true,
+      course: true,
+      jadwal: { select: { id: true, idJadwal: true, status: true, streamerKaryawanId: true } },
+      applications: {
+        include: { streamer: { select: { id: true, idKaryawan: true, namaLengkap: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return listings.map((l) => ({
+    id: l.id,
+    title: l.title,
+    platform: l.platform,
+    status: l.status,
+    client: l.client ? { id: l.client.id, namaClient: l.client.namaClient } : null,
+    jadwal: l.jadwal
+      ? {
+          id: l.jadwal.id,
+          idJadwal: l.jadwal.idJadwal,
+          status: l.jadwal.status,
+          hasHost: !!l.jadwal.streamerKaryawanId,
+        }
+      : null,
+    applications: l.applications.map((a) => ({
+      id: a.id,
+      status: a.status,
+      streamer: a.streamer ? { id: a.streamer.id, namaLengkap: a.streamer.namaLengkap } : null,
+    })),
+  }));
+}
 
 export async function listListings() {
   const user = await requireRole(...CLIENT_ROLES, ...HR_ROLES);

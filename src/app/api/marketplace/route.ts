@@ -10,6 +10,7 @@ import {
   listCertifications,
   listShortlist,
   toggleShortlist,
+  listPipeline,
 } from "@/lib/services/marketplace";
 
 export const GET = apiHandler(async (req: Request) => {
@@ -22,6 +23,7 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "applications" && listingId) return listApplications(listingId);
   if (view === "certifications") return listCertifications();
   if (view === "shortlist") return listShortlist();
+  if (view === "pipeline") return listPipeline();
   return listEligibleListings();
 });
 

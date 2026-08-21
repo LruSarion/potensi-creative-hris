@@ -53,6 +53,8 @@ export default function ClientPortalPage() {
   const [proposeForm, setProposeForm] = useState({
     idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
     tanggal: new Date().toISOString().slice(0, 10),
+    jamMulai: "10:00",
+    jamSelesai: "12:00",
     platform: "Shopee Live",
     judulLive: "",
     promoLive: "",
@@ -190,6 +192,8 @@ export default function ClientPortalPage() {
         setProposeForm({
           idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
           tanggal: new Date().toISOString().slice(0, 10),
+          jamMulai: "10:00",
+          jamSelesai: "12:00",
           platform: "Shopee Live",
           judulLive: "",
           promoLive: "",
@@ -632,6 +636,26 @@ export default function ClientPortalPage() {
                   type="date"
                   value={proposeForm.tanggal}
                   onChange={(e) => setProposeForm({ ...proposeForm, tanggal: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Jam Mulai</label>
+                <input
+                  type="time"
+                  value={proposeForm.jamMulai}
+                  onChange={(e) => setProposeForm({ ...proposeForm, jamMulai: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Jam Selesai</label>
+                <input
+                  type="time"
+                  value={proposeForm.jamSelesai}
+                  onChange={(e) => setProposeForm({ ...proposeForm, jamSelesai: e.target.value })}
                   className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />

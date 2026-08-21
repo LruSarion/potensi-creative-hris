@@ -19,6 +19,7 @@ const ROLE_ROUTES: Record<string, string[]> = {
   "/approval": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "CLIENT", "CLIENT_ADMIN"],
   "/history-log": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   "/streamer-directory": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"],
+  "/pipeline": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
 };
 
 const { auth } = NextAuth(authConfig);

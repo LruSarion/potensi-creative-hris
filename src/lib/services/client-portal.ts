@@ -50,6 +50,8 @@ export async function kpiDashboard() {
 const promoApprovalSchema = z.object({
   idJadwal: z.string().min(1),
   tanggal: z.string().min(1),
+  jamMulai: z.string().optional().nullable(),
+  jamSelesai: z.string().optional().nullable(),
   platform: z.string().optional().nullable(),
   judulLive: z.string().optional().nullable(),
   promoLive: z.string().optional().nullable(),
@@ -64,6 +66,10 @@ export async function proposePromoJadwal(input: z.infer<typeof promoApprovalSche
   const tanggal = new Date(parsed.tanggal);
   const existing = await db.jadwal.findUnique({ where: { idJadwal: parsed.idJadwal } });
   if (existing) throw AppError.conflict("ID Jadwal sudah terdaftar");
+
+  // Build ISO datetimes from the date + client-provided times (default 10:00-12:00).
+  const start = new Date(`${parsed.tanggal}T${parsed.jamMulai ?? "10:00"}`);
+  const end = new Date(`${parsed.tanggal}T${parsed.jamSelesai ?? "12:00"}`);
 
   // Resolve the brand client for the marketplace listing: prefer the explicit
   // clientId, else the client record owned by the current tenant.
@@ -85,8 +91,8 @@ export async function proposePromoJadwal(input: z.infer<typeof promoApprovalSche
         catatanOts: parsed.catatan ?? null,
         clientId,
         status: "PENDING",
-        jamMulaiLive: tanggal,
-        jamSelesaiLive: tanggal,
+        jamMulaiLive: start,
+        jamSelesaiLive: end,
         periodeBulan: `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][tanggal.getMonth()]} ${tanggal.getFullYear()}`,
       },
     });
