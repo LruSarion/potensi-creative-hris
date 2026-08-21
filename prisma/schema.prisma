@@ -156,6 +156,8 @@ model User {
   telegramBindToken String?       // one-time secret to bind a Telegram chat to this user
   telegramBindExpires DateTime?   // expiry for the bind token
   telegramBoundAt DateTime?
+  telegramNotifPrefs Json?        // { type: boolean } which notification types to push to Telegram
+  telegramAbsensiState Json?      // { tipe, awaitingPhoto | awaitingLocation, photoFileId?, photoUrl? } in-progress absensi
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

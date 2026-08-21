@@ -5,6 +5,7 @@ import { requireRole, requirePortal } from "@/lib/auth-helpers";
 import { PERMISSIONS } from "@/lib/permissions";
 import type { Role } from "@/generated/prisma/enums";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/services/telegram";
+import { normalizeNotifPrefs, type NotificationType } from "@/lib/notification-types";
 
 /**
  * Phase 6 integration surface: notifications (T32), permission admin (T34),
@@ -19,12 +20,15 @@ const notifySchema = z.object({
   title: z.string().min(1),
   message: z.string().optional().nullable(),
   link: z.string().optional().nullable(),
+  type: z.string().optional(),
 });
 
-export async function createNotification(input: z.infer<typeof notifySchema>) {
+export type NotifyInput = z.input<typeof notifySchema>;
+
+export async function createNotification(input: NotifyInput) {
   // Internal system notifications are written by services/cron, not by arbitrary users.
   const caller = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "TRAINER", "QC_MANAGER");
-  const parsed = notifySchema.parse(input);
+  const parsed = notifySchema.parse({ type: "APPROVAL", ...input });
   const row = await db.logAktivitas.create({
     data: {
       aksi: "NOTIFICATION",
@@ -34,17 +38,18 @@ export async function createNotification(input: z.infer<typeof notifySchema>) {
         title: parsed.title,
         message: parsed.message ?? null,
         link: parsed.link ?? null,
+        type: parsed.type,
       }),
     },
   });
 
-  // Also push to the recipient's bound Telegram chat, if configured.
+  // Also push to the recipient's bound Telegram chat, if configured + enabled.
   await pushTelegramForTarget(parsed, caller.tenantId);
   return row;
 }
 
-async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenantId?: string) {
-  try {
+async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenantId?: string) {  try {
+    const type = parsed.type as NotificationType;
     const title = parsed.title;
     const message = parsed.message ?? "";
     const text = [`📢 ${title}`, message, parsed.link ? `🔗 ${parsed.link}` : null].filter(Boolean).join("\n");
@@ -56,12 +61,16 @@ async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenan
         ],
         telegramChatId: { not: null },
       },
-      select: { telegramChatId: true },
+      select: { telegramChatId: true, telegramNotifPrefs: true },
     });
     if (users.length === 0) return;
     const cfg = await getTelegramConfig({ tenantId });
     for (const u of users) {
-      if (u.telegramChatId) await sendTelegramMessage(u.telegramChatId, text, cfg);
+      if (!u.telegramChatId) continue;
+      // Only deliver if the user hasn't disabled this notification type in Telegram.
+      const prefs = normalizeNotifPrefs(u.telegramNotifPrefs);
+      if (prefs[type] === false) continue;
+      await sendTelegramMessage(u.telegramChatId, text, cfg);
     }
   } catch {
     // Telegram delivery must never break the in-app notification.

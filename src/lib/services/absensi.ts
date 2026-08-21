@@ -168,7 +168,7 @@ export async function checkOut(input: AbsensiInput) {
 }
 
 /** Time of the most recent CHECK_OUT for a karyawan (or epoch if none). */
-async function lastCheckOutTime(karyawanId: string): Promise<Date> {
+export async function lastCheckOutTime(karyawanId: string): Promise<Date> {
   const last = await db.absensi.findFirst({
     where: { karyawanId, tipe: "CHECK_OUT" },
     orderBy: { waktu: "desc" },

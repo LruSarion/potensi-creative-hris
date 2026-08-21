@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+type NotifType = { key: string; label: string; icon: string };
+
 export default function TelegramConnect() {
   const [connected, setConnected] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
@@ -9,6 +11,9 @@ export default function TelegramConnect() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [link, setLink] = useState("");
+  const [types, setTypes] = useState<NotifType[]>([]);
+  const [prefs, setPrefs] = useState<Record<string, boolean>>({});
+  const [savingPrefs, setSavingPrefs] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -29,9 +34,43 @@ export default function TelegramConnect() {
     }
   }
 
+  async function loadPrefs() {
+    try {
+      const r = await fetch("/api/telegram/prefs", { cache: "no-store" });
+      const d = await r.json();
+      if (d.status === "success") {
+        setTypes(d.data.types ?? []);
+        setPrefs(d.data.prefs ?? {});
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   useEffect(() => {
     load();
+    loadPrefs();
   }, []);
+
+  async function savePrefs() {
+    setSavingPrefs(true);
+    setError("");
+    setSuccess("");
+    try {
+      const r = await fetch("/api/telegram/prefs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prefs }),
+      });
+      const d = await r.json();
+      if (d.status === "success") setSuccess("Preferensi notifikasi Telegram disimpan.");
+      else setError(d.message ?? "Gagal menyimpan preferensi");
+    } catch {
+      setError("Koneksi gagal");
+    } finally {
+      setSavingPrefs(false);
+    }
+  }
 
   async function handleConnect() {
     setError("");
@@ -96,11 +135,37 @@ export default function TelegramConnect() {
       {loading ? (
         <p className="text-xs text-slate-400">Memuat status...</p>
       ) : connected ? (
-        <div className="space-y-2">
+        <div className="space-y-3">
           <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center gap-2">
             <i className="fa-solid fa-circle-check" />
             Aktif {chatId ? `(chat ${chatId})` : ""}
           </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-bold text-slate-700">Notifikasi penting yang dikirim ke Telegram:</p>
+            <div className="space-y-1.5">
+              {types.map((t) => (
+                <label key={t.key} className="flex items-center gap-2 cursor-pointer text-xs text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={prefs[t.key] !== false}
+                    onChange={() => setPrefs((p) => ({ ...p, [t.key]: !(p[t.key] !== false) }))}
+                    className="accent-[#229ED9]"
+                  />
+                  <i className={`fa-solid ${t.icon} text-slate-400 text-[10px]`} />
+                  {t.label}
+                </label>
+              ))}
+            </div>
+            <button
+              onClick={savePrefs}
+              disabled={savingPrefs}
+              className="text-xs font-bold text-white bg-[#229ED9] hover:bg-[#1c86b8] px-3 py-1.5 rounded-xl disabled:opacity-50"
+            >
+              {savingPrefs ? "Menyimpan..." : "Simpan Preferensi"}
+            </button>
+          </div>
+
           <button
             onClick={handleDisconnect}
             className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-3 py-1.5 rounded-xl hover:bg-red-100"
