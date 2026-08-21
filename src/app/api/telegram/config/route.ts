@@ -1,6 +1,7 @@
 import { apiHandler } from "@/lib/api-handler";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth-helpers";
+import { resolveBotUsername } from "@/lib/services/telegram";
 
 const ADMIN_ROLES = ["SUPER_ADMIN"] as const;
 
@@ -26,17 +27,16 @@ export const POST = apiHandler(async (req: Request) => {
   const cfg = (tenant?.config ?? {}) as { telegram?: { botToken?: string; botUsername?: string } };
   const tg = cfg.telegram ?? {};
 
+  const botToken = typeof body.botToken === "string" && body.botToken.trim() ? body.botToken.trim() : (tg.botToken ?? "");
+  // Always resolve the live username from the token; ignore any manual entry.
+  let botUsername = "";
+  if (botToken) botUsername = await resolveBotUsername(botToken);
+
   const next = {
     ...cfg,
-    telegram: {
-      botToken: typeof body.botToken === "string" && body.botToken.trim() ? body.botToken.trim() : (tg.botToken ?? ""),
-      botUsername:
-        typeof body.botUsername === "string" && body.botUsername.trim()
-          ? body.botUsername.trim().replace("@", "")
-          : (tg.botUsername ?? ""),
-    },
+    telegram: { botToken, botUsername },
   };
 
   await db.tenant.update({ where: { id: user.tenantId }, data: { config: next } });
-  return { saved: true };
+  return { saved: true, botUsername };
 });

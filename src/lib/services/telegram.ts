@@ -10,14 +10,34 @@ export type TelegramConfig = {
   botUsername?: string;
 };
 
+/** Resolve the real bot username for a token via Telegram getMe (no @ prefix). */
+export async function resolveBotUsername(botToken: string): Promise<string> {
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/getMe`, { cache: "no-store" });
+    const data = await res.json();
+    const username = data?.ok ? (data.result?.username as string) : "";
+    return (username || "").replace(/^@/, "");
+  } catch {
+    return "";
+  }
+}
+
 export async function getTelegramConfig(user: { tenantId?: string }): Promise<TelegramConfig> {
   const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
   const cfg = (tenant?.config ?? {}) as { telegram?: TelegramConfig };
   const saved = cfg.telegram ?? {};
-  return {
-    botToken: saved.botToken || process.env.TELEGRAM_BOT_TOKEN || "",
-    botUsername: saved.botUsername || process.env.TELEGRAM_BOT_USERNAME || "",
-  };
+  const botToken = saved.botToken || process.env.TELEGRAM_BOT_TOKEN || "";
+  const savedUsername = saved.botUsername || process.env.TELEGRAM_BOT_USERNAME || "";
+
+  // Trust the live username for the token over any manually-entered one; a stale
+  // username produces a t.me link that Telegram drops into "Saved Messages".
+  let botUsername = savedUsername.replace(/^@/, "");
+  if (botToken) {
+    const live = await resolveBotUsername(botToken);
+    if (live) botUsername = live;
+  }
+
+  return { botToken, botUsername };
 }
 
 export async function sendTelegramMessage(chatId: string, text: string, cfg: TelegramConfig): Promise<boolean> {
