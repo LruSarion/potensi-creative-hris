@@ -679,17 +679,28 @@ export default function ClientPortalPage() {
                 <div key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-blue-600/10 border border-blue-200 flex items-center justify-center text-lg font-black text-blue-600">
-                        {s.namaLengkap?.charAt(0) ?? "?"}
+                      <div className="w-16 h-16 rounded-full bg-blue-600/10 border-2 border-blue-200 overflow-hidden flex items-center justify-center">
+                        {s.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.photoUrl} alt={s.namaLengkap} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl font-black text-blue-600">{s.namaLengkap?.charAt(0) ?? "?"}</span>
+                        )}
                       </div>
                       <div>
                         <div className="font-bold text-slate-900 text-sm">{s.namaLengkap}</div>
                         <div className="text-[11px] text-slate-400 font-mono">{s.idKaryawan}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {s.totalSessions ?? 0} sesi • {s.availability ?? "FLEXIBLE"}
+                        </div>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-amber-500">★ {s.rating?.toFixed(1) ?? "0.0"}</span>
+                    <span className="text-xs font-bold text-amber-500">★ {Number(s.rating).toFixed(1)}</span>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
+
+                  {s.bio && <p className="text-xs text-slate-600 mt-3 leading-relaxed line-clamp-2">{s.bio}</p>}
+
+                  <div className="flex flex-wrap gap-2 mt-3">
                     {certCount > 0 ? (
                       s.certifiedFor.map((c: any, i: number) => (
                         <span
@@ -705,10 +716,26 @@ export default function ClientPortalPage() {
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100">
-                    <span className="text-[11px] text-slate-500">{s.totalSessions ?? 0} sesi</span>
-                    <span className="text-[11px] text-slate-500">{s.availability ?? "FLEXIBLE"}</span>
-                  </div>
+
+                  {(s.experiences ?? []).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Pengalaman ({s.experiences.length})
+                      </div>
+                      <div className="space-y-1">
+                        {(s.experiences as any[]).slice(0, 3).map((x: any) => (
+                          <div key={x.id} className="text-[11px] text-slate-600">
+                            • {x.title} <span className="text-slate-400">({x.platform ?? "-"})</span>
+                          </div>
+                        ))}
+                        {(s.experiences as any[]).length > 3 && (
+                          <div className="text-[10px] text-slate-400">
+                            +{(s.experiences as any[]).length - 3} lainnya
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })}

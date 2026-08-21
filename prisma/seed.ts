@@ -211,16 +211,48 @@ async function main() {
       },
     });
     // Streamer profile (for the client hub).
-    await prisma.streamerProfile.upsert({
+    const streamerProfile = await prisma.streamerProfile.upsert({
       where: { karyawanId: streamerKaryawan.id },
-      update: {},
+      update: { photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200" },
       create: {
         tenantId: agency.id,
         karyawanId: streamerKaryawan.id,
+        photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200",
         rating: 4.5,
         totalSessions: 42,
         availability: "FLEXIBLE",
-        bio: "Host berpengalaman untuk brand FMCG & fashion di Shopee Live / TikTok Shop.",
+        bio: "Host berpengalaman untuk brand FMCG & fashion di Shopee Live / TikTok Shop. Ahli flash sale & retensi viewer.",
+      },
+    });
+    // Sample experience entries (auto-recorded when projects complete).
+    await prisma.streamerExperience.upsert({
+      where: { id: "exp-pcs002-01" },
+      update: {},
+      create: {
+        id: "exp-pcs002-01",
+        streamerProfileId: streamerProfile.id,
+        clientId: client.id,
+        title: "Kampanye Flash Sale 8.8",
+        platform: "Shopee Live",
+        periode: "Agustus 2026",
+        result: "Sesi selesai — GMV +120% dari target",
+        status: "COMPLETED",
+        completedAt: new Date("2026-08-10"),
+      },
+    });
+    await prisma.streamerExperience.upsert({
+      where: { id: "exp-pcs002-02" },
+      update: {},
+      create: {
+        id: "exp-pcs002-02",
+        streamerProfileId: streamerProfile.id,
+        clientId: client.id,
+        title: "Peluncuran Produk Skincare",
+        platform: "TikTok Shop",
+        periode: "Juli 2026",
+        result: "Sesi selesai — 45 produk terjual",
+        status: "COMPLETED",
+        completedAt: new Date("2026-07-15"),
       },
     });
     // Sample marketplace listing for the demo brand.

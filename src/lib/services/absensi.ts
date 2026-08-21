@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
+import { recordStreamerExperienceOnSessionComplete } from "@/lib/services/streamer-experience";
 
 const absensiSchema = z.object({
   karyawanId: z.string().min(1),
@@ -153,6 +154,15 @@ export async function checkOut(input: AbsensiInput) {
       }
     }
 
+    return record;
+  }).then(async (record) => {
+    // Auto-record the completed session in the streamer's experience portfolio.
+    const jadwalId = parsed.jadwalId ?? lastCheckIn.jadwalId;
+    if (jadwalId) {
+      await recordStreamerExperienceOnSessionComplete(jadwalId).catch(() => {
+        // non-fatal
+      });
+    }
     return record;
   });
 }

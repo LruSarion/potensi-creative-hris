@@ -14,15 +14,19 @@ export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const clientId = url.searchParams.get("clientId") ?? undefined;
 
+  // Cross-tenant directory: clients pick agency streamers, so all streamers are
+  // visible. Certification gating still scopes by client brand when requested.
   const where: Record<string, unknown> = {
-    ...tenantWhere(user),
     OR: [{ kategori: "STREAMER" }, { jabatan: { contains: "Streamer" } }],
+    ...(user.role === "SUPER_ADMIN" ? {} : user.role === "CLIENT" || user.role === "CLIENT_ADMIN"
+      ? {} // clients see all streamers
+      : { tenantId: user.tenantId }), // HR/ops/trainer scoped to own tenant
   };
 
   const streamers = await db.karyawan.findMany({
     where,
     include: {
-      streamerProfile: true,
+      streamerProfile: { include: { experiences: { orderBy: { completedAt: "desc" } } } },
       certificates: {
         where: { revokedAt: null, ...(clientId ? { clientId } : {}) },
         include: { client: true, course: true },
@@ -38,10 +42,20 @@ export const GET = apiHandler(async (req: Request) => {
     email: s.email,
     jabatan: s.jabatan,
     statusAktif: s.statusAktif,
+    photoUrl: s.streamerProfile?.photoUrl ?? null,
     rating: Number(s.streamerProfile?.rating ?? 0),
     totalSessions: s.streamerProfile?.totalSessions ?? 0,
     availability: s.streamerProfile?.availability ?? "FLEXIBLE",
     bio: s.streamerProfile?.bio ?? null,
+    experiences: (s.streamerProfile?.experiences ?? []).map((x) => ({
+      id: x.id,
+      title: x.title,
+      platform: x.platform,
+      periode: x.periode,
+      result: x.result,
+      status: x.status,
+      completedAt: x.completedAt,
+    })),
     certifiedFor: s.certificates.map((c) => ({
       clientId: c.clientId,
       clientName: c.client?.namaClient ?? null,

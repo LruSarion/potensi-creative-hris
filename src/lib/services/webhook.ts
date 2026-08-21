@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { logAktivitas } from "@/lib/audit";
+import { recordStreamerExperienceOnSessionComplete } from "@/lib/services/streamer-experience";
 
 /**
  * Platform webhook ingest (Twitch / TikTok / LiveKit style).
@@ -91,6 +92,11 @@ export async function ingestWebhookEvent(input: WebhookInput) {
       detail: JSON.stringify({ sessionKey: parsed.sessionKey, durationSec }),
     });
     return { status: true, event: "stream.offline", durationSec };
+  }).then(async () => {
+    // After the session completes, auto-record it in the streamer's experience.
+    await recordStreamerExperienceOnSessionComplete(session.id).catch(() => {
+      // non-fatal: experience logging must not break the webhook response
+    });
   });
 }
 
