@@ -1,4 +1,9 @@
 import { db } from "@/lib/db";
+import { AppError } from "@/lib/errors";
+import { requireRole } from "@/lib/auth-helpers";
+import type { Role } from "@/generated/prisma/enums";
+
+const RATER_ROLES: Role[] = ["CLIENT", "CLIENT_ADMIN", "SUPER_ADMIN"];
 
 /**
  * Auto-record a streamer's project experience when a session completes.
@@ -49,4 +54,41 @@ export async function recordStreamerExperienceOnSessionComplete(jadwalId: string
       data: { totalSessions: { increment: 1 } },
     });
   });
+}
+
+/**
+ * Client rates a completed experience + leaves a testimonial.
+ * Recomputes the streamer's aggregate rating from all rated experiences.
+ */
+export async function rateExperience(experienceId: string, rating: number, testimonial?: string) {
+  const user = await requireRole(...RATER_ROLES);
+  if (rating < 1 || rating > 5) throw AppError.badRequest("Rating harus 1-5");
+
+  const exp = await db.streamerExperience.findUnique({
+    where: { id: experienceId },
+    include: { profile: true, client: true },
+  });
+  if (!exp) throw AppError.notFound("Pengalaman tidak ditemukan");
+  // Only the owning client (or admin) may rate.
+  const isOwner = user.role === "SUPER_ADMIN" || (exp.clientId && exp.clientId === (user as any).clientId) || exp.client?.tenantId === user.tenantId;
+  if (!isOwner) throw AppError.forbidden("Hanya klien pemilik proyek yang dapat menilai");
+
+  const updated = await db.streamerExperience.update({
+    where: { id: experienceId },
+    data: { clientRating: rating, clientTestimonial: testimonial ?? null },
+  });
+
+  // Recompute aggregate rating across all rated experiences on the profile.
+  const all = await db.streamerExperience.findMany({
+    where: { streamerProfileId: exp.streamerProfileId, clientRating: { not: null } },
+  });
+  const avg = all.length
+    ? Math.round((all.reduce((s, x) => s + Number(x.clientRating), 0) / all.length) * 100) / 100
+    : 0;
+  await db.streamerProfile.update({
+    where: { id: exp.streamerProfileId },
+    data: { rating: avg },
+  });
+
+  return updated;
 }

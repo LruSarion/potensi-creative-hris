@@ -32,6 +32,8 @@ export default function ClientPortalPage() {
   const [activeTab, setActiveTab] = useState<"schedules" | "feedback" | "propose" | "streamers" | "projects">("schedules");
   const [streamers, setStreamers] = useState<any[]>([]);
   const [listings, setListings] = useState<any[]>([]);
+  const [shortlist, setShortlist] = useState<Set<string>>(new Set());
+  const [streamerFilter, setStreamerFilter] = useState<"all" | "certified" | "shortlist">("all");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -65,12 +67,13 @@ export default function ClientPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [kpiRes, schRes, fbRes, strRes, listRes] = await Promise.all([
+      const [kpiRes, schRes, fbRes, strRes, listRes, shRes] = await Promise.all([
         fetch("/api/client-portal?view=kpi").then((r) => r.json()),
         fetch("/api/client-portal?view=schedules").then((r) => r.json()),
         fetch("/api/client-portal?view=feedback").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
         fetch("/api/streamer-directory").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
         fetch("/api/marketplace?view=listings").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/marketplace?view=shortlist").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
       ]);
 
       if (kpiRes.status === "success") setKpi(kpiRes.data);
@@ -78,11 +81,54 @@ export default function ClientPortalPage() {
       if (fbRes.status === "success") setFeedbackList(fbRes.data);
       if (strRes.status === "success") setStreamers(strRes.data);
       if (listRes.status === "success") setListings(listRes.data);
+      if (shRes.status === "success") {
+        setShortlist(new Set((shRes.data ?? []).map((x: any) => x.streamerId)));
+      }
       else if (kpiRes.status === "error") setError(kpiRes.message ?? "Akses ditolak");
     } catch {
       setError("Gagal memuat data portal brand partner");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleShortlist(streamerId: string) {
+    try {
+      const r = await fetch("/api/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-shortlist", streamerKaryawanId: streamerId }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setShortlist((prev) => {
+          const next = new Set(prev);
+          if (d.data.shortlisted) next.add(streamerId); else next.delete(streamerId);
+          return next;
+        });
+        setSuccess(d.data.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.");
+      }
+    } catch {
+      setError("Gagal memperbarui shortlist");
+    }
+  }
+
+  async function rateExperience(experienceId: string, rating: number) {
+    try {
+      const r = await fetch("/api/experience-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ experienceId, rating }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setSuccess("Penilaian berhasil disimpan!");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal memberi penilaian");
+      }
+    } catch {
+      setError("Gagal memberi penilaian");
     }
   }
 
@@ -662,19 +708,41 @@ export default function ClientPortalPage() {
       {/* Tab 4: Certified Streamers Hub */}
       {activeTab === "streamers" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-lg">Hub Streamer Bersertifikat</h3>
+              <h3 className="font-bold text-slate-900 text-lg">Hub Streamer</h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Streamer dengan sertifikasi brand yang valid untuk proyek Anda.
+                Pilih streamer bersertifikat untuk proyek Anda. Tandai favorit via shortlist.
               </p>
             </div>
-            <span className="text-xs text-slate-500">{streamers.length} streamer</span>
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                {(["all", "certified", "shortlist"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setStreamerFilter(f)}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-semibold capitalize transition ${
+                      streamerFilter === f ? "bg-white text-blue-600 shadow-sm" : "text-slate-600"
+                    }`}
+                  >
+                    {f === "all" ? "Semua" : f === "certified" ? "Bersertifikat" : "Shortlist"}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-slate-500">{streamers.length} streamer</span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {streamers.map((s) => {
+            {streamers
+              .filter((s) => {
+                if (streamerFilter === "certified") return (s.certifiedFor?.length ?? 0) > 0;
+                if (streamerFilter === "shortlist") return shortlist.has(s.id);
+                return true;
+              })
+              .map((s) => {
               const certCount = s.certifiedFor?.length ?? 0;
+              const isShortlisted = shortlist.has(s.id);
               return (
                 <div key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                   <div className="flex items-center justify-between">
@@ -695,7 +763,19 @@ export default function ClientPortalPage() {
                         </div>
                       </div>
                     </div>
-                    <span className="text-xs font-bold text-amber-500">★ {Number(s.rating).toFixed(1)}</span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs font-bold text-amber-500">★ {Number(s.rating).toFixed(1)}</span>
+                      <button
+                        onClick={() => toggleShortlist(s.id)}
+                        className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition ${
+                          isShortlisted
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {isShortlisted ? "★ Shortlisted" : "☆ Shortlist"}
+                      </button>
+                    </div>
                   </div>
 
                   {s.bio && <p className="text-xs text-slate-600 mt-3 leading-relaxed line-clamp-2">{s.bio}</p>}
@@ -722,10 +802,27 @@ export default function ClientPortalPage() {
                       <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                         Pengalaman ({s.experiences.length})
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1.5">
                         {(s.experiences as any[]).slice(0, 3).map((x: any) => (
                           <div key={x.id} className="text-[11px] text-slate-600">
-                            • {x.title} <span className="text-slate-400">({x.platform ?? "-"})</span>
+                            <div>• {x.title} <span className="text-slate-400">({x.platform ?? "-"})</span></div>
+                            {x.clientRating ? (
+                              <div className="pl-3 text-amber-500">★ {x.clientRating.toFixed(1)} {x.clientTestimonial ? `— "${x.clientTestimonial}"` : ""}</div>
+                            ) : (
+                              <div className="pl-3 flex items-center gap-0.5">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    onClick={() => rateExperience(x.id, star)}
+                                    className="text-amber-400 hover:scale-110 transition"
+                                    title={`Nilai ${star} bintang`}
+                                  >
+                                    ★
+                                  </button>
+                                ))}
+                                <span className="text-slate-400 ml-1">nilai proyek</span>
+                              </div>
+                            )}
                           </div>
                         ))}
                         {(s.experiences as any[]).length > 3 && (

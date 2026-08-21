@@ -214,3 +214,53 @@ export async function listCertifications() {
     client: c.client,
   }));
 }
+
+// ---------- Client shortlist ----------
+
+/** Resolve the client record for the current user (needed for shortlist FK). */
+async function resolveClientRecord() {
+  const user = await requireRole(...CLIENT_ROLES);
+  if (!user.tenantId) return null;
+  return db.client.findFirst({ where: { tenantId: user.tenantId } });
+}
+
+/** List the current client's shortlisted streamers. */
+export async function listShortlist() {
+  const user = await requireRole(...CLIENT_ROLES);
+  if (!user.tenantId) return [];
+  const client = await db.client.findFirst({ where: { tenantId: user.tenantId } });
+  if (!client) return [];
+  const rows = await db.clientShortlist.findMany({
+    where: { clientId: client.id },
+    include: { streamer: { include: { streamerProfile: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    streamerId: r.streamerKaryawanId,
+    idKaryawan: r.streamer.idKaryawan,
+    namaLengkap: r.streamer.namaLengkap,
+    photoUrl: r.streamer.streamerProfile?.photoUrl ?? null,
+    rating: Number(r.streamer.streamerProfile?.rating ?? 0),
+  }));
+}
+
+/** Toggle a streamer in/out of the client's shortlist. */
+export async function toggleShortlist(streamerKaryawanId: string): Promise<{ shortlisted: boolean }> {
+  const user = await requireRole(...CLIENT_ROLES);
+  if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
+  const client = await db.client.findFirst({ where: { tenantId: user.tenantId } });
+  if (!client) throw AppError.notFound("Klien tidak ditemukan");
+
+  const existing = await db.clientShortlist.findUnique({
+    where: { clientId_streamerKaryawanId: { clientId: client.id, streamerKaryawanId } },
+  });
+  if (existing) {
+    await db.clientShortlist.delete({ where: { id: existing.id } });
+    return { shortlisted: false };
+  }
+  await db.clientShortlist.create({
+    data: { clientId: client.id, streamerKaryawanId },
+  });
+  return { shortlisted: true };
+}

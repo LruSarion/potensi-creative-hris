@@ -54,6 +54,8 @@ export const GET = apiHandler(async (req: Request) => {
       periode: x.periode,
       result: x.result,
       status: x.status,
+      clientRating: x.clientRating ? Number(x.clientRating) : null,
+      clientTestimonial: x.clientTestimonial,
       completedAt: x.completedAt,
     })),
     certifiedFor: s.certificates.map((c) => ({

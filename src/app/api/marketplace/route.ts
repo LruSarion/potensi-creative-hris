@@ -8,6 +8,8 @@ import {
   createListing,
   setListingStatus,
   listCertifications,
+  listShortlist,
+  toggleShortlist,
 } from "@/lib/services/marketplace";
 
 export const GET = apiHandler(async (req: Request) => {
@@ -19,6 +21,7 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "listings") return listListings();
   if (view === "applications" && listingId) return listApplications(listingId);
   if (view === "certifications") return listCertifications();
+  if (view === "shortlist") return listShortlist();
   return listEligibleListings();
 });
 
@@ -29,6 +32,7 @@ export const POST = apiHandler(async (req: Request) => {
   if (action === "apply") return applyToListing(body.listingId, body.note);
   if (action === "create-listing") return createListing(body.listing);
   if (action === "decide") return decideApplication(body.applicationId, body.decision);
+  if (action === "toggle-shortlist") return toggleShortlist(body.streamerKaryawanId);
   throw new Error("unknown marketplace action");
 });
 

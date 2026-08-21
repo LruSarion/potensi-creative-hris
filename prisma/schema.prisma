@@ -225,6 +225,7 @@ model Karyawan {
   certificates      Certificate[]
   streamerProfile   StreamerProfile?
   projectApplications ProjectApplication[]
+  shortlistedBy     ClientShortlist[]
 
   @@map("karyawan")
 }
@@ -286,6 +287,7 @@ model Client {
   listings    MarketplaceListing[]
   certificates Certificate[]
   streamerExperiences StreamerExperience[]
+  shortlisted  ClientShortlist[]
 
   @@map("clients")
 }
@@ -911,6 +913,8 @@ model StreamerExperience {
   periode       String? // "Agustus 2026"
   result        String? // summary e.g. GMV/sessions
   status        String   @default("COMPLETED") // IN_PROGRESS | COMPLETED
+  clientRating  Decimal? @db.Decimal(3, 2) // client's rating (1-5)
+  clientTestimonial String? @db.Text // client's review
   startedAt     DateTime @default(now())
   completedAt   DateTime?
   createdAt     DateTime @default(now())
@@ -961,6 +965,20 @@ model ProjectApplication {
 
   @@unique([listingId, streamerKaryawanId])
   @@map("project_application")
+}
+
+// Client's shortlist of favorite streamers (for quick selection on new projects).
+model ClientShortlist {
+  id            String   @id @default(cuid())
+  clientId      String
+  streamerKaryawanId String
+  createdAt     DateTime @default(now())
+
+  client        Client   @relation(fields: [clientId], references: [id])
+  streamer      Karyawan @relation(fields: [streamerKaryawanId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, streamerKaryawanId])
+  @@map("client_shortlist")
 }
 
 // ============================================================
