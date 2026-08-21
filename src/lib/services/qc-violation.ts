@@ -26,7 +26,7 @@ export async function createViolation(input: QcViolationInput) {
     where: { id: parsed.streamerKaryawanId, ...tenantWhere(user) },
   });
   if (!streamer) throw AppError.notFound("Streamer tidak ditemukan");
-  return db.qcViolation.create({
+  const violation = await db.qcViolation.create({
     data: {
       tenantId: user.tenantId || undefined,
       jadwalId: parsed.jadwalId ?? null,
@@ -39,6 +39,39 @@ export async function createViolation(input: QcViolationInput) {
     },
     include: { streamer: true },
   });
+
+  // Auto-notify: the streamer (via their karyawan link), every SUPER_ADMIN, and every TRAINER.
+  const catLabel = VIOLATION_LABELS[parsed.category] ?? parsed.category;
+  const title = `Pelanggaran QC: ${catLabel}`;
+  const message = `${streamer.namaLengkap} mendapat pelanggaran ${catLabel} (${parsed.severity}). ${parsed.description ?? ""}`;
+  const link = "/qc-violations";
+
+  const recipients: { userId?: string; karyawanId?: string }[] = [];
+  if (streamer.userId) recipients.push({ userId: streamer.userId });
+  const staff = await db.user.findMany({
+    where: { role: { in: ["SUPER_ADMIN", "TRAINER"] }, tenantId: user.tenantId ?? undefined },
+    select: { id: true },
+  });
+  for (const u of staff) if (u.id !== user.id) recipients.push({ userId: u.id });
+
+  for (const r of recipients) {
+    await db.logAktivitas.create({
+      data: {
+        tenantId: user.tenantId || undefined,
+        userId: r.userId,
+        aksi: "NOTIFICATION",
+        detail: JSON.stringify({
+          targetUserId: r.userId ?? null,
+          targetKaryawanId: r.karyawanId ?? null,
+          title,
+          message,
+          link,
+        }),
+      },
+    }).catch(() => {});
+  }
+
+  return violation;
 }
 
 /** List violations (QC sees all; streamer sees own). */
