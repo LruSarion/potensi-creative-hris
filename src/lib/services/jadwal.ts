@@ -8,6 +8,7 @@ import {
   validateTokenJeda,
   validateStudioRoomConflict,
   isTimeOverlapping,
+  TOKEN_JEDA_MINUTES,
 } from "@/lib/schedule-rules";
 
 export const jadwalSchema = z.object({
@@ -59,7 +60,7 @@ export async function getJadwal(id: string) {
 
 /**
  * Validate token-jeda for a streamer against existing schedules.
- * Throws if the new schedule violates the 30-min rest rule.
+ * Throws if the new schedule violates the rest rule (configurable gap).
  */
 async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, tenantId: string, excludeId?: string) {
   const others = await db.jadwal.findMany({
@@ -81,14 +82,36 @@ async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, ten
     }
   }
 
-  // (B) Token-jeda rest rule: 30 min between sessions for the same streamer.
+  // (B) Rest rule: require a gap of `restGapMinutes` after the streamer's
+  // JAM_SELESAI_TERAKHIR (last real session end) before this new session.
+  const restGapMinutes = await resolveRestGapMinutes(tenantId);
   const result = validateTokenJeda(
     start,
-    others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
+    others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive })),
+    restGapMinutes
   );
   if (result === "TIDAK") {
-    throw AppError.conflict("Streamer tidak dapat dijadwalkan: bentrok dengan jeda token (30 menit).");
+    throw AppError.conflict(
+      `Streamer tidak dapat dijadwalkan: perlu jeda istirahat ${restGapMinutes} menit sejak sesi sebelumnya.`
+    );
   }
+}
+
+/**
+ * Resolve the agency's configured rest gap (minutes). Reads Tenant.config.restGapMinutes,
+ * falling back to the default 30-min token jeda.
+ */
+async function resolveRestGapMinutes(tenantId: string): Promise<number> {
+  try {
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
+    const cfg = tenant?.config as { restGapMinutes?: number } | null | undefined;
+    if (cfg && typeof cfg.restGapMinutes === "number" && cfg.restGapMinutes > 0) {
+      return cfg.restGapMinutes;
+    }
+  } catch {
+    // ignore config lookup failure; use default
+  }
+  return TOKEN_JEDA_MINUTES;
 }
 
 async function assertStudioRoomAvailable(studioName: string, start: Date, end: Date, tenantId: string, excludeId?: string) {
@@ -233,12 +256,14 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
             throw AppError.conflict(`Batch dibatalkan: sesi ${parsed.idJadwal} bentrok dengan ${o.idJadwal} untuk streamer yang sama.`);
           }
         }
+        const restGapMinutes = await resolveRestGapMinutes(user.tenantId);
         const result = validateTokenJeda(
           start,
-          others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
+          others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive })),
+          restGapMinutes
         );
         if (result === "TIDAK") {
-          throw AppError.conflict(`Batch dibatalkan: bentrok jeda token untuk ${parsed.idJadwal}`);
+          throw AppError.conflict(`Batch dibatalkan: bentrok jeda istirahat ${restGapMinutes} menit untuk ${parsed.idJadwal}`);
         }
       }
 

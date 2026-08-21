@@ -3,9 +3,12 @@
  * No DB access; fully unit-testable.
  */
 
-export const TOKEN_JEDA_MINUTES = 30;
+export const TOKEN_JEDA_MINUTES = 30; // default rest gap (client uses token jeda)
 export const WAJIB_HADIR_MINUTES = 25;
 export const BATAS_TERLAMBAT_MINUTES = 24;
+
+/** Agency-level rest gap override (minutes). Set in Tenant.config or env. */
+export const DEFAULT_REST_GAP_MINUTES = TOKEN_JEDA_MINUTES;
 
 /**
  * Compute live duration handling overnight (MOD(K-J;1) equivalent).
@@ -29,15 +32,17 @@ export function computeBatasTerlambat(start: Date): Date {
 
 /**
  * VALIDASI_TOKEN_JEDA: returns "BISA_TOKEN" if the karyawan has NO other
- * schedule whose [end + day-rollover] falls within 30 min before this start.
- * Ports the legacy SUMPRODUCT/LAMBDA logic.
+ * schedule whose [end + day-rollover] falls within `restGapMinutes` before
+ * this start. `restGapMinutes` is configurable (defaults to TOKEN_JEDA_MINUTES),
+ * matching the client's JAM_SELESAI_TERAKHIR rest-tracking rule.
  */
 export function validateTokenJeda(
   start: Date,
-  otherSchedules: { start: Date; end: Date }[]
+  otherSchedules: { start: Date; end: Date }[],
+  restGapMinutes: number = TOKEN_JEDA_MINUTES
 ): "BISA_TOKEN" | "TIDAK" {
   const startMs = start.getTime();
-  const windowStart = startMs - TOKEN_JEDA_MINUTES * 60 * 1000;
+  const windowStart = startMs - restGapMinutes * 60 * 1000;
 
   for (const s of otherSchedules) {
     let endMs = s.end.getTime();
@@ -47,6 +52,36 @@ export function validateTokenJeda(
     }
   }
   return "BISA_TOKEN";
+}
+
+/**
+ * JAM_SELESAI_TERAKHIR (last real session end, with overnight rollover).
+ * Ports the client sheet's LET/MAP/MAX logic:
+ *   riil = if end < start then date + 1 + end else date + end
+ *   max  = max(riil) across the streamer's sessions
+ * Returns the absolute timestamp of the latest moment a streamer finished.
+ */
+export function computeLastSessionEnd(
+  sessions: { start: Date; end: Date }[]
+): Date | null {
+  if (!sessions.length) return null;
+
+  let maxMs = 0;
+  for (const s of sessions) {
+    const startMs = s.start.getTime();
+    const endMs = s.end.getTime();
+    // Midnights of each date (start's day and end's day).
+    const startMidnight = new Date(s.start.getFullYear(), s.start.getMonth(), s.start.getDate()).getTime();
+    const endMidnight = new Date(s.end.getFullYear(), s.end.getMonth(), s.end.getDate()).getTime();
+    const startTimeOfDay = startMs - startMidnight;
+    const endTimeOfDay = endMs - endMidnight;
+    // Overnight when the end time-of-day is earlier than the start time-of-day.
+    const overnight = endTimeOfDay < startTimeOfDay ? 24 * 60 * 60 * 1000 : 0;
+    // Absolute end: session's start-day midnight + (overnight rollover) + end time-of-day.
+    const sessionEndAbsolute = startMidnight + overnight + endTimeOfDay;
+    if (sessionEndAbsolute > maxMs) maxMs = sessionEndAbsolute;
+  }
+  return new Date(maxMs);
 }
 
 /**
