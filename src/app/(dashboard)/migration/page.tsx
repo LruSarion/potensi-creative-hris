@@ -42,17 +42,19 @@ export default function MigrationWizardPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [module, setModule] = useState("karyawan");
-  const [source, setSource] = useState<"file" | "sheet">("file");
+  const [source, setSource] = useState<"file" | "sheet" | "paste">("file");
   const [fileName, setFileName] = useState("");
   const [fileContent, setFileContent] = useState("");
   const [sheetUrl, setSheetUrl] = useState("");
+  const [pastedText, setPastedText] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<any>(null);
+  const [engine, setEngine] = useState<"llm" | "heuristic" | null>(null);
 
-  async function runPreview(payload: { fileContent?: string; fileName?: string; googleSheetUrl?: string }) {
+  async function runPreview(payload: { fileContent?: string; fileName?: string; googleSheetUrl?: string; pastedText?: string }) {
     setBusy(true);
     setError("");
     try {
@@ -64,6 +66,7 @@ export default function MigrationWizardPage() {
       const d = await r.json();
       if (d.status === "success") {
         setPreview(d.data);
+        setEngine(null);
         setStep(3);
       } else {
         setError(d.message ?? "Gagal membaca data");
@@ -84,6 +87,42 @@ export default function MigrationWizardPage() {
       return;
     }
     runPreview({ googleSheetUrl: sheetUrl.trim() });
+  }
+
+  // Paste-text: use the hybrid converter (LLM if configured, else heuristic).
+  async function handlePasteText() {
+    setError("");
+    setSuccess("");
+    setResult(null);
+    if (!pastedText.trim()) {
+      setError("Tempel teks data terlebih dahulu");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/migration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "convert", module, pastedText }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setEngine(d.data.engine ?? "heuristic");
+        setPreview({
+          sheetName: null,
+          headers: d.data.rows.length ? Object.keys(d.data.rows[0]) : [],
+          rowCount: d.data.rowCount ?? d.data.rows.length,
+          preview: d.data.preview ?? d.data.rows.slice(0, 5),
+        });
+        setStep(3);
+      } else {
+        setError(d.message ?? "Gagal mengonversi teks");
+      }
+    } catch {
+      setError("Gagal mengonversi teks");
+    } finally {
+      setBusy(false);
+    }
   }
 
   function handleFile(file: File | undefined | null) {
@@ -119,6 +158,7 @@ export default function MigrationWizardPage() {
           fileContent: source === "file" ? fileContent : undefined,
           fileName: source === "file" ? fileName : undefined,
           googleSheetUrl: source === "sheet" ? sheetUrl.trim() : undefined,
+          pastedText: source === "paste" ? pastedText : undefined,
         }),
       });
       const d = await r.json();
@@ -230,6 +270,12 @@ export default function MigrationWizardPage() {
             >
               Excel / CSV
             </button>
+            <button
+              onClick={() => setSource("paste")}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${source === "paste" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600"}`}
+            >
+              Paste Teks
+            </button>
           </div>
 
           {source === "sheet" ? (
@@ -253,6 +299,29 @@ export default function MigrationWizardPage() {
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50"
               >
                 {busy ? "Membaca sheet..." : "Baca Google Sheets"}
+              </button>
+            </div>
+          ) : source === "paste" ? (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">Tempel data mentah di sini</label>
+                <textarea
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  rows={7}
+                  placeholder="Salin & tempel data dari sheet/email/dokumen. Contoh:&#10;Nama Lengkap	Email	Jabatan	Status&#10;Andi	andi@test.com	Streamer	AKTIF&#10;Atau tempel teks berantakan — converter akan merapikannya."
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Converter otomatis merapikan data (kolom, angka Rp, tanggal, dsb). Untuk data berantakan, gunakan engine AI bila dikonfigurasi.
+                </p>
+              </div>
+              <button
+                onClick={handlePasteText}
+                disabled={busy}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50"
+              >
+                {busy ? "Mengonversi data..." : "Konversi & Lanjutkan"}
               </button>
             </div>
           ) : (

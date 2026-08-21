@@ -1,13 +1,28 @@
 import { apiHandler } from "@/lib/api-handler";
-import { runMigration, previewMigration } from "@/lib/services/migration";
+import { runMigration, previewMigration, parsePastedText } from "@/lib/services/migration";
+import { convertWithBestEngine, llmConfigured } from "@/lib/services/llm-converter";
 
 /**
  * POST /api/migration
- * { action: "preview", fileContent?, fileName?, googleSheetUrl? }  -> parse + preview (no write)
- * { action: "import", module, fileContent?, fileName?, googleSheetUrl? } -> parse + import
+ * { action: "preview", fileContent?, fileName?, googleSheetUrl?, pastedText? }  -> parse + preview (no write)
+ * { action: "import", module, fileContent?, fileName?, googleSheetUrl?, pastedText? } -> parse + import
  */
 export const POST = apiHandler(async (req: Request) => {
   const body = await req.json();
+
+  // Paste-text source: use the hybrid converter (LLM via OpenRouter when
+  // configured, else heuristic delimiter detection).
+  if (body.pastedText) {
+    if (body.action === "convert" && body.module) {
+      const rows = await convertWithBestEngine(body.module, body.pastedText);
+      return { engine: llmConfigured ? "llm" : "heuristic", rows, rowCount: rows.length, preview: rows.slice(0, 5) };
+    }
+    const parsed = parsePastedText(body.pastedText);
+    const csv = [parsed.headers.join("\t"), ...parsed.rows.map((r) => parsed.headers.map((h) => r[h] ?? "").join("\t"))].filter(Boolean).join("\n");
+    body.fileContent = csv;
+    body.fileName = "pasted.tsv";
+  }
+
   if (body.action === "preview") {
     return previewMigration({
       fileContent: body.fileContent,

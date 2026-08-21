@@ -398,3 +398,7 @@ export async function previewMigration(params: { fileContent: string; fileName: 
     preview: parsed.rows.slice(0, 5),
   };
 }
+
+// ---------- SMART HEURISTIC NORMALIZER ----------
+// Re-exported from a pure module (no DB/auth) so it's unit-testable.
+export { detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum } from "./converter-utils";
