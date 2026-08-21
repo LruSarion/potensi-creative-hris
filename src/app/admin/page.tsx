@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import TelegramConfigAdmin from "@/components/telegram-config-admin";
 
 export default function AdminConsolePage() {
   const [matrix, setMatrix] = useState<any>(null);
@@ -336,6 +337,9 @@ export default function AdminConsolePage() {
           </form>
         </div>
       </div>
+
+      {/* Telegram bot config */}
+      <TelegramConfigAdmin />
     </div>
   );
 }

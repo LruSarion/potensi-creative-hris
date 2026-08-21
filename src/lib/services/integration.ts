@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole, requirePortal } from "@/lib/auth-helpers";
 import { PERMISSIONS } from "@/lib/permissions";
 import type { Role } from "@/generated/prisma/enums";
+import { getTelegramConfig, sendTelegramMessage } from "@/lib/services/telegram";
 
 /**
  * Phase 6 integration surface: notifications (T32), permission admin (T34),
@@ -22,9 +23,9 @@ const notifySchema = z.object({
 
 export async function createNotification(input: z.infer<typeof notifySchema>) {
   // Internal system notifications are written by services/cron, not by arbitrary users.
-  await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "TRAINER", "QC_MANAGER");
+  const caller = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "TRAINER", "QC_MANAGER");
   const parsed = notifySchema.parse(input);
-  return db.logAktivitas.create({
+  const row = await db.logAktivitas.create({
     data: {
       aksi: "NOTIFICATION",
       detail: JSON.stringify({
@@ -36,6 +37,35 @@ export async function createNotification(input: z.infer<typeof notifySchema>) {
       }),
     },
   });
+
+  // Also push to the recipient's bound Telegram chat, if configured.
+  await pushTelegramForTarget(parsed, caller.tenantId);
+  return row;
+}
+
+async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenantId?: string) {
+  try {
+    const title = parsed.title;
+    const message = parsed.message ?? "";
+    const text = [`📢 ${title}`, message, parsed.link ? `🔗 ${parsed.link}` : null].filter(Boolean).join("\n");
+    const users = await db.user.findMany({
+      where: {
+        OR: [
+          ...(parsed.targetUserId ? [{ id: parsed.targetUserId }] : []),
+          ...(parsed.targetKaryawanId ? [{ karyawan: { id: parsed.targetKaryawanId } }] : []),
+        ],
+        telegramChatId: { not: null },
+      },
+      select: { telegramChatId: true },
+    });
+    if (users.length === 0) return;
+    const cfg = await getTelegramConfig({ tenantId });
+    for (const u of users) {
+      if (u.telegramChatId) await sendTelegramMessage(u.telegramChatId, text, cfg);
+    }
+  } catch {
+    // Telegram delivery must never break the in-app notification.
+  }
 }
 
 /** My inbox — notifications addressed to me (by user or my karyawan id). */

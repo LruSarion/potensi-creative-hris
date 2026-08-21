@@ -142,18 +142,22 @@ model Tenant {
 }
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
+  id            String    @id @default(cuid())
+  email         String    @unique
   name          String?
   image         String?
-  role          Role     @default(STAFF)
+  role          Role      @default(STAFF)
   tenantId      String?
   pinHash       String?
   pinSalt       String?
-  failedLogins  Int      @default(0)
+  failedLogins  Int       @default(0)
   blockedUntil  DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  telegramChatId String?  @unique // Telegram chat to receive notifications
+  telegramBindToken String?       // one-time secret to bind a Telegram chat to this user
+  telegramBindExpires DateTime?   // expiry for the bind token
+  telegramBoundAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant        Tenant?  @relation(fields: [tenantId], references: [id])
   karyawan      Karyawan?
