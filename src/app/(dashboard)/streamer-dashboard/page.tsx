@@ -28,6 +28,8 @@ export default function StreamerDashboardPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [activeSession, setActiveSession] = useState<{ id: string; waktu: string } | null>(null);
   const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
+  const [violations, setViolations] = useState<any[]>([]);
+  const [violationSummary, setViolationSummary] = useState<{ count: number; byCategory: Record<string, number>; critical: number } | null>(null);
 
   // Checkin modal/inputs
   const [checkinModalOpen, setCheckinModalOpen] = useState(false);
@@ -36,7 +38,21 @@ export default function StreamerDashboardPage() {
 
   useEffect(() => {
     loadData();
+    loadViolations();
   }, []);
+
+  async function loadViolations() {
+    try {
+      const [listRes, sumRes] = await Promise.all([
+        fetch("/api/qc-violation").then((r) => r.json()),
+        fetch("/api/qc-violation?view=summary").then((r) => r.json()),
+      ]);
+      if (listRes.status === "success") setViolations(listRes.data ?? []);
+      if (sumRes.status === "success") setViolationSummary(sumRes.data);
+    } catch {
+      // ignore
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -412,6 +428,52 @@ export default function StreamerDashboardPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* QC Violations */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <i className="fa-solid fa-shield-halved text-amber-500" />
+            Catatan Pelanggaran QC
+          </h3>
+          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+            (violationSummary?.count ?? 0) > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+          }`}>
+            {(violationSummary?.count ?? 0) > 0 ? `${violationSummary?.count} pelanggaran` : "Bersih ✓"}
+          </span>
+        </div>
+        {violations.length > 0 ? (
+          <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+            {violations.map((v) => (
+              <div key={v.id} className="p-4 flex items-start gap-3">
+                {v.photoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.photoUrl} alt="Bukti" className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                      {v.category}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      v.severity === "CRITICAL" || v.severity === "HIGH" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {v.severity}
+                    </span>
+                  </div>
+                  {v.description && <div className="text-[11px] text-slate-600 mt-1">{v.description}</div>}
+                  <div className="text-[10px] text-slate-400 mt-1">{new Date(v.createdAt).toLocaleString("id-ID")}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-slate-400 text-xs">
+            <i className="fa-solid fa-circle-check text-2xl text-emerald-400 block mb-1" />
+            Tidak ada catatan pelanggaran QC.
+          </div>
+        )}
       </div>
 
       {/* Check-In Modal */}

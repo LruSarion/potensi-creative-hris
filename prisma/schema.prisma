@@ -136,6 +136,7 @@ model Tenant {
   streamerProfiles StreamerProfile[]
   marketplaceListings MarketplaceListing[]
   sopTemplates    SopTemplate[]
+  qcViolations    QcViolation[]
 
   @@map("tenants")
 }
@@ -228,6 +229,7 @@ model Karyawan {
   projectApplications ProjectApplication[]
   shortlistedBy     ClientShortlist[]
   sopCompletions    SopTaskCompletion[]
+  qcViolations      QcViolation[]
 
   @@map("karyawan")
 }
@@ -375,6 +377,7 @@ model Jadwal {
   revenueEntries   RevenueEntry[]
   marketplaceListings MarketplaceListing[]
   streamerExperiences StreamerExperience[]
+  qcViolations        QcViolation[]
 
   @@index([tanggal])
   @@index([streamerKaryawanId])
@@ -1183,6 +1186,49 @@ model SopTaskCompletion {
   @@unique([taskId, karyawanId, tanggal])
   @@index([karyawanId, tanggal])
   @@map("sop_task_completion")
+}
+
+// ============================================================
+// QC LIVE VIOLATIONS (monitoring pelanggaran live streaming)
+// ============================================================
+
+enum ViolationCategory {
+  GROOMING
+  ATTITUDE
+  LANGUAGE
+  DRESS_CODE
+  PRODUCT_HANDLING
+  PLATFORM_RULE
+  TECHNICAL
+  OTHER
+}
+
+enum ViolationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model QcViolation {
+  id            String            @id @default(cuid())
+  tenantId      String?
+  jadwalId      String?
+  streamerKaryawanId String
+  category      ViolationCategory
+  severity      ViolationSeverity @default(MEDIUM)
+  description   String?
+  photoUrl      String?           // bukti capture dari live streaming
+  capturedById  String?           // QC reviewer user id
+  status        String            @default("OPEN") // OPEN | REVIEWED | CLOSED
+  createdAt     DateTime          @default(now())
+
+  tenant        Tenant?           @relation(fields: [tenantId], references: [id])
+  jadwal        Jadwal?           @relation(fields: [jadwalId], references: [id])
+  streamer      Karyawan          @relation(fields: [streamerKaryawanId], references: [id], onDelete: Cascade)
+
+  @@index([streamerKaryawanId, createdAt])
+  @@map("qc_violation")
 }
 
 // ============================================================

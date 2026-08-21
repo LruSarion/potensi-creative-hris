@@ -1,0 +1,110 @@
+import { z } from "zod";
+import { db } from "@/lib/db";
+import { AppError } from "@/lib/errors";
+import { requireRole, tenantWhere } from "@/lib/auth-helpers";
+import type { Role } from "@/generated/prisma/enums";
+
+const QC_ROLES: Role[] = ["QC_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
+const STREAMER_ROLES: Role[] = ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
+
+const violationSchema = z.object({
+  streamerKaryawanId: z.string().min(1),
+  jadwalId: z.string().optional().nullable(),
+  category: z.enum(["GROOMING", "ATTITUDE", "LANGUAGE", "DRESS_CODE", "PRODUCT_HANDLING", "PLATFORM_RULE", "TECHNICAL", "OTHER"]),
+  severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional().default("MEDIUM"),
+  description: z.string().optional().nullable(),
+  photoUrl: z.string().optional().nullable(),
+});
+
+export type QcViolationInput = z.infer<typeof violationSchema>;
+
+/** QC reviewer: record a live-streaming violation with photo evidence. */
+export async function createViolation(input: QcViolationInput) {
+  const user = await requireRole(...QC_ROLES);
+  const parsed = violationSchema.parse(input);
+  const streamer = await db.karyawan.findFirst({
+    where: { id: parsed.streamerKaryawanId, ...tenantWhere(user) },
+  });
+  if (!streamer) throw AppError.notFound("Streamer tidak ditemukan");
+  return db.qcViolation.create({
+    data: {
+      tenantId: user.tenantId || undefined,
+      jadwalId: parsed.jadwalId ?? null,
+      streamerKaryawanId: parsed.streamerKaryawanId,
+      category: parsed.category,
+      severity: parsed.severity ?? "MEDIUM",
+      description: parsed.description ?? null,
+      photoUrl: parsed.photoUrl ?? null,
+      capturedById: user.id,
+    },
+    include: { streamer: true },
+  });
+}
+
+/** List violations (QC sees all; streamer sees own). */
+export async function listViolations(params?: { streamerKaryawanId?: string }) {
+  const user = await requireRole();
+  const isQc = QC_ROLES.includes(user.role);
+  const where: Record<string, unknown> = { ...tenantWhere(user) };
+  if (isQc) {
+    if (params?.streamerKaryawanId) where.streamerKaryawanId = params.streamerKaryawanId;
+  } else {
+    // Streamers only see their own violations.
+    where.streamerKaryawanId = user.karyawanId ?? "__none__";
+  }
+  return db.qcViolation.findMany({
+    where,
+    include: { streamer: { select: { id: true, namaLengkap: true, idKaryawan: true } }, jadwal: { select: { idJadwal: true, platform: true } } },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Update violation status (QC/admin). */
+export async function updateViolationStatus(id: string, status: "OPEN" | "REVIEWED" | "CLOSED") {
+  const user = await requireRole(...QC_ROLES);
+  const v = await db.qcViolation.findFirst({ where: { id, ...tenantWhere(user) } });
+  if (!v) throw AppError.notFound("Pelanggaran tidak ditemukan");
+  return db.qcViolation.update({ where: { id }, data: { status } });
+}
+
+/** Streamer's violation summary (count by category) for the dashboard. */
+export async function myViolationSummary() {
+  const user = await requireRole(...STREAMER_ROLES);
+  if (!user.karyawanId) return { count: 0, byCategory: {} };
+  const rows = await db.qcViolation.findMany({
+    where: { streamerKaryawanId: user.karyawanId },
+    select: { category: true, severity: true },
+  });
+  const byCategory: Record<string, number> = {};
+  let critical = 0;
+  for (const r of rows) {
+    byCategory[r.category] = (byCategory[r.category] ?? 0) + 1;
+    if (r.severity === "HIGH" || r.severity === "CRITICAL") critical++;
+  }
+  return { count: rows.length, byCategory, critical };
+}
+
+/** Streamers currently LIVE (for QC reviewer to pick from). */
+export async function listLiveStreamers() {
+  const user = await requireRole(...QC_ROLES);
+  return db.jadwal.findMany({
+    where: { ...tenantWhere(user), liveState: "LIVE" },
+    include: {
+      streamerKaryawan: { select: { id: true, namaLengkap: true, idKaryawan: true } },
+      client: { select: { namaClient: true } },
+    },
+    orderBy: { jamMulaiLive: "desc" },
+  });
+}
+
+// Human-readable labels for the UI.
+export const VIOLATION_LABELS: Record<string, string> = {
+  GROOMING: "Grooming / Penampilan",
+  ATTITUDE: "Attitude / Sikap",
+  LANGUAGE: "Language / Ucapan",
+  DRESS_CODE: "Dress Code / Pakaian",
+  PRODUCT_HANDLING: "Penanganan Produk",
+  PLATFORM_RULE: "Aturan Platform",
+  TECHNICAL: "Teknis",
+  OTHER: "Lainnya",
+};
