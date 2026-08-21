@@ -5,13 +5,26 @@ import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 
 const CLIENT_ROLES = ["CLIENT", "CLIENT_ADMIN", "SUPER_ADMIN"] as const;
 
+/**
+ * Resolve the brand client(s) owned by the current user's tenant. A client's
+ * schedules span BOTH the brand tenant (their own proposals) and the agency
+ * tenant (sessions the agency books for their brand), so we scope by clientId,
+ * not by tenant.
+ */
+async function resolveMyClientIds(user: { tenantId: string; role: string }): Promise<string[]> {
+  if (user.role === "SUPER_ADMIN") return []; // super admin sees all
+  if (!user.tenantId) return [];
+  const clients = await db.client.findMany({ where: { tenantId: user.tenantId }, select: { id: true } });
+  return clients.map((c) => c.id);
+}
+
 // ---------- T28: Own schedules ----------
 
 export async function mySchedules() {
   const user = await requireRole(...CLIENT_ROLES);
-  // CLIENT tenant is the brand tenant; their schedules = jadwal for their clients.
+  const clientIds = await resolveMyClientIds(user);
   return db.jadwal.findMany({
-    where: tenantWhere(user),
+    where: user.role === "SUPER_ADMIN" ? {} : clientIds.length ? { clientId: { in: clientIds } } : { clientId: null },
     orderBy: { tanggal: "desc" },
     include: { streamerKaryawan: true, client: true },
     take: 100,
@@ -27,8 +40,10 @@ export async function myClients() {
 
 export async function kpiDashboard() {
   const user = await requireRole(...CLIENT_ROLES);
+  const clientIds = await resolveMyClientIds(user);
+  const jadwalWhere = user.role === "SUPER_ADMIN" ? {} : clientIds.length ? { clientId: { in: clientIds } } : { clientId: null };
   const [jadwal, produk] = await Promise.all([
-    db.jadwal.findMany({ where: tenantWhere(user), select: { status: true, platform: true } }),
+    db.jadwal.findMany({ where: jadwalWhere, select: { status: true, platform: true } }),
     db.produk.findMany({ where: tenantWhere(user), select: { status: true } }),
   ]);
   const total = jadwal.length;

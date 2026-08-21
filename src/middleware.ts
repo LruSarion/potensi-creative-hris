@@ -20,6 +20,15 @@ const ROLE_ROUTES: Record<string, string[]> = {
   "/history-log": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   "/streamer-directory": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"],
   "/pipeline": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
+  "/input-jadwal": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
+  "/client": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
+  "/pengajuan-izin": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "STREAMER", "STAFF", "OTS"],
+  "/pengajuan-lembur": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "STREAMER", "STAFF", "OTS"],
+  "/tukar-shift": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STREAMER", "STAFF"],
+  "/penilaian-sdm": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"],
+  "/suara-karyawan": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "FINANCE_MANAGER", "QC_REVIEWER", "STREAMER", "STAFF", "OTS"],
+  "/streamer-dashboard": ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"],
+  "/staff-dashboard": ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"],
 };
 
 const { auth } = NextAuth(authConfig);
