@@ -11,6 +11,7 @@ const PORTAL_SECTIONS: Record<
       tiles: [
         { href: "/streamer-dashboard", label: "Dashboard Streamer", icon: "fa-video" },
         { href: "/tukar-shift", label: "Tukar Shift", icon: "fa-arrows-rotate" },
+        { href: "/portal/streamer", label: "Marketplace Proyek", icon: "fa-store" },
         { href: "/portal/streamer/lms", label: "Akademi & Pelatihan (LMS)", icon: "fa-graduation-cap" },
       ],
     },

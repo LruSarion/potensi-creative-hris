@@ -41,6 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/portal/trainer", label: "Portal Trainer", icon: "fa-chalkboard-user", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
   { href: "/portal/client", label: "Portal Brand Client", icon: "fa-chart-line", roles: ["SUPER_ADMIN", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
   { href: "/streamer-directory", label: "Direktori Streamer & Sertifikasi", icon: "fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
+  { href: "/portal/streamer", label: "Marketplace Proyek", icon: "fa-store", roles: ["STREAMER", "OTS", "SUPER_ADMIN"], section: "Portals Khusus" },
   { href: "/portal/streamer/lms", label: "LMS & Akademi Host", icon: "fa-graduation-cap", roles: ["SUPER_ADMIN", "STREAMER", "OTS"], section: "Portals Khusus" },
   { href: "/admin", label: "Admin Console", icon: "fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
   { href: "/history-log", label: "Audit & History Log", icon: "fa-clock-rotate-left", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
