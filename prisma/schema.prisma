@@ -133,23 +133,33 @@ model Tenant {
   qcReviews        SessionReview[]
   revenueEntries   RevenueEntry[]
   attachments      Attachment[]
+  streamerProfiles StreamerProfile[]
+  marketplaceListings MarketplaceListing[]
+  sopTemplates    SopTemplate[]
+  qcViolations    QcViolation[]
 
   @@map("tenants")
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String?
-  image        String?
-  role         Role      @default(STAFF)
-  tenantId     String?
-  pinHash      String?
-  pinSalt      String?
-  failedLogins Int       @default(0)
-  blockedUntil DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  role          Role      @default(STAFF)
+  tenantId      String?
+  pinHash       String?
+  pinSalt       String?
+  failedLogins  Int       @default(0)
+  blockedUntil  DateTime?
+  telegramChatId String?  @unique
+  telegramBindToken String?
+  telegramBindExpires DateTime?
+  telegramBoundAt DateTime?
+  telegramNotifPrefs Json?
+  telegramAbsensiState Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   tenant       Tenant?        @relation(fields: [tenantId], references: [id])
   karyawan     Karyawan?
@@ -223,6 +233,12 @@ model Karyawan {
   incidentsAssigned  Incident[]          @relation("IncidentAssignee")
   enrollments        Enrollment[]
   streamerBlacklists StreamerBlacklist[]
+  certificates      Certificate[]
+  streamerProfile   StreamerProfile?
+  projectApplications ProjectApplication[]
+  shortlistedBy     ClientShortlist[]
+  sopCompletions    SopTaskCompletion[]
+  qcViolations      QcViolation[]
 
   @@map("karyawan")
 }
@@ -281,6 +297,11 @@ model Client {
   jadwal             Jadwal[]
   billingDocs        BillingDoc[]
   streamerBlacklists StreamerBlacklist[]
+  courses     Course[]
+  listings    MarketplaceListing[]
+  certificates Certificate[]
+  streamerExperiences StreamerExperience[]
+  shortlisted  ClientShortlist[]
 
   @@map("clients")
 }
@@ -380,6 +401,9 @@ model Jadwal {
   billingLines     BillingLine[]
   sessionReviews   SessionReview[]
   revenueEntries   RevenueEntry[]
+  marketplaceListings MarketplaceListing[]
+  streamerExperiences StreamerExperience[]
+  qcViolations        QcViolation[]
 
   @@index([tanggal])
   @@index([streamerKaryawanId])
@@ -776,13 +800,18 @@ model Course {
   title        String
   description  String?  @db.Text
   coverDriveId String?
-  status       String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  status      String   @default("ACTIVE") // DRAFT | ACTIVE | ARCHIVED
+  isCertification Boolean @default(false) // passed exam grants brand certification
+  clientId    String?  // brand client this certification course certifies for
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  tenant      Tenant?      @relation(fields: [tenantId], references: [id])
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
+  client      Client?  @relation(fields: [clientId], references: [id])
   modules     Module[]
   enrollments Enrollment[]
+  certificates Certificate[]
+  listings    MarketplaceListing[]
 
   @@map("course")
 }
@@ -810,23 +839,31 @@ model Lesson {
   order             Int     @default(1)
   content           String? @db.Text
   attachmentDriveId String?
+  videoId     String?  // YouTube video ID for interactive video lessons
+  videoDuration Int?   // seconds, for watch-percentage tracking
 
-  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module      Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  videoWatches VideoWatch[]
+  questions   QuizQuestion[]
 
   @@map("course_lesson")
 }
 
 model QuizQuestion {
-  id            String           @id @default(cuid())
-  moduleId      String
-  type          QuizQuestionType @default(MCQ)
-  question      String           @db.Text
-  options       Json? // MCQ: string[] ; ESSAY: null
-  correctAnswer String? // MCQ: index/option ; ESSAY: reference answer
-  order         Int              @default(1)
+  id          String            @id @default(cuid())
+  moduleId    String
+  lessonId    String?
+  type        QuizQuestionType  @default(MCQ)
+  question    String            @db.Text
+  options     Json?
+  correctAnswer String?
+  order       Int               @default(1)
+  eventTime   Int?
+  isNote      Boolean           @default(false)
 
-  module   Module        @relation(fields: [moduleId], references: [id], onDelete: Cascade)
-  attempts QuizAttempt[]
+  module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lesson      Lesson?           @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  attempts    QuizAttempt[]
 
   @@map("quiz_question")
 }
@@ -859,25 +896,165 @@ model Enrollment {
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
 
-  course       Course        @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  karyawan     Karyawan      @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
-  attempts     QuizAttempt[]
-  certificates Certificate[]
+  course        Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  karyawan      Karyawan         @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  attempts      QuizAttempt[]
+  certificates  Certificate[]
+  videoWatches  VideoWatch[]
 
   @@unique([courseId, karyawanId])
   @@map("enrollment")
+}
+
+model VideoWatch {
+  id           String   @id @default(cuid())
+  enrollmentId String
+  lessonId     String
+  watchSeconds Int      @default(0)
+  watchPct     Int      @default(0)     // 0..100
+  completed    Boolean  @default(false)
+  submittedAt  DateTime?                // when the streamer submitted the video quiz
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, lessonId])
+  @@map("video_watch")
 }
 
 model Certificate {
   id           String    @id @default(cuid())
   code         String    @unique
   enrollmentId String
-  issuedAt     DateTime  @default(now())
-  revokedAt    DateTime?
+  courseId    String
+  clientId    String?
+  streamerKaryawanId String
+  issuedAt    DateTime  @default(now())
+  validTo     DateTime?
+  revokedAt   DateTime?
 
-  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  enrollment  Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  course      Course     @relation(fields: [courseId], references: [id])
+  client      Client?    @relation(fields: [clientId], references: [id])
+  streamer    Karyawan   @relation(fields: [streamerKaryawanId], references: [id])
 
+  @@index([streamerKaryawanId, clientId])
   @@map("certificate")
+}
+
+// ============================================================
+// STREAMER DIRECTORY + PROJECT MARKETPLACE
+// ============================================================
+
+enum ListingStatus {
+  OPEN
+  CLOSED
+  FILLED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  PICKED
+  DECLINED
+}
+
+model StreamerProfile {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  karyawanId    String   @unique
+  photoUrl      String?  // public profile photo (Drive URL / uploaded)
+  rating        Decimal  @default(0) @db.Decimal(3, 2)
+  totalSessions Int      @default(0)
+  availability  String   @default("FLEXIBLE") // FULL_TIME | PART_TIME | FLEXIBLE
+  bio           String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+  karyawan      Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+  experiences   StreamerExperience[]
+
+  @@map("streamer_profile")
+}
+
+model StreamerExperience {
+  id            String   @id @default(cuid())
+  streamerProfileId String
+  clientId      String?
+  jadwalId      String?
+  title         String
+  platform      String?
+  periode       String? // "Agustus 2026"
+  result        String? // summary e.g. GMV/sessions
+  status        String   @default("COMPLETED") // IN_PROGRESS | COMPLETED
+  clientRating  Decimal? @db.Decimal(3, 2) // client's rating (1-5)
+  clientTestimonial String? @db.Text // client's review
+  startedAt     DateTime @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  profile       StreamerProfile @relation(fields: [streamerProfileId], references: [id], onDelete: Cascade)
+  client        Client?  @relation(fields: [clientId], references: [id])
+  jadwal        Jadwal?  @relation(fields: [jadwalId], references: [id])
+
+  @@index([streamerProfileId])
+  @@map("streamer_experience")
+}
+
+model MarketplaceListing {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  clientId      String
+  jadwalId      String?  // proposed jadwal this listing recruits streamers for
+  courseId      String?  // required certification course to be eligible
+  title         String
+  description   String?  @db.Text
+  platform      String?
+  ratePerSesi   Decimal  @default(0) @db.Decimal(12, 2)
+  quota         Int      @default(1)
+  status        ListingStatus @default(OPEN)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id])
+  client        Client   @relation(fields: [clientId], references: [id])
+  jadwal        Jadwal?  @relation(fields: [jadwalId], references: [id])
+  course        Course?  @relation(fields: [courseId], references: [id])
+  applications  ProjectApplication[]
+
+  @@map("marketplace_listing")
+}
+
+model ProjectApplication {
+  id            String   @id @default(cuid())
+  listingId     String
+  streamerKaryawanId String
+  status        ApplicationStatus @default(APPLIED)
+  note          String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  listing       MarketplaceListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  streamer      Karyawan @relation(fields: [streamerKaryawanId], references: [id])
+
+  @@unique([listingId, streamerKaryawanId])
+  @@map("project_application")
+}
+
+// Client's shortlist of favorite streamers (for quick selection on new projects).
+model ClientShortlist {
+  id            String   @id @default(cuid())
+  clientId      String
+  streamerKaryawanId String
+  createdAt     DateTime @default(now())
+
+  client        Client   @relation(fields: [clientId], references: [id])
+  streamer      Karyawan @relation(fields: [streamerKaryawanId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, streamerKaryawanId])
+  @@map("client_shortlist")
 }
 
 // ============================================================
@@ -1028,6 +1205,102 @@ model RevenueEntry {
   jadwal Jadwal? @relation(fields: [jadwalId], references: [id])
 
   @@map("revenue_entry")
+}
+
+// ============================================================
+// SOP TASK CHECKLISTS (staff/OTS daily operational tasks)
+// ============================================================
+
+model SopTemplate {
+  id          String    @id @default(cuid())
+  tenantId    String?
+  title       String    // e.g. "Persiapan Studio Sebelum Live"
+  description String?   @db.Text
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tenant      Tenant?   @relation(fields: [tenantId], references: [id])
+  tasks       SopTask[]
+
+  @@map("sop_template")
+}
+
+model SopTask {
+  id          String    @id @default(cuid())
+  templateId  String
+  title       String    // specific task/checklist item
+  order       Int       @default(1)
+  requiresPhoto Boolean  @default(false)
+  createdAt   DateTime  @default(now())
+
+  template    SopTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  completions SopTaskCompletion[]
+
+  @@index([templateId, order])
+  @@map("sop_task")
+}
+
+model SopTaskCompletion {
+  id            String    @id @default(cuid())
+  taskId        String
+  karyawanId    String
+  tanggal       DateTime  @default(now())
+  completed     Boolean   @default(false)
+  photoUrl      String?   // photo evidence (required if task.requiresPhoto)
+  note          String?
+  createdAt     DateTime  @default(now())
+
+  task          SopTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  karyawan      Karyawan  @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, karyawanId, tanggal])
+  @@index([karyawanId, tanggal])
+  @@map("sop_task_completion")
+}
+
+// ============================================================
+// QC LIVE VIOLATIONS (monitoring pelanggaran live streaming)
+// ============================================================
+
+enum ViolationCategory {
+  GROOMING
+  ATTITUDE
+  LANGUAGE
+  DRESS_CODE
+  PRODUCT_HANDLING
+  PLATFORM_RULE
+  TECHNICAL
+  OTHER
+}
+
+enum ViolationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model QcViolation {
+  id            String            @id @default(cuid())
+  tenantId      String?
+  jadwalId      String?
+  streamerKaryawanId String
+  category      ViolationCategory
+  severity      ViolationSeverity @default(MEDIUM)
+  description   String?
+  photoUrl      String?           // bukti capture foto dari live streaming
+  videoUrl      String?           // bukti capture video dari live streaming
+  capturedById  String?           // QC reviewer user id
+  status        String            @default("OPEN") // OPEN | REVIEWED | CLOSED
+  createdAt     DateTime          @default(now())
+
+  tenant        Tenant?           @relation(fields: [tenantId], references: [id])
+  jadwal        Jadwal?           @relation(fields: [jadwalId], references: [id])
+  streamer      Karyawan          @relation(fields: [streamerKaryawanId], references: [id], onDelete: Cascade)
+
+  @@index([streamerKaryawanId, createdAt])
+  @@map("qc_violation")
 }
 
 // ============================================================

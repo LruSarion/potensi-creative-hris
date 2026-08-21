@@ -2,6 +2,7 @@ import { getCurrentUser } from "@/lib/auth-helpers";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import Link from "next/link";
+import TelegramConnect from "@/components/telegram-connect";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -104,6 +105,13 @@ export default async function DashboardPage() {
           <div className="text-xs font-semibold text-slate-500">Pending Approval</div>
           <div className="text-2xl font-black text-amber-600 mt-2">{pendingApprovals}</div>
           <div className="text-[11px] text-slate-400 mt-1">Izin / Lembur Menunggu</div>
+        </div>
+      </div>
+
+      {/* Telegram connect — all roles can bind their personal chat */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-1">
+          <TelegramConnect />
         </div>
       </div>
 

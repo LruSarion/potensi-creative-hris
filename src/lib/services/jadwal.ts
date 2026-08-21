@@ -8,6 +8,8 @@ import {
   validateTokenJeda,
   validateStudioRoomConflict,
   isTimeOverlapping,
+  TOKEN_JEDA_MINUTES,
+  type TransitionGapConfig,
 } from "@/lib/schedule-rules";
 
 export const jadwalSchema = z.object({
@@ -59,9 +61,17 @@ export async function getJadwal(id: string) {
 
 /**
  * Validate token-jeda for a streamer against existing schedules.
- * Throws if the new schedule violates the 30-min rest rule.
+ * Throws if the new schedule violates the rest rule (configurable gap).
  */
-async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, tenantId: string, excludeId?: string) {
+async function assertTokenJedaOk(
+  streamerId: string,
+  start: Date,
+  end: Date,
+  tenantId: string,
+  nextStudio: { cabang: string | null; nomor: string | null },
+  config: TransitionGapConfig,
+  excludeId?: string
+) {
   const others = await db.jadwal.findMany({
     where: {
       streamerKaryawanId: streamerId,
@@ -69,7 +79,7 @@ async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, ten
       status: { notIn: ["DIBATALKAN", "REJECTED"] },
       ...(excludeId ? { id: { not: excludeId } } : {}),
     },
-    select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true },
+    select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true, cabangStudio: true, nomorStudio: true },
   });
 
   // (A) Same-streamer overlap: a streamer cannot be in two sessions at once.
@@ -81,13 +91,42 @@ async function assertTokenJedaOk(streamerId: string, start: Date, end: Date, ten
     }
   }
 
-  // (B) Token-jeda rest rule: 30 min between sessions for the same streamer.
+  // (B) Transition gap: context-aware (same studio / same branch / cross branch).
   const result = validateTokenJeda(
     start,
-    others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
+    others.map((o) => ({
+      start: o.jamMulaiLive,
+      end: o.jamSelesaiLive,
+      studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
+    })),
+    config.restGapMinutes ?? TOKEN_JEDA_MINUTES,
+    config,
+    nextStudio
   );
   if (result === "TIDAK") {
-    throw AppError.conflict("Streamer tidak dapat dijadwalkan: bentrok dengan jeda token (30 menit).");
+    throw AppError.conflict(
+      `Streamer tidak dapat dijadwalkan: perlu jeda pergantian studio/branch sebelum sesi ini.`
+    );
+  }
+}
+
+/**
+ * Resolve the agency's configured transition-gap settings. Reads Tenant.config
+ * (sameStudioGapMinutes / sameBranchGapMinutes / crossBranchGapMinutes /
+ * restGapMinutes), falling back to sensible defaults.
+ */
+async function resolveTransitionConfig(tenantId: string): Promise<TransitionGapConfig> {
+  try {
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
+    const cfg = (tenant?.config ?? {}) as TransitionGapConfig;
+    return {
+      restGapMinutes: cfg.restGapMinutes ?? TOKEN_JEDA_MINUTES,
+      sameStudioGapMinutes: cfg.sameStudioGapMinutes,
+      sameBranchGapMinutes: cfg.sameBranchGapMinutes,
+      crossBranchGapMinutes: cfg.crossBranchGapMinutes,
+    };
+  } catch {
+    return { restGapMinutes: TOKEN_JEDA_MINUTES };
   }
 }
 
@@ -144,8 +183,11 @@ export async function createJadwal(input: JadwalInput) {
   const tanggal = new Date(parsed.tanggal);
   if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
 
+  const transitionConfig = await resolveTransitionConfig(user.tenantId);
+  const nextStudio = { cabang: parsed.cabangStudio ?? null, nomor: parsed.nomorStudio ?? null };
+
   if (parsed.streamerKaryawanId) {
-    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId);
+    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, nextStudio, transitionConfig);
   }
 
   const studioIdentifier = `${parsed.cabangStudio ?? ""} ${parsed.nomorStudio ?? ""}`.trim();
@@ -182,8 +224,11 @@ export async function updateJadwal(id: string, input: JadwalInput) {
   const end = new Date(parsed.jamSelesaiLive);
   const tanggal = new Date(parsed.tanggal);
 
+  const transitionConfig = await resolveTransitionConfig(user.tenantId);
+  const nextStudio = { cabang: parsed.cabangStudio ?? null, nomor: parsed.nomorStudio ?? null };
+
   if (parsed.streamerKaryawanId) {
-    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, id);
+    await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, nextStudio, transitionConfig, id);
   }
 
   return db.jadwal.update({
@@ -210,6 +255,7 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
 
   // Validate all rows first (fail fast, atomic)
   const parsedRows = rows.map((r) => jadwalSchema.parse(r));
+  const transitionConfig = await resolveTransitionConfig(user.tenantId);
 
   return db.$transaction(async (tx) => {
     const created = [];
@@ -217,6 +263,7 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
       const start = new Date(parsed.jamMulaiLive);
       const end = new Date(parsed.jamSelesaiLive);
       const tanggal = new Date(parsed.tanggal);
+      const nextStudio = { cabang: parsed.cabangStudio ?? null, nomor: parsed.nomorStudio ?? null };
 
       if (parsed.streamerKaryawanId) {
         const others = await tx.jadwal.findMany({
@@ -225,7 +272,7 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
             tenantId: user.tenantId,
             status: { notIn: ["DIBATALKAN", "REJECTED"] },
           },
-          select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true },
+          select: { idJadwal: true, jamMulaiLive: true, jamSelesaiLive: true, cabangStudio: true, nomorStudio: true },
         });
         // Same-streamer overlap within the batch + existing.
         for (const o of others) {
@@ -235,10 +282,17 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
         }
         const result = validateTokenJeda(
           start,
-          others.map((o) => ({ start: o.jamMulaiLive, end: o.jamSelesaiLive }))
+          others.map((o) => ({
+            start: o.jamMulaiLive,
+            end: o.jamSelesaiLive,
+            studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
+          })),
+          transitionConfig.restGapMinutes ?? TOKEN_JEDA_MINUTES,
+          transitionConfig,
+          nextStudio
         );
         if (result === "TIDAK") {
-          throw AppError.conflict(`Batch dibatalkan: bentrok jeda token untuk ${parsed.idJadwal}`);
+          throw AppError.conflict(`Batch dibatalkan: bentrok jeda pergantian studio/branch untuk ${parsed.idJadwal}`);
         }
       }
 

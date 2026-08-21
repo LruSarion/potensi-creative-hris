@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import CameraCapture from "@/components/camera-capture";
 
 type Jadwal = {
   id: string;
@@ -55,6 +56,9 @@ export default function StreamerDashboardPage() {
   const [activeSession, setActiveSession] = useState<{ id: string; waktu: string } | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [pendingGmvList, setPendingGmvList] = useState<any[]>([]);
+  const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
+  const [violations, setViolations] = useState<any[]>([]);
+  const [violationSummary, setViolationSummary] = useState<{ count: number; byCategory: Record<string, number>; critical: number } | null>(null);
 
   // Checkin modal/inputs
   const [checkinModalOpen, setCheckinModalOpen] = useState(false);
@@ -69,17 +73,32 @@ export default function StreamerDashboardPage() {
 
   useEffect(() => {
     loadData();
+    loadViolations();
   }, []);
+
+  async function loadViolations() {
+    try {
+      const [listRes, sumRes] = await Promise.all([
+        fetch("/api/qc-violation").then((r) => r.json()),
+        fetch("/api/qc-violation?view=summary").then((r) => r.json()),
+      ]);
+      if (listRes.status === "success") setViolations(listRes.data ?? []);
+      if (sumRes.status === "success") setViolationSummary(sumRes.data);
+    } catch {
+      // ignore
+    }
+  }
 
   async function loadData() {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes, dRes, pRes] = await Promise.all([
+      const [jRes, sRes, dRes, pRes, tRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
         fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=dashboard").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=pending-gmv").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
+        fetch("/api/payroll?tiering=1").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);
@@ -88,6 +107,14 @@ export default function StreamerDashboardPage() {
       if (sRes.status === "success") setActiveSession(sRes.data);
       if (dRes.status === "success") setDashboardData(dRes.data);
       if (pRes.status === "success") setPendingGmvList(pRes.data || []);
+      if (tRes.status === "success") {
+        setTiering((tRes.data ?? []).map((b: any) => ({
+          tier: b.tier,
+          jamMinimal: b.jamMinimal,
+          jamMaksimal: b.jamMaksimal,
+          ratePerJam: Number(b.ratePerJam),
+        })));
+      }
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
     } finally {
@@ -209,6 +236,12 @@ export default function StreamerDashboardPage() {
 
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
 
+  const totalLiveHours = dashboardData?.totalJam ?? 0;
+  // Resolve the current tier + rate from the REAL tiering config (DB), so the
+  // displayed tier is always accurate and matches payroll.
+  const matchedTier = tiering.find((b) => totalLiveHours >= b.jamMinimal && totalLiveHours <= b.jamMaksimal);
+  const currentTier = matchedTier?.tier ?? (tiering.length ? "Tidak ada tier" : "Basic");
+  const currentRate = matchedTier?.ratePerJam ?? 25000;
 
   return (
     <div className="space-y-6">
@@ -260,16 +293,18 @@ export default function StreamerDashboardPage() {
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Tier Pencapaian</span>
             <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold text-white">{dashboardData?.activeTier?.nama ?? "—"}</span>
+              <span className="text-base font-extrabold text-white">
+                {currentTier}
+              </span>
               <span className="text-[10px] text-amber-300 font-semibold bg-amber-400/20 px-2 py-0.5 rounded-full">
-                Rp {dashboardData?.activeTier?.ratePerJam?.toLocaleString("id-ID") ?? "0"}/jam
+                Rp {currentRate.toLocaleString("id-ID")}/jam
               </span>
             </div>
           </div>
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Total Jam Live Bulan Ini</span>
             <div className="text-base font-extrabold text-blue-300">
-              {dashboardData?.totalJam ?? 0} <span className="text-xs text-slate-400 font-normal">Jam</span>
+              {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ {matchedTier?.jamMaksimal ?? 80} Jam Target</span>
             </div>
           </div>
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
@@ -597,6 +632,56 @@ export default function StreamerDashboardPage() {
         </div>
       </div>
 
+      {/* QC Violations */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+            <i className="fa-solid fa-shield-halved text-amber-500" />
+            Catatan Pelanggaran QC
+          </h3>
+          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+            (violationSummary?.count ?? 0) > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+          }`}>
+            {(violationSummary?.count ?? 0) > 0 ? `${violationSummary?.count} pelanggaran` : "Bersih ✓"}
+          </span>
+        </div>
+        {violations.length > 0 ? (
+          <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
+            {violations.map((v) => (
+              <div key={v.id} className="p-4 flex items-start gap-3">
+                {v.photoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={v.photoUrl} alt="Bukti" className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                )}
+                {v.videoUrl && !v.photoUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <video src={v.videoUrl} controls className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+                )}
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
+                      {v.category}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      v.severity === "CRITICAL" || v.severity === "HIGH" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {v.severity}
+                    </span>
+                  </div>
+                  {v.description && <div className="text-[11px] text-slate-600 mt-1">{v.description}</div>}
+                  <div className="text-[10px] text-slate-400 mt-1">{new Date(v.createdAt).toLocaleString("id-ID")}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-6 text-center text-slate-400 text-xs">
+            <i className="fa-solid fa-circle-check text-2xl text-emerald-400 block mb-1" />
+            Tidak ada catatan pelanggaran QC.
+          </div>
+        )}
+      </div>
+
       {/* Check-In Modal */}
       {checkinModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -628,13 +713,11 @@ export default function StreamerDashboardPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Link Foto Bukti / Studio Selfie (Opsional)</label>
-              <input
-                type="text"
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Foto Bukti / Studio Selfie</label>
+              <CameraCapture
                 value={fotoBuktiUrl}
-                onChange={(e) => setFotoBuktiUrl(e.target.value)}
-                placeholder="https://drive.google.com/... atau URL foto"
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                onChange={setFotoBuktiUrl}
+                label="📷 Ambil Foto Check-In"
               />
             </div>
 

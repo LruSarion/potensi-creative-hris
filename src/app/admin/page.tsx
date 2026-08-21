@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import TelegramConfigAdmin from "@/components/telegram-config-admin";
 
 export default function AdminConsolePage() {
   const [matrix, setMatrix] = useState<any>(null);
@@ -18,9 +19,18 @@ export default function AdminConsolePage() {
   const [tiers, setTiers] = useState<any[]>([]);
   const [loadingTiers, setLoadingTiers] = useState(false);
 
+  // LLM (OpenRouter) config state
+  const [llmKey, setLlmKey] = useState("");
+  const [llmModel, setLlmModel] = useState("");
+  const [llmModels, setLlmModels] = useState<string[]>([]);
+  const [llmConfigured, setLlmConfigured] = useState(false);
+  const [llmSource, setLlmSource] = useState("none");
+  const [llmLoadingModels, setLlmLoadingModels] = useState(false);
+
   useEffect(() => {
     load();
     loadTiering();
+    loadLlm();
   }, []);
 
   async function load() {
@@ -39,6 +49,61 @@ export default function AdminConsolePage() {
     }
   }
 
+  async function loadLlm() {
+    try {
+      const r = await fetch("/api/llm-config");
+      const d = await r.json();
+      if (d.status === "success") {
+        setLlmConfigured(d.data.configured ?? false);
+        setLlmModel(d.data.model ?? "openai/gpt-4o-mini");
+        setLlmSource(d.data.source ?? "none");
+        if (d.data.configured) loadLlmModels();
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadLlmModels() {
+    setLlmLoadingModels(true);
+    try {
+      const r = await fetch("/api/llm-config?models=1");
+      const d = await r.json();
+      if (d.status === "success" && d.data.models?.length) setLlmModels(d.data.models);
+    } catch {
+      // ignore
+    } finally {
+      setLlmLoadingModels(false);
+    }
+  }
+
+  async function saveLlm(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    try {
+      const r = await fetch("/api/llm-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: llmKey, model: llmModel }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setSuccess("Konfigurasi LLM (OpenRouter) berhasil disimpan!");
+        setLlmConfigured(true);
+        setLlmKey("");
+        setLlmSource("tenant");
+        loadLlmModels();
+      } else {
+        setError(d.message ?? "Gagal menyimpan konfigurasi LLM");
+      }
+    } catch {
+      setError("Gagal menyimpan konfigurasi LLM");
+    }
+  }
+
+  const rupiah = (v: number) => `Rp ${v.toLocaleString("id-ID")}`;
+
   // Real tiering rates from the payroll engine (not hardcoded).
   async function loadTiering() {
     setLoadingTiers(true);
@@ -52,8 +117,6 @@ export default function AdminConsolePage() {
       setLoadingTiers(false);
     }
   }
-
-  const rupiah = (v: number) => `Rp ${v.toLocaleString("id-ID")}`;
 
   return (
     <div className="space-y-6">
@@ -199,6 +262,84 @@ export default function AdminConsolePage() {
           </div>
         </div>
       </div>
+
+      {/* LLM (OpenRouter) Configuration */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+          <h3 className="font-bold text-slate-800 text-sm">Konfigurasi AI Converter (OpenRouter)</h3>
+          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+            llmConfigured ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
+          }`}>
+            {llmConfigured ? "AKTIF" : "NON-AKTIF"}
+          </span>
+        </div>
+        <div className="p-5 space-y-4">
+          {llmConfigured && (
+            <p className="text-[11px] text-slate-500">
+              AI aktif dari sumber: <strong>{llmSource === "tenant" ? "Pengaturan ini" : "Environment"}</strong>. Model:{" "}
+              <strong className="text-slate-700">{llmModel}</strong>
+            </p>
+          )}
+          <form onSubmit={saveLlm} className="space-y-4 text-xs">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">API Key OpenRouter</label>
+              <input
+                type="password"
+                value={llmKey}
+                onChange={(e) => setLlmKey(e.target.value)}
+                placeholder={llmConfigured ? "•••••••• (key tersimpan — kosongkan bila tidak diubah)" : "sk-or-..."}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Dapatkan di openrouter.ai. Key disimpan aman di pengaturan tenant.
+              </p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="block font-semibold text-slate-700 mb-1">Model AI</label>
+                <button
+                  type="button"
+                  onClick={loadLlmModels}
+                  className="text-[10px] text-blue-600 hover:underline font-semibold"
+                >
+                  {llmLoadingModels ? "Memuat..." : "Muat daftar model"}
+                </button>
+              </div>
+              <select
+                value={llmModel}
+                onChange={(e) => setLlmModel(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="">-- Pilih model --</option>
+                {llmModels.length > 0 ? (
+                  llmModels.map((m) => <option key={m} value={m}>{m}</option>)
+                ) : (
+                  <>
+                    <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+                    <option value="anthropic/claude-3.5-sonnet">anthropic/claude-3.5-sonnet</option>
+                    <option value="google/gemini-2.0-flash">google/gemini-2.0-flash</option>
+                    <option value="mistralai/mistral-small">mistralai/mistral-small</option>
+                    <option value="meta-llama/llama-3.3-70b-instruct">meta-llama/llama-3.3-70b-instruct</option>
+                  </>
+                )}
+              </select>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="submit"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20"
+              >
+                Simpan Konfigurasi AI
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Telegram bot config */}
+      <TelegramConfigAdmin />
     </div>
   );
 }

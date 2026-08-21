@@ -1,20 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import VideoLessonPlayer from "@/components/lms/video-lesson-player";
 
 type Question = {
   id: string;
+  moduleId: string;
+  lessonId: string | null;
   type: string;
   question: string;
   options: string[] | null;
   correctAnswer: string | null;
+  eventTime: number | null;
+  isNote: boolean;
 };
 
 type Lesson = {
   id: string;
+  moduleId: string;
   title: string;
   content: string | null;
   order: number;
+  videoId: string | null;
+  videoDuration: number | null;
 };
 
 type Module = {
@@ -349,10 +357,28 @@ export default function StreamerLmsPage() {
                           {lIdx + 1}
                         </span>
                         <span>{les.title}</span>
+                        {les.videoId && (
+                          <span className="ml-auto text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <i className="fa-solid fa-circle-play text-[10px]" /> Video Interaktif
+                          </span>
+                        )}
                       </h4>
-                      <p className="whitespace-pre-line pl-7 text-slate-600">
-                        {les.content || "Pelajari panduan materi SOP live streaming ini sebelum melanjutkan ke sesi kuis kompetensi."}
-                      </p>
+                      {les.videoId ? (
+                        <VideoLessonPlayer
+                          lesson={les}
+                          enrollmentId={selectedEnrollment.id}
+                          questions={
+                            selectedEnrollment.course.modules[activeModuleIdx]?.questions?.filter(
+                              (q) => q.eventTime != null && q.lessonId === les.id
+                            ) ?? []
+                          }
+                          onSubmitted={() => loadData()}
+                        />
+                      ) : (
+                        <p className="whitespace-pre-line pl-7 text-slate-600">
+                          {les.content || "Pelajari panduan materi SOP live streaming ini sebelum melanjutkan ke sesi kuis kompetensi."}
+                        </p>
+                      )}
                     </div>
                   ))}
 

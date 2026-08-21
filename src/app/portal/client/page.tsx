@@ -29,7 +29,11 @@ export default function ClientPortalPage() {
   const [kpi, setKpi] = useState<any>(null);
   const [schedules, setSchedules] = useState<Jadwal[]>([]);
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([]);
-  const [activeTab, setActiveTab] = useState<"schedules" | "feedback" | "propose">("schedules");
+  const [activeTab, setActiveTab] = useState<"schedules" | "feedback" | "propose" | "streamers" | "projects">("schedules");
+  const [streamers, setStreamers] = useState<any[]>([]);
+  const [listings, setListings] = useState<any[]>([]);
+  const [shortlist, setShortlist] = useState<Set<string>>(new Set());
+  const [streamerFilter, setStreamerFilter] = useState<"all" | "certified" | "shortlist">("all");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,6 +53,8 @@ export default function ClientPortalPage() {
   const [proposeForm, setProposeForm] = useState({
     idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
     tanggal: new Date().toISOString().slice(0, 10),
+    jamMulai: "10:00",
+    jamSelesai: "12:00",
     platform: "Shopee Live",
     judulLive: "",
     promoLive: "",
@@ -63,20 +69,68 @@ export default function ClientPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [kpiRes, schRes, fbRes] = await Promise.all([
+      const [kpiRes, schRes, fbRes, strRes, listRes, shRes] = await Promise.all([
         fetch("/api/client-portal?view=kpi").then((r) => r.json()),
         fetch("/api/client-portal?view=schedules").then((r) => r.json()),
         fetch("/api/client-portal?view=feedback").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/streamer-directory").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/marketplace?view=listings").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/marketplace?view=shortlist").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
       ]);
 
       if (kpiRes.status === "success") setKpi(kpiRes.data);
       if (schRes.status === "success") setSchedules(schRes.data);
       if (fbRes.status === "success") setFeedbackList(fbRes.data);
+      if (strRes.status === "success") setStreamers(strRes.data);
+      if (listRes.status === "success") setListings(listRes.data);
+      if (shRes.status === "success") {
+        setShortlist(new Set((shRes.data ?? []).map((x: any) => x.streamerId)));
+      }
       else if (kpiRes.status === "error") setError(kpiRes.message ?? "Akses ditolak");
     } catch {
       setError("Gagal memuat data portal brand partner");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function toggleShortlist(streamerId: string) {
+    try {
+      const r = await fetch("/api/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle-shortlist", streamerKaryawanId: streamerId }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setShortlist((prev) => {
+          const next = new Set(prev);
+          if (d.data.shortlisted) next.add(streamerId); else next.delete(streamerId);
+          return next;
+        });
+        setSuccess(d.data.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.");
+      }
+    } catch {
+      setError("Gagal memperbarui shortlist");
+    }
+  }
+
+  async function rateExperience(experienceId: string, rating: number) {
+    try {
+      const r = await fetch("/api/experience-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ experienceId, rating }),
+      });
+      const d = await r.json();
+      if (d.status === "success") {
+        setSuccess("Penilaian berhasil disimpan!");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal memberi penilaian");
+      }
+    } catch {
+      setError("Gagal memberi penilaian");
     }
   }
 
@@ -138,6 +192,8 @@ export default function ClientPortalPage() {
         setProposeForm({
           idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
           tanggal: new Date().toISOString().slice(0, 10),
+          jamMulai: "10:00",
+          jamSelesai: "12:00",
           platform: "Shopee Live",
           judulLive: "",
           promoLive: "",
@@ -147,6 +203,27 @@ export default function ClientPortalPage() {
         loadData();
       } else {
         setError(d.message ?? "Gagal mengajukan jadwal");
+      }
+    } catch {
+      setError("Terjadi kesalahan koneksi");
+    }
+  }
+
+  async function decideApplication(applicationId: string, decision: "PICKED" | "DECLINED") {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "decide", applicationId, decision }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess(decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal memproses lamaran");
       }
     } catch {
       setError("Terjadi kesalahan koneksi");
@@ -192,6 +269,24 @@ export default function ClientPortalPage() {
           >
             <i className="fa-solid fa-plus" />
             <span>Ajukan Jadwal Baru</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("streamers")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "streamers" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-users" />
+            <span>Certified Streamers</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("projects")}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+              activeTab === "projects" ? "bg-blue-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-briefcase" />
+            <span>Proyek Saya & Rekrutmen ({listings.length})</span>
           </button>
         </div>
       </div>
@@ -545,6 +640,26 @@ export default function ClientPortalPage() {
                   required
                 />
               </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Jam Mulai</label>
+                <input
+                  type="time"
+                  value={proposeForm.jamMulai}
+                  onChange={(e) => setProposeForm({ ...proposeForm, jamMulai: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Jam Selesai</label>
+                <input
+                  type="time"
+                  value={proposeForm.jamSelesai}
+                  onChange={(e) => setProposeForm({ ...proposeForm, jamSelesai: e.target.value })}
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
             </div>
 
             <div>
@@ -611,6 +726,242 @@ export default function ClientPortalPage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Tab 4: Certified Streamers Hub */}
+      {activeTab === "streamers" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="font-bold text-slate-900 text-lg">Hub Streamer</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Pilih streamer bersertifikat untuk proyek Anda. Tandai favorit via shortlist.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
+                {(["all", "certified", "shortlist"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setStreamerFilter(f)}
+                    className={`px-3 py-1 rounded-lg text-[11px] font-semibold capitalize transition ${
+                      streamerFilter === f ? "bg-white text-blue-600 shadow-sm" : "text-slate-600"
+                    }`}
+                  >
+                    {f === "all" ? "Semua" : f === "certified" ? "Bersertifikat" : "Shortlist"}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-slate-500">{streamers.length} streamer</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {streamers
+              .filter((s) => {
+                if (streamerFilter === "certified") return (s.certifiedFor?.length ?? 0) > 0;
+                if (streamerFilter === "shortlist") return shortlist.has(s.id);
+                return true;
+              })
+              .map((s) => {
+              const certCount = s.certifiedFor?.length ?? 0;
+              const isShortlisted = shortlist.has(s.id);
+              return (
+                <div key={s.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-16 h-16 rounded-full bg-blue-600/10 border-2 border-blue-200 overflow-hidden flex items-center justify-center">
+                        {s.photoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={s.photoUrl} alt={s.namaLengkap} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-xl font-black text-blue-600">{s.namaLengkap?.charAt(0) ?? "?"}</span>
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm">{s.namaLengkap}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">{s.idKaryawan}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {s.totalSessions ?? 0} sesi • {s.availability ?? "FLEXIBLE"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="text-xs font-bold text-amber-500">★ {Number(s.rating).toFixed(1)}</span>
+                      <button
+                        onClick={() => toggleShortlist(s.id)}
+                        className={`text-[11px] font-bold px-2 py-1 rounded-lg border transition ${
+                          isShortlisted
+                            ? "bg-blue-600 text-white border-blue-600"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {isShortlisted ? "★ Shortlisted" : "☆ Shortlist"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {s.bio && <p className="text-xs text-slate-600 mt-3 leading-relaxed line-clamp-2">{s.bio}</p>}
+
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {certCount > 0 ? (
+                      s.certifiedFor.map((c: any, i: number) => (
+                        <span
+                          key={i}
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-emerald-200 bg-emerald-50 text-emerald-700"
+                        >
+                          ✓ {c.clientName ?? "Brand"}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border border-slate-200 bg-slate-50 text-slate-500">
+                        Belum bersertifikasi
+                      </span>
+                    )}
+                  </div>
+
+                  {(s.experiences ?? []).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                        Pengalaman ({s.experiences.length})
+                      </div>
+                      <div className="space-y-1.5">
+                        {(s.experiences as any[]).slice(0, 3).map((x: any) => (
+                          <div key={x.id} className="text-[11px] text-slate-600">
+                            <div>• {x.title} <span className="text-slate-400">({x.platform ?? "-"})</span></div>
+                            {x.clientRating ? (
+                              <div className="pl-3 text-amber-500">★ {x.clientRating.toFixed(1)} {x.clientTestimonial ? `— "${x.clientTestimonial}"` : ""}</div>
+                            ) : (
+                              <div className="pl-3 flex items-center gap-0.5">
+                                {[1, 2, 3, 4, 5].map((star) => (
+                                  <button
+                                    key={star}
+                                    onClick={() => rateExperience(x.id, star)}
+                                    className="text-amber-400 hover:scale-110 transition"
+                                    title={`Nilai ${star} bintang`}
+                                  >
+                                    ★
+                                  </button>
+                                ))}
+                                <span className="text-slate-400 ml-1">nilai proyek</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {(s.experiences as any[]).length > 3 && (
+                          <div className="text-[10px] text-slate-400">
+                            +{(s.experiences as any[]).length - 3} lainnya
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {streamers.length === 0 && (
+              <div className="col-span-2 p-10 text-center text-slate-400 text-xs">
+                Belum ada data streamer.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: My Projects (Listings) */}
+      {activeTab === "projects" && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-bold text-slate-900 text-lg">Proyek Saya & Rekrutmen Streamer</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Listing proyek live, lamaran streamer bersertifikat, dan persetujuan rekrutmen.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {listings.map((l) => {
+              const picked = (l.applications ?? []).filter((a: any) => a.status === "PICKED").length;
+              return (
+                <div key={l.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-slate-900">{l.title}</div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        l.status === "OPEN"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : l.status === "FILLED"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                      }`}
+                    >
+                      {l.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500">{l.description}</div>
+                  <div className="flex flex-wrap gap-3 text-[11px] text-slate-600">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100">{l.platform ?? "-"}</span>
+                    <span className="font-mono">Rp {Number(l.ratePerSesi).toLocaleString("id-ID")}/sesi</span>
+                    <span>Kuota: {picked}/{l.quota}</span>
+                    {l.course && (
+                      <span className="text-emerald-600 font-semibold">Sertifikasi: {l.course.title}</span>
+                    )}
+                  </div>
+
+                  {/* Applications */}
+                  {(l.applications ?? []).length > 0 && (
+                    <div className="border-t border-slate-100 pt-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Lamaran Streamer ({l.applications.length})
+                      </div>
+                      {(l.applications as any[]).map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                          <div>
+                            <div className="text-xs font-bold text-slate-800">
+                              {a.streamer?.namaLengkap ?? "-"}
+                              <span className="text-slate-400 font-mono ml-1">({a.streamer?.idKaryawan})</span>
+                            </div>
+                            {a.note && <div className="text-[11px] text-slate-500 mt-0.5">"{a.note}"</div>}
+                          </div>
+                          {a.status === "APPLIED" ? (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => decideApplication(a.id, "PICKED")}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition"
+                              >
+                                ✓ Terima (Pick)
+                              </button>
+                              <button
+                                onClick={() => decideApplication(a.id, "DECLINED")}
+                                className="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition"
+                              >
+                                Tolak
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                a.status === "PICKED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-100 text-slate-500 border-slate-200"
+                              }`}
+                            >
+                              {a.status === "PICKED" ? "DITERIMA" : "DITOLAK"}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {listings.length === 0 && (
+              <div className="p-10 text-center text-slate-400 text-xs">
+                Belum ada proyek. Ajukan jadwal atau hubungi admin untuk membuka listing.
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

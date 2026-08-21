@@ -27,11 +27,11 @@ export default function ApprovalPage() {
     }
   }
 
-  async function act(id: string, action: "approve" | "reject") {
+  async function act(id: string, action: "approve" | "reject", type: string = "jadwal") {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch(`/api/approval?id=${id}&action=${action}`, { method: "PATCH" });
+      const r = await fetch(`/api/approval?id=${id}&action=${action}&type=${type}`, { method: "PATCH" });
       const d = await r.json();
       if (d.status === "success") {
         setSuccess(`Pengajuan berhasil di-${action === "approve" ? "setujui" : "tolak"}!`);
@@ -88,18 +88,32 @@ export default function ApprovalPage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
               <tr>
-                <th className="px-4 py-3">ID Jadwal</th>
-                <th className="px-4 py-3">Tanggal Siaran</th>
-                <th className="px-4 py-3">Streamer / Host</th>
-                <th className="px-4 py-3">Brand & Platform</th>
+                <th className="px-4 py-3">Jenis</th>
+                <th className="px-4 py-3">Referensi</th>
+                <th className="px-4 py-3">Tanggal</th>
+                <th className="px-4 py-3">Pemohon</th>
+                <th className="px-4 py-3">Detail</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Aksi Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {list.map((j) => (
-                <tr key={j.id} className="hover:bg-slate-50/80 transition">
-                  <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{j.idJadwal}</td>
+                <tr key={`${j.type}-${j.id}`} className="hover:bg-slate-50/80 transition">
+                  <td className="px-4 py-3">
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        j.type === "izin"
+                          ? "bg-sky-50 text-sky-700 border-sky-200"
+                          : j.type === "lembur"
+                            ? "bg-violet-50 text-violet-700 border-violet-200"
+                            : "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}
+                    >
+                      {j.type === "izin" ? "Izin/Cuti" : j.type === "lembur" ? "Lembur" : "Jadwal"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{j.ref}</td>
                   <td className="px-4 py-3 font-semibold text-slate-800">
                     {new Date(j.tanggal).toLocaleDateString("id-ID", {
                       weekday: "short",
@@ -110,15 +124,15 @@ export default function ApprovalPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="font-bold text-slate-800">
-                      {j.streamerKaryawan?.namaLengkap ?? "Belum Ditentukan"}
+                      {j.namaLengkap ?? "Belum Ditentukan"}
                     </div>
                     <div className="text-[10px] text-slate-400 font-mono">
-                      {j.streamerKaryawan?.idKaryawan ?? "-"}
+                      {j.idKaryawan ?? "-"}
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-800">{j.client?.namaClient ?? "General"}</div>
-                    <span className="text-[10px] text-slate-500">{j.platform ?? "Shopee"}</span>
+                    <div className="font-semibold text-slate-800">{j.detail}</div>
+                    {j.alasan && <span className="text-[10px] text-slate-500">{j.alasan}</span>}
                   </td>
                   <td className="px-4 py-3">
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
@@ -127,13 +141,13 @@ export default function ApprovalPage() {
                   </td>
                   <td className="px-4 py-3 text-right space-x-2">
                     <button
-                      onClick={() => act(j.id, "approve")}
+                      onClick={() => act(j.id, "approve", j.type)}
                       className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-sm"
                     >
-                      Setujui (Approve)
+                      Setujui
                     </button>
                     <button
-                      onClick={() => act(j.id, "reject")}
+                      onClick={() => act(j.id, "reject", j.type)}
                       className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition shadow-sm"
                     >
                       Tolak

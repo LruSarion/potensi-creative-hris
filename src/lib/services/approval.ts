@@ -45,16 +45,69 @@ export async function addPengajuanMarketplace(input: PengajuanInput) {
 /**
  * List jadwal pending approval (approvers) or own submissions (requesters).
  */
+/**
+ * Approval list aggregating all pending requests across module types:
+ *  - jadwal  (schedule plotting)   -> processApproval
+ *  - izin    (leave/cuti)          -> approveIzin
+ *  - lembur  (overtime)            -> approveLembur
+ * Approvers see all pending; requesters see only their own.
+ */
 export async function getApprovalList() {
   const user = await requireRole();
   const isApprover = APPROVER_ROLES.includes(user.role);
-  return db.jadwal.findMany({
-    where: isApprover
-      ? { status: "PENDING" }
-      : { status: "PENDING", streamerKaryawanId: user.karyawanId ?? undefined },
-    orderBy: { createdAt: "desc" },
-    include: { streamerKaryawan: true, client: true },
-  });
+
+  // Scope: approvers see everything; others only their own requests.
+  const izinWhere = isApprover
+    ? { status: "PENDING" as const }
+    : { status: "PENDING" as const, karyawanId: user.karyawanId ?? "__none__" };
+  const lemburWhere = isApprover
+    ? { status: "PENDING" as const }
+    : { status: "PENDING" as const, karyawanId: user.karyawanId ?? "__none__" };
+  const jadwalWhere = isApprover
+    ? { status: "PENDING" as const }
+    : { status: "PENDING" as const, streamerKaryawanId: user.karyawanId ?? undefined };
+
+  const [izin, lembur, jadwal] = await Promise.all([
+    db.izin.findMany({ where: izinWhere, include: { karyawan: true }, orderBy: { createdAt: "desc" } }),
+    db.lembur.findMany({ where: lemburWhere, include: { karyawan: true }, orderBy: { createdAt: "desc" } }),
+    db.jadwal.findMany({ where: jadwalWhere, include: { streamerKaryawan: true, client: true }, orderBy: { createdAt: "desc" } }),
+  ]);
+
+  return [
+    ...izin.map((r) => ({
+      type: "izin" as const,
+      id: r.id,
+      ref: "IZIN",
+      tanggal: r.tanggalMulai,
+      namaLengkap: r.karyawan?.namaLengkap ?? null,
+      idKaryawan: r.karyawan?.idKaryawan ?? null,
+      detail: r.jenis ?? "Izin",
+      alasan: r.alasan,
+      createdAt: r.createdAt,
+    })),
+    ...lembur.map((r) => ({
+      type: "lembur" as const,
+      id: r.id,
+      ref: "LEMBUR",
+      tanggal: r.tanggal,
+      namaLengkap: r.karyawan?.namaLengkap ?? null,
+      idKaryawan: r.karyawan?.idKaryawan ?? null,
+      detail: `Lembur ${r.jamMulai.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}–${r.jamSelesai.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`,
+      alasan: r.alasan,
+      createdAt: r.createdAt,
+    })),
+    ...jadwal.map((r) => ({
+      type: "jadwal" as const,
+      id: r.id,
+      ref: r.idJadwal,
+      tanggal: r.tanggal,
+      namaLengkap: r.streamerKaryawan?.namaLengkap ?? "Belum Ditentukan",
+      idKaryawan: r.streamerKaryawan?.idKaryawan ?? null,
+      detail: r.client?.namaClient ?? "General",
+      alasan: r.platform ?? null,
+      createdAt: r.createdAt,
+    })),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 /**

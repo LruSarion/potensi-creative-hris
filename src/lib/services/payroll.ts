@@ -2,7 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
-import { computeDurationMinutes, computePeriodeBulan } from "@/lib/schedule-rules";
+import { computeDurationMinutes, computeDurationMinutesOvernightSafe, computePeriodeBulan } from "@/lib/schedule-rules";
 import { matchTier } from "@/lib/tier";
 import type { Role } from "@/generated/prisma/enums";
 
@@ -147,14 +147,15 @@ export async function computePayroll(
     },
   });
   const lemburMinutes = lemburRecords.reduce(
-    (sum, l) => sum + computeDurationMinutes(l.jamMulai, l.jamSelesai),
+    (sum, l) => sum + Math.max(0, computeDurationMinutesOvernightSafe(l.jamMulai, l.jamSelesai)),
     0
   );
   const lemburHours = Math.round((lemburMinutes / 60) * 100) / 100;
   // Overtime standard rate: 1.5x base hourly tier rate
   const lemburPay = Math.round(lemburHours * tier.ratePerJam * 1.5);
 
-  const grossPay = baseGross + lemburPay + bonus;
+  // Safety clamp: pay can never be negative regardless of input data.
+  const grossPay = Math.max(0, baseGross + lemburPay + bonus);
   const netPay = Math.max(0, grossPay - deductions);
 
   const record = await db.payroll.upsert({

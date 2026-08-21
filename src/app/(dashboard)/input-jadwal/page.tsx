@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ScheduleCalendar from "@/components/schedule-calendar";
 
 const PLATFORMS = ["Shopee Live", "TikTok Shop", "Tokopedia Live", "Lazada Live"];
 const STUDIOS = [
@@ -15,7 +16,10 @@ export default function InputJadwalPage() {
   const [streamers, setStreamers] = useState<any[]>([]);
   const [clients, setClients] = useState<any[]>([]);
   const [recentJadwal, setRecentJadwal] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<"single" | "batch">("single");
+  const [allJadwal, setAllJadwal] = useState<any[]>([]);
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
+  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<"single" | "batch" | "calendar">("single");
 
   const [form, setForm] = useState({
     idJadwal: "",
@@ -59,7 +63,10 @@ export default function InputJadwalPage() {
 
       if (empRes.status === "success") setStreamers(empRes.data);
       if (clientRes.status === "success") setClients(clientRes.data);
-      if (jadwalRes.status === "success") setRecentJadwal(jadwalRes.data.slice(0, 10));
+      if (jadwalRes.status === "success") {
+        setAllJadwal(jadwalRes.data);
+        setRecentJadwal(jadwalRes.data.slice(0, 10));
+      }
     } catch {
       // ignore
     }
@@ -240,6 +247,15 @@ export default function InputJadwalPage() {
             }`}
           >
             Impor Massal (JSON)
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("calendar")}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition ${
+              activeTab === "calendar" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            Kalender
           </button>
         </div>
       </div>
@@ -599,6 +615,82 @@ export default function InputJadwalPage() {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Calendar Tab */}
+      {activeTab === "calendar" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-800 text-sm">Kalender Jadwal Livestream</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Klik tanggal untuk mengisi formulir, klik blok sesi untuk melihat detail.
+              </p>
+            </div>
+            {selectedCalendarDate && (
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((f) => ({ ...f, tanggal: selectedCalendarDate }));
+                  setActiveTab("single");
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+              >
+                Buat Jadwal pada {selectedCalendarDate}
+              </button>
+            )}
+          </div>
+
+          <ScheduleCalendar
+            events={allJadwal}
+            onSelectDate={(date) => setSelectedCalendarDate(date)}
+            onSelectEvent={(ev) => setSelectedEvent(ev)}
+          />
+
+          {selectedEvent && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-slate-800">{selectedEvent.idJadwal}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedEvent(null)}
+                  className="text-slate-400 hover:text-slate-600"
+                  aria-label="Tutup detail"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-slate-600">
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Streamer</div>
+                  {selectedEvent.streamerKaryawan?.namaLengkap ?? "Belum di-assign"}
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Platform</div>
+                  {selectedEvent.platform ?? "-"}
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Studio</div>
+                  {selectedEvent.cabangStudio ? `${selectedEvent.cabangStudio} #${selectedEvent.nomorStudio ?? "01"}` : "-"}
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Waktu</div>
+                  {new Date(selectedEvent.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                  {" – "}
+                  {new Date(selectedEvent.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Live State</div>
+                  {selectedEvent.liveState}
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400 uppercase">Status</div>
+                  {selectedEvent.status}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Recent Schedules Table with Search & Filter */}

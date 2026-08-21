@@ -113,3 +113,75 @@ export async function tenantDashboard() {
   ]);
   return { jadwal, absensi, karyawan, clients, produk };
 }
+
+/**
+ * Schedule rollups matching the client's Sheet 1 (ID_HYBRID_LIVE):
+ *  - per-studio total duration (Timoho, Berbah, ...) + total daily hours
+ *  - per-streamer session count + total duration (COUNTIF/SUMIF equivalent)
+ *  - per-platform total duration (SUMIF equivalent)
+ * Optionally period-bounded.
+ */
+export async function scheduleRollup(params?: { tanggal?: string; periode?: string }) {
+  const user = await requireRole();
+  const where: Record<string, unknown> = { ...tenantWhere(user) };
+  if (params?.tanggal) where.tanggal = new Date(params.tanggal);
+  if (params?.periode) {
+    const { start, end } = periodRange(params.periode);
+    where.tanggal = { gte: start, lt: end };
+  }
+
+  const rows = await db.jadwal.findMany({
+    where,
+    select: {
+      cabangStudio: true,
+      nomorStudio: true,
+      platform: true,
+      streamerKaryawanId: true,
+      jamMulaiLive: true,
+      jamSelesaiLive: true,
+      streamerKaryawan: { select: { namaLengkap: true, idKaryawan: true } },
+    },
+  });
+
+  const byStudio: Record<string, { sessions: number; hours: number }> = {};
+  const byStreamer: Record<string, { idKaryawan: string | null; namaLengkap: string | null; sessions: number; hours: number }> = {};
+  const byPlatform: Record<string, { sessions: number; hours: number }> = {};
+  let totalMinutes = 0;
+
+  for (const r of rows) {
+    const minutes = computeDurationMinutes(r.jamMulaiLive, r.jamSelesaiLive);
+    totalMinutes += minutes;
+
+    const studio = `${r.cabangStudio ?? ""} ${r.nomorStudio ?? ""}`.trim() || "Tanpa Studio";
+    const s = byStudio[studio] ?? { sessions: 0, hours: 0 };
+    s.sessions++; s.hours += minutes;
+    byStudio[studio] = s;
+
+    const platform = r.platform ?? "Lainnya";
+    const p = byPlatform[platform] ?? { sessions: 0, hours: 0 };
+    p.sessions++; p.hours += minutes;
+    byPlatform[platform] = p;
+
+    const skId = r.streamerKaryawanId;
+    if (skId) {
+      const st = byStreamer[skId] ?? {
+        idKaryawan: r.streamerKaryawan?.idKaryawan ?? null,
+        namaLengkap: r.streamerKaryawan?.namaLengkap ?? null,
+        sessions: 0,
+        hours: 0,
+      };
+      st.sessions++; st.hours += minutes;
+      byStreamer[skId] = st;
+    }
+  }
+
+  const hours = (m: number) => Math.round((m / 60) * 100) / 100;
+
+  return {
+    totalSessions: rows.length,
+    totalHours: hours(totalMinutes),
+    byStudio: Object.fromEntries(Object.entries(byStudio).map(([k, v]) => [k, { sessions: v.sessions, hours: hours(v.hours) }])),
+    byStreamer: Object.fromEntries(Object.entries(byStreamer).map(([k, v]) => [k, { idKaryawan: v.idKaryawan, namaLengkap: v.namaLengkap, sessions: v.sessions, hours: hours(v.hours) }])),
+    byPlatform: Object.fromEntries(Object.entries(byPlatform).map(([k, v]) => [k, { sessions: v.sessions, hours: hours(v.hours) }])),
+  };
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import QcLiveMonitor from "@/components/qc-live-monitor";
 
 type Review = {
   id: string;
@@ -151,6 +152,9 @@ export default function QcPortalPage() {
           </div>
         </div>
       )}
+
+      {/* Live Monitoring & Violations */}
+      <QcLiveMonitor />
 
       {/* Review Queue Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">

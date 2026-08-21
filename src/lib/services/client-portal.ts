@@ -5,13 +5,26 @@ import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 
 const CLIENT_ROLES = ["CLIENT", "CLIENT_ADMIN", "SUPER_ADMIN"] as const;
 
+/**
+ * Resolve the brand client(s) owned by the current user's tenant. A client's
+ * schedules span BOTH the brand tenant (their own proposals) and the agency
+ * tenant (sessions the agency books for their brand), so we scope by clientId,
+ * not by tenant.
+ */
+async function resolveMyClientIds(user: { tenantId: string; role: string }): Promise<string[]> {
+  if (user.role === "SUPER_ADMIN") return []; // super admin sees all
+  if (!user.tenantId) return [];
+  const clients = await db.client.findMany({ where: { tenantId: user.tenantId }, select: { id: true } });
+  return clients.map((c) => c.id);
+}
+
 // ---------- T28: Own schedules ----------
 
 export async function mySchedules() {
   const user = await requireRole(...CLIENT_ROLES);
-  // CLIENT tenant is the brand tenant; their schedules = jadwal for their clients.
+  const clientIds = await resolveMyClientIds(user);
   return db.jadwal.findMany({
-    where: tenantWhere(user),
+    where: user.role === "SUPER_ADMIN" ? {} : clientIds.length ? { clientId: { in: clientIds } } : { clientId: null },
     orderBy: { tanggal: "desc" },
     include: { streamerKaryawan: true, client: true },
     take: 100,
@@ -27,8 +40,10 @@ export async function myClients() {
 
 export async function kpiDashboard() {
   const user = await requireRole(...CLIENT_ROLES);
+  const clientIds = await resolveMyClientIds(user);
+  const jadwalWhere = user.role === "SUPER_ADMIN" ? {} : clientIds.length ? { clientId: { in: clientIds } } : { clientId: null };
   const [jadwal, produk] = await Promise.all([
-    db.jadwal.findMany({ where: tenantWhere(user), select: { status: true, platform: true } }),
+    db.jadwal.findMany({ where: jadwalWhere, select: { status: true, platform: true } }),
     db.produk.findMany({ where: tenantWhere(user), select: { status: true } }),
   ]);
   const total = jadwal.length;
@@ -50,6 +65,8 @@ export async function kpiDashboard() {
 const promoApprovalSchema = z.object({
   idJadwal: z.string().min(1),
   tanggal: z.string().min(1),
+  jamMulai: z.string().optional().nullable(),
+  jamSelesai: z.string().optional().nullable(),
   platform: z.string().optional().nullable(),
   judulLive: z.string().optional().nullable(),
   promoLive: z.string().optional().nullable(),
@@ -64,21 +81,54 @@ export async function proposePromoJadwal(input: z.infer<typeof promoApprovalSche
   const tanggal = new Date(parsed.tanggal);
   const existing = await db.jadwal.findUnique({ where: { idJadwal: parsed.idJadwal } });
   if (existing) throw AppError.conflict("ID Jadwal sudah terdaftar");
-  return db.jadwal.create({
-    data: {
-      idJadwal: parsed.idJadwal,
-      tenantId: user.tenantId || undefined,
-      tanggal,
-      platform: parsed.platform ?? null,
-      judulLive: parsed.judulLive ?? null,
-      promoLive: parsed.promoLive ?? null,
-      catatanOts: parsed.catatan ?? null,
-      clientId: parsed.clientId ?? null,
-      status: "PENDING",
-      jamMulaiLive: tanggal,
-      jamSelesaiLive: tanggal,
-      periodeBulan: `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][tanggal.getMonth()]} ${tanggal.getFullYear()}`,
-    },
+
+  // Build ISO datetimes from the date + client-provided times (default 10:00-12:00).
+  const start = new Date(`${parsed.tanggal}T${parsed.jamMulai ?? "10:00"}`);
+  const end = new Date(`${parsed.tanggal}T${parsed.jamSelesai ?? "12:00"}`);
+
+  // Resolve the brand client for the marketplace listing: prefer the explicit
+  // clientId, else the client record owned by the current tenant.
+  const clientId =
+    parsed.clientId ??
+    (user.tenantId
+      ? (await db.client.findFirst({ where: { tenantId: user.tenantId } }))?.id ?? null
+      : null);
+
+  return db.$transaction(async (tx) => {
+    const jadwal = await tx.jadwal.create({
+      data: {
+        idJadwal: parsed.idJadwal,
+        tenantId: user.tenantId || undefined,
+        tanggal,
+        platform: parsed.platform ?? null,
+        judulLive: parsed.judulLive ?? null,
+        promoLive: parsed.promoLive ?? null,
+        catatanOts: parsed.catatan ?? null,
+        clientId,
+        status: "PENDING",
+        jamMulaiLive: start,
+        jamSelesaiLive: end,
+        periodeBulan: `${["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"][tanggal.getMonth()]} ${tanggal.getFullYear()}`,
+      },
+    });
+
+    // Auto-create a marketplace listing so streamers can apply to this project.
+    if (clientId) {
+      await tx.marketplaceListing.create({
+        data: {
+          tenantId: user.tenantId || undefined,
+          clientId,
+          jadwalId: jadwal.id,
+          title: parsed.judulLive || parsed.idJadwal,
+          description: parsed.promoLive || null,
+          platform: parsed.platform ?? null,
+          quota: 1,
+          status: "OPEN",
+        },
+      });
+    }
+
+    return jadwal;
   });
 }
 

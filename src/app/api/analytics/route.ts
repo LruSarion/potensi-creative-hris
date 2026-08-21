@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiHandler } from "@/lib/api-handler";
-import { sessionMetrics, absensiMetrics, tenantDashboard, toCsv } from "@/lib/services/analytics";
+import { sessionMetrics, absensiMetrics, tenantDashboard, toCsv, scheduleRollup } from "@/lib/services/analytics";
 import type { AppError } from "@/lib/errors";
 
 export const GET = apiHandler(async (req: Request) => {
@@ -9,9 +9,11 @@ export const GET = apiHandler(async (req: Request) => {
   const periode = url.searchParams.get("periode") ?? undefined;
   const clientId = url.searchParams.get("clientId") ?? undefined;
   const streamerKaryawanId = url.searchParams.get("streamerKaryawanId") ?? undefined;
+  const tanggal = url.searchParams.get("tanggal") ?? undefined;
 
   if (view === "sessions") return sessionMetrics({ clientId, streamerKaryawanId, periode });
   if (view === "absensi") return absensiMetrics({ karyawanId: streamerKaryawanId, periode });
+  if (view === "rollup") return scheduleRollup({ tanggal, periode });
   return tenantDashboard();
 });
 
