@@ -224,12 +224,14 @@ async function main() {
       },
     });
     // Sample marketplace listing for the demo brand.
+    // Lives in the CLIENT's tenant so the client can manage/approve it, while
+    // agency streamers can still see and apply to it (cross-tenant marketplace).
     await prisma.marketplaceListing.upsert({
       where: { id: "listing-brand-01" },
-      update: {},
+      update: { tenantId: brand.id, clientId: client.id },
       create: {
         id: "listing-brand-01",
-        tenantId: agency.id,
+        tenantId: brand.id,
         clientId: client.id,
         courseId: course.id,
         title: "Kampanye Flash Sale 8.8 — Shopee Live",

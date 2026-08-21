@@ -37,12 +37,14 @@ export async function hasValidCertification(streamerKaryawanId: string, courseId
   return !!cert;
 }
 
-/** Streamer-facing: list OPEN listings the current streamer is eligible to apply for. */
+/** Streamer-facing: list OPEN listings (across tenants) the streamer can apply to. */
 export async function listEligibleListings() {
   const user = await requireRole();
   if (!user.karyawanId) return [];
+  // Cross-tenant marketplace: streamers see ALL open listings (any client brand),
+  // gated by their certification below.
   const listings = await db.marketplaceListing.findMany({
-    where: { status: "OPEN", tenantId: user.tenantId || undefined },
+    where: { status: "OPEN" },
     include: { client: true, course: true, applications: true },
     orderBy: { createdAt: "desc" },
   });
@@ -114,10 +116,33 @@ export async function decideApplication(applicationId: string, decision: "PICKED
   });
   if (!app) throw AppError.notFound("Aplikasi tidak ditemukan");
   if (app.listing.tenantId !== user.tenantId) throw AppError.forbidden("Akses lintas-tenant ditolak");
-  return db.projectApplication.update({
-    where: { id: applicationId },
-    data: { status: decision },
+
+  // If already decided, prevent re-decision.
+  if (app.status !== "APPLIED") {
+    throw AppError.conflict(`Aplikasi sudah berstatus ${app.status}`);
+  }
+
+  const updated = await db.$transaction(async (tx) => {
+    const res = await tx.projectApplication.update({
+      where: { id: applicationId },
+      data: { status: decision },
+    });
+    // When quota is reached, auto-mark the listing FILLED so it stops accepting.
+    if (decision === "PICKED") {
+      const pickedCount = await tx.projectApplication.count({
+        where: { listingId: app.listingId, status: "PICKED" },
+      });
+      if (pickedCount >= app.listing.quota) {
+        await tx.marketplaceListing.update({
+          where: { id: app.listingId },
+          data: { status: "FILLED" },
+        });
+      }
+    }
+    return res;
   });
+
+  return updated;
 }
 
 // ---------- Client/HR: listing management ----------
@@ -126,7 +151,14 @@ export async function listListings() {
   const user = await requireRole(...CLIENT_ROLES, ...HR_ROLES);
   return db.marketplaceListing.findMany({
     where: { ...tenantWhere(user) },
-    include: { client: true, course: true, applications: { include: { streamer: { select: { id: true, namaLengkap: true } } } } },
+    include: {
+      client: true,
+      course: true,
+      applications: {
+        include: { streamer: { select: { id: true, idKaryawan: true, namaLengkap: true, email: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 }

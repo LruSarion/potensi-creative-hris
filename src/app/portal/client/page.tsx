@@ -159,6 +159,27 @@ export default function ClientPortalPage() {
     }
   }
 
+  async function decideApplication(applicationId: string, decision: "PICKED" | "DECLINED") {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/marketplace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "decide", applicationId, decision }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess(decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal memproses lamaran");
+      }
+    } catch {
+      setError("Terjadi kesalahan koneksi");
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -706,41 +727,87 @@ export default function ClientPortalPage() {
           <div>
             <h3 className="font-bold text-slate-900 text-lg">Proyek Brand Saya</h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Listing proyek live yang Anda buka untuk direkrut streamer bersertifikat.
+              Listing proyek live, lamaran streamer, dan persetujuan rekrutmen.
             </p>
           </div>
 
           <div className="space-y-3">
-            {listings.map((l) => (
-              <div key={l.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                <div className="flex items-center justify-between">
-                  <div className="font-bold text-slate-900">{l.title}</div>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                      l.status === "OPEN"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : l.status === "FILLED"
-                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : "bg-slate-50 text-slate-500 border-slate-200"
-                    }`}
-                  >
-                    {l.status}
-                  </span>
-                </div>
-                <div className="text-xs text-slate-500 mt-1">{l.description}</div>
-                <div className="flex flex-wrap gap-3 mt-3 text-[11px] text-slate-600">
-                  <span className="px-2 py-0.5 rounded-md bg-slate-100">{l.platform ?? "-"}</span>
-                  <span className="font-mono">Rp {Number(l.ratePerSesi).toLocaleString("id-ID")}/sesi</span>
-                  <span>Kuota: {l.quota}</span>
-                  <span>{l.applications?.length ?? 0} aplikasi</span>
-                  {l.course && (
-                    <span className="text-emerald-600 font-semibold">
-                      Sertifikasi: {l.course.title}
+            {listings.map((l) => {
+              const picked = (l.applications ?? []).filter((a: any) => a.status === "PICKED").length;
+              return (
+                <div key={l.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="font-bold text-slate-900">{l.title}</div>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        l.status === "OPEN"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : l.status === "FILLED"
+                            ? "bg-blue-50 text-blue-700 border-blue-200"
+                            : "bg-slate-50 text-slate-500 border-slate-200"
+                      }`}
+                    >
+                      {l.status}
                     </span>
+                  </div>
+                  <div className="text-xs text-slate-500">{l.description}</div>
+                  <div className="flex flex-wrap gap-3 text-[11px] text-slate-600">
+                    <span className="px-2 py-0.5 rounded-md bg-slate-100">{l.platform ?? "-"}</span>
+                    <span className="font-mono">Rp {Number(l.ratePerSesi).toLocaleString("id-ID")}/sesi</span>
+                    <span>Kuota: {picked}/{l.quota}</span>
+                    {l.course && (
+                      <span className="text-emerald-600 font-semibold">Sertifikasi: {l.course.title}</span>
+                    )}
+                  </div>
+
+                  {/* Applications */}
+                  {(l.applications ?? []).length > 0 && (
+                    <div className="border-t border-slate-100 pt-3 space-y-2">
+                      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Lamaran Streamer ({l.applications.length})
+                      </div>
+                      {(l.applications as any[]).map((a) => (
+                        <div key={a.id} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100">
+                          <div>
+                            <div className="text-xs font-bold text-slate-800">
+                              {a.streamer?.namaLengkap ?? "-"}
+                              <span className="text-slate-400 font-mono ml-1">({a.streamer?.idKaryawan})</span>
+                            </div>
+                            {a.note && <div className="text-[11px] text-slate-500 mt-0.5">"{a.note}"</div>}
+                          </div>
+                          {a.status === "APPLIED" ? (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => decideApplication(a.id, "PICKED")}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition"
+                              >
+                                ✓ Terima (Pick)
+                              </button>
+                              <button
+                                onClick={() => decideApplication(a.id, "DECLINED")}
+                                className="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-lg transition"
+                              >
+                                Tolak
+                              </button>
+                            </div>
+                          ) : (
+                            <span
+                              className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                a.status === "PICKED"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-slate-100 text-slate-500 border-slate-200"
+                              }`}
+                            >
+                              {a.status === "PICKED" ? "DITERIMA" : "DITOLAK"}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {listings.length === 0 && (
               <div className="p-10 text-center text-slate-400 text-xs">
                 Belum ada proyek. Ajukan jadwal atau hubungi admin untuk membuka listing.
