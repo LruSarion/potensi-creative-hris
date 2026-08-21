@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { AppError } from "@/lib/errors";
+import { logAktivitas } from "@/lib/audit";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/services/telegram";
 import { lastCheckOutTime } from "@/lib/services/absensi";
 
@@ -65,27 +65,6 @@ export async function handleTelegramAbsensiMessage(
   }
 }
 
-export async function handleTelegramAbsensiCallback(
-  chatId: number,
-  callbackData: string,
-  cfg: Awaited<ReturnType<typeof getTelegramConfig>>
-) {
-  const user = await db.user.findUnique({ where: { telegramChatId: String(chatId) } });
-  if (!user) {
-    await sendTelegramMessage(String(chatId), "Akun belum terhubung ke aplikasi HRIS.", cfg);
-    return;
-  }
-  if (callbackData === "ABSEN_IN" || callbackData === "ABSEN_OUT") {
-    const tipe = callbackData === "ABSEN_IN" ? "CHECK_IN" : "CHECK_OUT";
-    await db.user.update({
-      where: { id: user.id },
-      data: { telegramAbsensiState: { tipe, step: "awaiting_photo" } },
-    });
-    await sendTelegramMessage(String(chatId), `${tipe === "CHECK_IN" ? "Absen Masuk" : "Absen Pulang"}\nKirim foto selfie kamu.`, cfg);
-    await answerCallback(chatId, cfg);
-  }
-}
-
 async function recordAbsensi(
   user: { id: string; karyawan: { id: string } | null; role?: string; tenantId?: string | null },
   state: AbsensiState,
@@ -97,6 +76,7 @@ async function recordAbsensi(
 
   const tipe = state.tipe === "CHECK_IN" ? "CHECK_IN" : "CHECK_OUT";
   const catatan = `Telegram: ${location.latitude},${location.longitude} · via bot`;
+  const kategori = (await resolveKategori(user.role)) as any;
 
   if (tipe === "CHECK_IN") {
     const open = await db.absensi.findFirst({
@@ -108,16 +88,19 @@ async function recordAbsensi(
       orderBy: { waktu: "desc" },
     });
     if (open) return { message: "Sesi absensi masih aktif. Lakukan check-out terlebih dahulu." };
-    await db.absensi.create({
+    const record = await db.absensi.create({
       data: {
         tenantId: user.tenantId ?? undefined,
         karyawanId,
         tipe: "CHECK_IN",
-        kategori: (await resolveKategori(user.role)) as any,
+        kategori,
         buktiDriveId: state.photoUrl ?? null,
         catatan,
       },
     });
+    // Sync any SCHEDULED session for this karyawan to LIVE (mirrors web check-in).
+    await syncLiveStateOnCheckIn(record.jadwalId, user.id, user.tenantId ?? undefined).catch(() => undefined);
+    await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_IN", karyawanId, lat: location.latitude, lon: location.longitude }) });
     return { message: "✅ Absen Masuk tercatat!\nLokasi: " + `${location.latitude},${location.longitude}` };
   }
 
@@ -130,13 +113,54 @@ async function recordAbsensi(
     data: {
       tenantId: user.tenantId ?? undefined,
       karyawanId,
+      jadwalId: openIn.jadwalId ?? null,
       tipe: "CHECK_OUT",
-      kategori: (await resolveKategori(user.role)) as any,
+      kategori,
       buktiDriveId: state.photoUrl ?? null,
       catatan,
     },
   });
+  // Sync the session to REVIEW on check-out (mirrors web check-out).
+  if (openIn.jadwalId) {
+    await syncLiveStateOnCheckOut(openIn.jadwalId, user.id, user.tenantId ?? undefined).catch(() => undefined);
+  }
+  await logAktivitas({ userId: user.id, tenantId: user.tenantId ?? null, aksi: "TELEGRAM_ABSENSI", detail: JSON.stringify({ tipe: "CHECK_OUT", karyawanId, lat: location.latitude, lon: location.longitude }) });
   return { message: "🚪 Absen Pulang tercatat!\nLokasi: " + `${location.latitude},${location.longitude}` };
+}
+
+async function syncLiveStateOnCheckIn(jadwalId: string | null, userId: string, tenantId?: string) {
+  if (!jadwalId) return;
+  const j = await db.jadwal.findUnique({ where: { id: jadwalId } });
+  if (j && j.liveState === "SCHEDULED") {
+    await db.jadwal.update({ where: { id: jadwalId }, data: { liveState: "LIVE" } });
+    await db.sessionStateLog.create({
+      data: {
+        tenantId: tenantId ?? undefined,
+        jadwalId,
+        fromState: "SCHEDULED",
+        toState: "LIVE",
+        changedById: userId,
+        note: "Auto-transition on Telegram Check-In",
+      },
+    });
+  }
+}
+
+async function syncLiveStateOnCheckOut(jadwalId: string, userId: string, tenantId?: string) {
+  const j = await db.jadwal.findUnique({ where: { id: jadwalId } });
+  if (j && (j.liveState === "LIVE" || j.liveState === "SCHEDULED")) {
+    await db.jadwal.update({ where: { id: jadwalId }, data: { liveState: "REVIEW", status: "SELESAI" } });
+    await db.sessionStateLog.create({
+      data: {
+        tenantId: tenantId ?? undefined,
+        jadwalId,
+        fromState: j.liveState,
+        toState: "REVIEW",
+        changedById: userId,
+        note: "Auto-transition on Telegram Check-Out",
+      },
+    });
+  }
 }
 
 async function resolveKategori(role?: string) {
@@ -171,20 +195,6 @@ async function sendTelegramKeyboard(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text, reply_markup: kb }),
-      cache: "no-store",
-    });
-  } catch {
-    // ignore
-  }
-}
-
-async function answerCallback(chatId: number, cfg: Awaited<ReturnType<typeof getTelegramConfig>>) {
-  if (!cfg.botToken) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${cfg.botToken}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ callback_query_id: "placeholder" }),
       cache: "no-store",
     });
   } catch {

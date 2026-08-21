@@ -369,7 +369,7 @@ export default function StreamerLmsPage() {
                           enrollmentId={selectedEnrollment.id}
                           questions={
                             selectedEnrollment.course.modules[activeModuleIdx]?.questions?.filter(
-                              (q) => q.eventTime != null && (q.lessonId === les.id || q.lessonId == null)
+                              (q) => q.eventTime != null && q.lessonId === les.id
                             ) ?? []
                           }
                           onSubmitted={() => loadData()}

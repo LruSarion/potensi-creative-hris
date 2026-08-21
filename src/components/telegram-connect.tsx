@@ -53,6 +53,11 @@ export default function TelegramConnect() {
   useEffect(() => {
     load();
     loadPrefs();
+    // Auto-refresh connection status so the widget flips to "Terhubung" right
+    // after the user presses Start in Telegram (no manual refresh needed).
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function savePrefs() {

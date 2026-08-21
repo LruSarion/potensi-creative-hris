@@ -244,7 +244,7 @@ export default function LearningTestPage() {
   const activeLessonId = selectedLesson?.id ?? "";
 
   const lessonQuestions = (selectedModule?.questions ?? [])
-    .filter((q) => q.eventTime != null && (q.lessonId === activeLessonId || (activeLessonId && q.lessonId == null)))
+    .filter((q) => q.eventTime != null && q.lessonId === activeLessonId)
     .sort((a, b) => (a.eventTime ?? 0) - (b.eventTime ?? 0));
 
   return (

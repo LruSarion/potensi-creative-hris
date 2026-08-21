@@ -325,7 +325,7 @@ export async function submitVideoLesson(input: { enrollmentId: string; lessonId:
   if (!lesson) throw AppError.notFound("Lesson tidak ditemukan");
 
   const questions = await db.quizQuestion.findMany({
-    where: { moduleId: lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: input.lessonId }, { lessonId: null }] },
+    where: { moduleId: lesson.moduleId, isNote: false, eventTime: { not: null }, lessonId: input.lessonId },
   });
 
   let totalCorrect = 0;
@@ -380,7 +380,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
   const results = [];
   for (const w of watches) {
     const questions = await db.quizQuestion.findMany({
-      where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: w.lessonId }, { lessonId: null }] },
+      where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, lessonId: w.lessonId },
     });
     const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
     let correctCount = 0;
@@ -419,7 +419,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
   if (!w) throw AppError.notFound("Submission tidak ditemukan");
 
   const questions = await db.quizQuestion.findMany({
-    where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, OR: [{ lessonId: w.lessonId }, { lessonId: null }] },
+    where: { moduleId: w.lesson.moduleId, isNote: false, eventTime: { not: null }, lessonId: w.lessonId },
     orderBy: { eventTime: "asc" },
   });
   const attempts = await db.quizAttempt.findMany({ where: { enrollmentId: w.enrollmentId, moduleId: w.lesson.moduleId } });
