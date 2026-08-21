@@ -46,6 +46,8 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
   const lastReportedRef = useRef(0);
   const activeEventRef = useRef<VideoQuestion | null>(null);
   const answersRef = useRef<Record<string, string>>({});
+  const durationRef = useRef(lesson.videoDuration ?? 0);
+  const timedRef = useRef<VideoQuestion[]>([]);
 
   useEffect(() => {
     activeEventRef.current = activeEvent;
@@ -58,8 +60,14 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     .filter((q) => q.eventTime != null && !q.isNote)
     .sort((a, b) => (a.eventTime ?? 0) - (b.eventTime ?? 0));
 
+  timedRef.current = timedQuestions;
+  useEffect(() => {
+    durationRef.current = videoDuration;
+  }, [videoDuration]);
+
   function reportWatch(sec: number, done?: boolean) {
-    const capped = Math.min(Math.max(0, sec), videoDuration || sec);
+    const dur = durationRef.current;
+    const capped = Math.min(Math.max(0, sec), dur || sec);
     if (done || capped - lastReportedRef.current >= 5) {
       lastReportedRef.current = capped;
       fetch("/api/lms", {
@@ -93,7 +101,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
         const t = playerRef.current?.getCurrentTime() ?? 0;
         setWatchSeconds(Math.round(t));
         reportWatch(Math.round(t));
-        const due = timedQuestions.find(
+        const due = timedRef.current.find(
           (q) => (q.eventTime ?? 0) <= Math.floor(t) + 1 && !answersRef.current[q.id] && activeEventRef.current?.id !== q.id
         );
         if (due) {
@@ -252,22 +260,61 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
       {error && <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-xl p-3">⚠ {error}</div>}
 
-      {!submitted && !result && (
+      {/* Always-visible timed questions so they show even if the video can't autoplay */}
+      {!submitted && !result && timedQuestions.length > 0 && (
+        <div className="space-y-3">
+          <h5 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+            <i className="fa-solid fa-clock text-purple-500 text-xs" />
+            Pertanyaan Video ({timedQuestions.length})
+          </h5>
+          <div className="space-y-2">
+            {timedQuestions.map((q, qi) => (
+              <div key={q.id} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 text-xs">
+                <p className="font-bold text-slate-800 flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-[10px] font-bold">
+                    @ {formatTime(q.eventTime ?? 0)}
+                  </span>
+                  <span>{qi + 1}. {q.question}</span>
+                </p>
+                <div className="space-y-1.5 pl-1">
+                  {(q.options ?? []).map((opt, oi) => (
+                    <label key={oi} className="flex items-center gap-2.5 cursor-pointer text-slate-700">
+                      <input
+                        type="radio"
+                        name={`vid-${q.id}`}
+                        checked={answers[q.id] === opt}
+                        onChange={() => setAnswers((prev) => ({ ...prev, [q.id]: opt }))}
+                        className="accent-purple-600"
+                      />
+                      <span>{opt}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
+              <i className="fa-solid fa-eye text-purple-500" /> Ditonton {watchPct}%
+            </span>
+            <button
+              type="button"
+              onClick={handleFinish}
+              disabled={submitting || timedQuestions.some((q) => !answers[q.id])}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <i className="fa-solid fa-paper-plane text-xs" />
+              <span>{submitting ? "Mengirim..." : "Kumpulkan Jawaban"}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!submitted && !result && timedQuestions.length === 0 && (
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-slate-400 font-semibold flex items-center gap-1.5">
             <i className="fa-solid fa-eye text-purple-500" /> Ditonton {watchPct}%
           </span>
-          {timedQuestions.length > 0 && completed && (
-            <button
-              type="button"
-              onClick={handleFinish}
-              disabled={submitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-1.5"
-            >
-              <i className="fa-solid fa-paper-plane text-xs" />
-              <span>{submitting ? "Mengirim..." : "Kumpulkan Jawaban Video"}</span>
-            </button>
-          )}
         </div>
       )}
     </div>
