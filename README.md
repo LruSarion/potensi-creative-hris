@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# HRIS Potensi Creative — Next.js + Prisma + Postgres
 
-## Getting Started
+Full-stack HRIS for a live-streaming agency: scheduling, payroll, QC monitoring,
+LMS (interactive video lessons), data migration, Telegram notifications + one-tap
+absensi, and multi-tenant RBAC.
 
-First, run the development server:
+## Getting Started (local dev)
+
+Requires a Postgres DB. A `docker-compose.yml` provides Postgres 16 on port `5434`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+docker compose up -d          # start Postgres
+cp .env.example .env.local    # configure DATABASE_URL
+npm install
+npx prisma migrate dev        # apply migrations
+npx prisma db seed            # demo data (tenants, roles, users, PIN 1234)
+npm run dev                   # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Demo login: one of the seeded users (e.g. `admin@potensicreative.test` / PIN `1234`),
+or use the 1-click role buttons on the login page.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment to Supabase
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See **[SUPABASE.md](./SUPABASE.md)** for the full, step-by-step guide. In short:
 
-## Learn More
+```bash
+DATABASE_URL=postgresql://postgres.<ref>:<pass>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true
+npx prisma migrate deploy     # push all migrations to Supabase
+npm run build
+npm start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Key npm scripts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Script | Purpose |
+|--------|---------|
+| `npm run dev` | local dev server |
+| `npm run build` / `npm start` | production build / server |
+| `npm run test` | vitest unit tests |
+| `npm run db:migrate` | create + apply a dev migration |
+| `npm run db:deploy` | apply committed migrations (prod/Supabase) |
+| `npm run db:seed` | seed demo data |
