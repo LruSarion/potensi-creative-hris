@@ -86,7 +86,10 @@ export default function Sidebar() {
             {visible
               .filter((item) => (item.section ?? "General") === sec)
               .map((item) => {
-                const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/dashboard" &&
+                    pathname.startsWith(item.href + "/"));
                 return (
                   <Link
                     key={item.href}
