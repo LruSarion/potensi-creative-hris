@@ -44,16 +44,76 @@ export function normalizeRupiah(v: string): number | null {
 }
 
 /** Normalize common date formats -> ISO date string (YYYY-MM-DD). */
-export function normalizeDate(v: string): string | null {
+export function normalizeDate(v: string | number | Date | null | undefined): string | null {
   if (!v) return null;
-  const t = v.trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-  const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-  if (m) {
-    const d = m[1].padStart(2, "0"), mo = m[2].padStart(2, "0");
-    const y = m[3].length === 2 ? `20${m[3]}` : m[3];
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return null;
+    return v.toISOString().slice(0, 10);
+  }
+  const str = String(v).trim();
+  if (!str) return null;
+
+  // 1. Direct YYYY-MM-DD or YYYY/MM/DD
+  if (/^\d{4}[-\/.]\d{1,2}[-\/.]\d{1,2}/.test(str)) {
+    const parts = str.split(/[-\/.]/);
+    const y = parts[0];
+    const m = parts[1].padStart(2, "0");
+    const d = parts[2].slice(0, 2).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
+  // 2. DD/MM/YYYY or DD-MM-YYYY
+  const dmY = str.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (dmY) {
+    const d = dmY[1].padStart(2, "0");
+    const mo = dmY[2].padStart(2, "0");
+    const y = dmY[3].length === 2 ? `20${dmY[3]}` : dmY[3];
     return `${y}-${mo}-${d}`;
   }
+
+  // 3. Excel serial date number (e.g. 45524 or "45524")
+  if (/^\d{4,5}(\.\d+)?$/.test(str)) {
+    const serial = parseFloat(str);
+    if (serial > 1000 && serial < 100000) {
+      const utcDays = Math.floor(serial - 25569);
+      const utcValue = utcDays * 86400;
+      const dateInfo = new Date(utcValue * 1000);
+      if (!isNaN(dateInfo.getTime())) {
+        return dateInfo.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  // 4. Indonesian month names (e.g. 22 Agustus 2026, 22 Agt 2026)
+  const indoMonths: Record<string, string> = {
+    januari: "01", jan: "01",
+    februari: "02", feb: "02",
+    maret: "03", mar: "03",
+    april: "04", apr: "04",
+    mei: "05",
+    juni: "06", jun: "06",
+    juli: "07", jul: "07",
+    agustus: "08", agt: "08", agus: "08",
+    september: "09", sep: "09", sept: "09",
+    oktober: "10", okt: "10",
+    november: "11", nov: "11",
+    desember: "12", des: "12",
+  };
+  const indoMatch = str.toLowerCase().match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
+  if (indoMatch) {
+    const d = indoMatch[1].padStart(2, "0");
+    const monthName = indoMatch[2];
+    const y = indoMatch[3];
+    const mo = indoMonths[monthName];
+    if (mo) return `${y}-${mo}-${d}`;
+  }
+
+  // 5. Native JS Date parse fallback
+  const parsed = new Date(str);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
   return null;
 }
 

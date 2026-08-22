@@ -39,19 +39,43 @@ export async function fetchGoogleSheet(url: string): Promise<Record<string, stri
   return parseCsv(csv);
 }
 
+/**
+ * Detect the header row index (0-based) from an array of parsed row cells.
+ * Skips top title/banner rows (e.g. "PLOTING JADWAL LIVE HARIAN...").
+ */
+export function findHeaderRowIndex(linesOfCells: string[][]): number {
+  if (linesOfCells.length === 0) return 0;
+
+  for (let i = 0; i < Math.min(linesOfCells.length, 10); i++) {
+    const cells = linesOfCells[i].map((c) => (c ?? "").toString().trim().toLowerCase());
+    const matchCount = cells.filter((c) =>
+      /tanggal|tgl|date|name|nama|id|streamer|host|platform|jabatan|email|status|periode|bulan|karyawan|client|brand|jam|studio|promo|produk|nik|role/i.test(c)
+    ).length;
+    const nonCount = cells.filter(Boolean).length;
+    if (matchCount >= 2 || (matchCount >= 1 && nonCount >= 3)) {
+      return i;
+    }
+  }
+  return 0;
+}
+
 /** Parse CSV text into rows of { header: value }. */
 export function parseCsv(csv: string): Record<string, string>[] {
   const rows: Record<string, string>[] = [];
-  const lines = csv.split(/\r?\n/);
-  if (lines.length === 0) return rows;
-  const headers = parseCsvLine(lines[0]);
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const cells = parseCsvLine(line);
+  const rawLines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (rawLines.length === 0) return rows;
+
+  const parsedLines = rawLines.map(parseCsvLine);
+  const headerIdx = findHeaderRowIndex(parsedLines);
+  const headers = parsedLines[headerIdx].map((h) => h.trim());
+
+  for (let i = headerIdx + 1; i < parsedLines.length; i++) {
+    const cells = parsedLines[i];
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
-      row[h] = (cells[idx] ?? "").trim();
+      if (h) {
+        row[h] = (cells[idx] ?? "").trim();
+      }
     });
     if (Object.values(row).every((v) => !v)) continue;
     rows.push(row);
@@ -95,14 +119,27 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
     return { rows, headers };
   }
   // Excel: content is base64
-  const wb = XLSX.read(fileContent, { type: "base64" });
+  const wb = XLSX.read(fileContent, { type: "base64", cellDates: true });
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
-  const jsonRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-  const rows = jsonRows.map((r) =>
-    Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v == null ? "" : String(v).trim()]))
-  );
-  const headers = rows.length ? Object.keys(rows[0]) : [];
+  const raw2D = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
+  const linesOfCells = raw2D.map((row) => (Array.isArray(row) ? row.map((c) => (c == null ? "" : String(c).trim())) : []));
+  const headerIdx = findHeaderRowIndex(linesOfCells);
+  const headers = (linesOfCells[headerIdx] ?? []).map((h) => String(h).trim());
+
+  const rows: Record<string, string>[] = [];
+  for (let i = headerIdx + 1; i < linesOfCells.length; i++) {
+    const cells = linesOfCells[i];
+    if (!cells || cells.every((v) => !v)) continue;
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      if (h) {
+        row[h] = (cells[idx] ?? "").trim();
+      }
+    });
+    if (Object.values(row).every((v) => !v)) continue;
+    rows.push(row);
+  }
   return { rows, headers, sheetName };
 }
 
@@ -110,9 +147,20 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
 
 /** Generic column matcher: map a required field to a best-guess header. */
 function pick(headerAliases: string[], row: Record<string, string>): string | undefined {
+  const keys = Object.keys(row);
+  // 1. Exact match (case-insensitive)
   for (const alias of headerAliases) {
-    const found = Object.keys(row).find((h) => h.trim().toLowerCase() === alias.toLowerCase());
-    if (found) return row[found];
+    const found = keys.find((h) => h.trim().toLowerCase() === alias.toLowerCase());
+    if (found && row[found] !== undefined && row[found] !== null && String(row[found]).trim() !== "") {
+      return String(row[found]).trim();
+    }
+  }
+  // 2. Contains match (case-insensitive)
+  for (const alias of headerAliases) {
+    const found = keys.find((h) => h.trim().toLowerCase().includes(alias.toLowerCase()));
+    if (found && row[found] !== undefined && row[found] !== null && String(row[found]).trim() !== "") {
+      return String(row[found]).trim();
+    }
   }
   return undefined;
 }
@@ -213,7 +261,7 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
     const rawIdJadwal = pick(["id jadwal", "idjadwal", "id_jadwal", "id"], r) ?? "";
     const idJadwal = rawIdJadwal.trim() || `JAD-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
 
-    let rawTanggal = pick(["tanggal", "date", "tgl"], r) ?? "";
+    let rawTanggal = pick(["tanggal", "date", "tgl", "waktu", "day", "hari", "periode"], r) ?? "";
     const tanggal = normalizeDate(rawTanggal) || rawTanggal;
 
     const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";

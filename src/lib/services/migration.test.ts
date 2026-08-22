@@ -1,5 +1,25 @@
-import { describe, it, expect } from "vitest";
+import { findHeaderRowIndex, parseCsv } from "@/lib/services/migration";
 import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, cleanTime } from "@/lib/services/converter-utils";
+
+describe("findHeaderRowIndex & parseCsv banner skipping", () => {
+  it("skips title banner row on line 1 and uses line 2 as headers", () => {
+    const csv = [
+      "PLOTING JADWAL LIVE HARIAN (Maksimal 300 baris data),,,,,,,,,,,",
+      "ID_JADWAL,TANGGAL,PLATFORM,JAM_MULAI_LIVE,JAM_SELESAI_LIVE,STREAMER",
+      "JDW-001,23/08/2026,TikTok,08:00:00,10:00:00,Streamer A",
+    ].join("\n");
+    const rows = parseCsv(csv);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({
+      ID_JADWAL: "JDW-001",
+      TANGGAL: "23/08/2026",
+      PLATFORM: "TikTok",
+      JAM_MULAI_LIVE: "08:00:00",
+      JAM_SELESAI_LIVE: "10:00:00",
+      STREAMER: "Streamer A",
+    });
+  });
+});
 
 describe("detectDelimiter", () => {
   it("detects tab from spreadsheet paste", () => {
