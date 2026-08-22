@@ -57,6 +57,22 @@ export function normalizeDate(v: string): string | null {
   return null;
 }
 
+/** Clean time strings (e.g. "10:00:00", "10.00", "10:00", "10") -> HH:MM. */
+export function cleanTime(t: string | null | undefined, defaultTime = "10:00"): string {
+  if (!t) return defaultTime;
+  const str = t.trim().replace(".", ":");
+  const match = str.match(/^(\d{1,2}):(\d{2})/);
+  if (match) {
+    const hh = match[1].padStart(2, "0");
+    const mm = match[2];
+    return `${hh}:${mm}`;
+  }
+  if (/^\d{1,2}$/.test(str)) {
+    return `${str.padStart(2, "0")}:00`;
+  }
+  return defaultTime;
+}
+
 /** Normalize gender/jabatan/tier aliases to canonical values. */
 export function normalizeEnum(v: string, kind: "gender" | "status" | "tipeAbsensi"): string | null {
   if (!v) return null;

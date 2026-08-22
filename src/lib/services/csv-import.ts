@@ -93,9 +93,9 @@ export async function importPlottingCsv(csv: string): Promise<{ imported: number
   const jadwalRows: JadwalInput[] = [];
   const skipped: string[] = [];
 
-  for (const r of rows) {
-    const idJadwal = r["ID_JADWAL"] || r["idJadwal"];
-    if (!idJadwal) { skipped.push("row tanpa ID_JADWAL"); continue; }
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
+    const idJadwal = r["ID_JADWAL"] || r["idJadwal"] || `P-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
     const streamerId = await resolveStreamer(user.tenantId, r["STREAMER"] || "");
     jadwalRows.push({
       idJadwal,
@@ -114,6 +114,10 @@ export async function importPlottingCsv(csv: string): Promise<{ imported: number
     });
   }
 
+  if (jadwalRows.length === 0) {
+    return { imported: 0, skipped };
+  }
+
   const created = await createJadwalBatch(jadwalRows);
   return { imported: created.length, skipped };
 }
@@ -130,7 +134,8 @@ export async function importHybridCsv(csv: string): Promise<{ imported: number; 
   const jadwalRows: JadwalInput[] = [];
   const skipped: string[] = [];
 
-  for (const r of rows) {
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
     const tanggal = r["TANGGAL"] || "";
     const mulaiRaw = r["JAM_MULAI_LIVE"] || "";
     const durasiRaw = r["DURASI_JAM"] || "";
@@ -141,7 +146,7 @@ export async function importHybridCsv(csv: string): Promise<{ imported: number; 
     const start = new Date(toIso(tanggal, mulaiRaw));
     const end = new Date(start.getTime() + durasi * 3600 * 1000);
 
-    const idJadwal = r["ID_JADWAL"] || r["idJadwal"] || `H${Math.floor(Date.now() / 1000)}-${Math.random().toString(36).slice(2, 6)}`;
+    const idJadwal = r["ID_JADWAL"] || r["idJadwal"] || `H-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
     const streamerId = await resolveStreamer(user.tenantId, r["STREAMER"] || "");
 
     jadwalRows.push({
@@ -156,6 +161,10 @@ export async function importHybridCsv(csv: string): Promise<{ imported: number; 
       judulLive: r["JUDUL_LIVE"] || r["CATATAN_UNTUK_HOST"] || null,
       status: "TERJADWAL",
     });
+  }
+
+  if (jadwalRows.length === 0) {
+    return { imported: 0, skipped };
   }
 
   const created = await createJadwalBatch(jadwalRows);

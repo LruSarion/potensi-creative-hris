@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { createJadwalBatch } from "@/lib/services/jadwal";
 import { karyawanSchema } from "@/lib/schemas/karyawan";
 import type { Role } from "@/generated/prisma/enums";
+import { cleanTime, normalizeDate, normalizeEnum } from "./converter-utils";
 
 const IMPORT_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"];
 
@@ -137,20 +138,36 @@ export async function importKaryawan(rows: Record<string, string>[]) {
   const user = await requireRole(...IMPORT_ROLES);
   let imported = 0, skipped = 0;
   const errors: string[] = [];
-  for (const r of rows) {
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
     try {
+      const rawId = pickKaryawan.idKaryawan(r) ?? "";
+      const idKaryawan = rawId.trim() || `EMP-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
+      const namaLengkap = pickKaryawan.namaLengkap(r) ?? "";
+      if (!namaLengkap.trim()) {
+        skipped++;
+        errors.push(`Baris ${idx + 1}: Nama lengkap wajib diisi`);
+        continue;
+      }
+      const rawStartDate = pickKaryawan.startDate(r) ?? null;
+      const startDate = rawStartDate ? normalizeDate(rawStartDate) : null;
+      const rawGender = pickKaryawan.gender(r) ?? null;
+      const gender = rawGender ? (normalizeEnum(rawGender, "gender") as "LAKI_LAKI" | "PEREMPUAN" | null) : null;
+      const rawStatus = pickKaryawan.statusAktif(r) ?? "AKTIF";
+      const statusAktif = (normalizeEnum(rawStatus, "status") as "AKTIF" | "NON_AKTIF" | null) ?? "AKTIF";
+
       const input = karyawanSchema.parse({
-        idKaryawan: pickKaryawan.idKaryawan(r) ?? "",
-        namaLengkap: pickKaryawan.namaLengkap(r) ?? "",
+        idKaryawan,
+        namaLengkap,
         namaPanggilan: pickKaryawan.namaPanggilan(r) ?? null,
-        gender: pickKaryawan.gender(r) ?? null,
+        gender,
         jabatan: pickKaryawan.jabatan(r) ?? null,
         kategori: pickKaryawan.kategori(r) ?? null,
         tipeJadwal: pickKaryawan.tipeJadwal(r) ?? null,
         nomorTelepon: pickKaryawan.nomorTelepon(r) ?? null,
         email: pickKaryawan.email(r) ?? null,
-        startDate: pickKaryawan.startDate(r) ?? null,
-        statusAktif: pickKaryawan.statusAktif(r) ?? "AKTIF",
+        startDate,
+        statusAktif,
         namaBank: pickKaryawan.namaBank(r) ?? null,
         nomorRekening: pickKaryawan.nomorRekening(r) ?? null,
         namaPemilikRek: pickKaryawan.namaPemilikRek(r) ?? null,
@@ -182,7 +199,7 @@ export async function importKaryawan(rows: Record<string, string>[]) {
       imported++;
     } catch (e) {
       skipped++;
-      errors.push(`Baris ${imported + skipped}: ${e instanceof Error ? e.message : String(e)}`);
+      errors.push(`Baris ${idx + 1}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return { imported, skipped, errors: errors.slice(0, 20) };
@@ -191,14 +208,23 @@ export async function importKaryawan(rows: Record<string, string>[]) {
 export async function importJadwalRows(rows: Record<string, string>[]) {
   const user = await requireRole(...IMPORT_ROLES);
   const inputRows: z.infer<typeof jadwalImportSchema>[] = [];
-  for (const r of rows) {
-    const idJadwal = pick(["id jadwal", "idjadwal", "id_jadwal"], r) ?? "";
-    const tanggal = pick(["tanggal", "date", "tgl"], r) ?? "";
+  for (let idx = 0; idx < rows.length; idx++) {
+    const r = rows[idx];
+    const rawIdJadwal = pick(["id jadwal", "idjadwal", "id_jadwal", "id"], r) ?? "";
+    const idJadwal = rawIdJadwal.trim() || `JAD-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
+
+    let rawTanggal = pick(["tanggal", "date", "tgl"], r) ?? "";
+    const tanggal = normalizeDate(rawTanggal) || rawTanggal;
+
     const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";
     const cabang = pick(["cabang studio", "cabang", "studio"], r) ?? "";
     const nomor = pick(["nomor studio", "no studio", "nomor_studio"], r) ?? "";
-    const mulai = pick(["jam mulai", "jam mulai live", "jam_mulai_live", "start"], r) ?? "10:00";
-    const selesai = pick(["jam selesai", "jam selesai live", "jam_selesai_live", "end"], r) ?? "12:00";
+
+    const rawMulai = pick(["jam mulai", "jam mulai live", "jam_mulai_live", "start", "mulai"], r) ?? "";
+    const rawSelesai = pick(["jam selesai", "jam selesai live", "jam_selesai_live", "end", "selesai"], r) ?? "";
+    const mulai = cleanTime(rawMulai, "10:00");
+    const selesai = cleanTime(rawSelesai, "12:00");
+
     const streamer = pick(["streamer", "host", "nama host", "nama_streamer"], r) ?? "";
     const judul = pick(["judul live", "judul", "campaign"], r) ?? "";
     const promo = pick(["promo live", "promo", "voucher"], r) ?? "";
@@ -207,17 +233,45 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
       idJadwal, tanggal, platform, cabang, nomor, mulai, selesai, streamer, judul, promo, produk,
     });
   }
+
   // Build jadwal inputs with streamer resolution
   const jadwalInputs = [];
-  for (const row of inputRows) {
-    if (!row.idJadwal || !row.tanggal) continue;
+  let skippedCount = 0;
+  const errors: string[] = [];
+
+  for (let i = 0; i < inputRows.length; i++) {
+    const row = inputRows[i];
+    if (!row.tanggal) {
+      skippedCount++;
+      errors.push(`Baris ${i + 1}: Tanggal tidak ditemukan atau tidak valid`);
+      continue;
+    }
+
     let streamerKaryawanId: string | null = null;
     if (row.streamer) {
-      const k = await db.karyawan.findFirst({ where: { OR: [{ idKaryawan: row.streamer }, { namaLengkap: { contains: row.streamer } }] } });
+      const ref = row.streamer.trim();
+      const k = await db.karyawan.findFirst({
+        where: {
+          OR: [
+            { idKaryawan: ref },
+            { namaLengkap: { contains: ref, mode: "insensitive" } },
+            { namaPanggilan: { contains: ref, mode: "insensitive" } },
+          ],
+          tenantId: user.tenantId || undefined,
+        },
+      });
       streamerKaryawanId = k?.id ?? null;
     }
+
     const start = new Date(`${row.tanggal}T${row.mulai}`);
     const end = new Date(`${row.tanggal}T${row.selesai}`);
+
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+      skippedCount++;
+      errors.push(`Baris ${i + 1}: Format tanggal/jam (${row.tanggal} ${row.mulai}-${row.selesai}) tidak valid`);
+      continue;
+    }
+
     jadwalInputs.push({
       idJadwal: row.idJadwal,
       tanggal: row.tanggal,
@@ -233,8 +287,21 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
       status: "TERJADWAL" as const,
     });
   }
+
+  if (jadwalInputs.length === 0) {
+    return {
+      imported: 0,
+      skipped: rows.length,
+      errors: errors.length > 0 ? errors.slice(0, 20) : ["Tidak ada data jadwal valid untuk diimpor. Pastikan file Excel memiliki kolom 'Tanggal'."],
+    };
+  }
+
   const created = await createJadwalBatch(jadwalInputs);
-  return { imported: created.length, skipped: jadwalInputs.length - created.length, errors: [] };
+  return {
+    imported: created.length,
+    skipped: skippedCount + (jadwalInputs.length - created.length),
+    errors: errors.slice(0, 20),
+  };
 }
 
 const jadwalImportSchema = z.object({

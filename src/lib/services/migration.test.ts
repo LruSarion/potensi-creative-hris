@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum } from "@/lib/services/converter-utils";
+import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, cleanTime } from "@/lib/services/converter-utils";
 
 describe("detectDelimiter", () => {
   it("detects tab from spreadsheet paste", () => {
@@ -47,6 +47,21 @@ describe("normalizeDate", () => {
   });
   it("converts DD-MM-YY", () => {
     expect(normalizeDate("08-01-26")).toBe("2026-01-08");
+  });
+});
+
+describe("cleanTime", () => {
+  it("normalizes dot format 10.30 -> 10:30", () => {
+    expect(cleanTime("10.30")).toBe("10:30");
+  });
+  it("normalizes HH:MM:SS format 14:00:00 -> 14:00", () => {
+    expect(cleanTime("14:00:00")).toBe("14:00");
+  });
+  it("handles single digit hour 9 -> 09:00", () => {
+    expect(cleanTime("9")).toBe("09:00");
+  });
+  it("returns default value when empty", () => {
+    expect(cleanTime("", "10:00")).toBe("10:00");
   });
 });
 
