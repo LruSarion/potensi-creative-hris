@@ -86,10 +86,13 @@ export default function Sidebar() {
             {visible
               .filter((item) => (item.section ?? "General") === sec)
               .map((item) => {
-                const isActive =
-                  pathname === item.href ||
-                  (item.href !== "/dashboard" &&
-                    pathname.startsWith(item.href + "/"));
+                // An item is a "parent" if another nav item's href starts with this href + "/".
+                // Parents should only highlight on exact match, not when a child page is active.
+                const hasExplicitChild = visible.some(
+                  (other) => other.href !== item.href && other.href.startsWith(item.href + "/")
+                );
+                const isActive = pathname === item.href ||
+                  (!hasExplicitChild && item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
                 return (
                   <Link
                     key={item.href}
