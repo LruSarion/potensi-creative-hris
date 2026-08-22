@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum } from "@/lib/services/converter-utils";
+import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, excelSerialToDate, excelSerialToTime, normalizeExcelCell } from "@/lib/services/converter-utils";
 
 describe("detectDelimiter", () => {
   it("detects tab from spreadsheet paste", () => {
@@ -72,5 +72,45 @@ describe("buildLlmPrompt", () => {
     expect(prompt).toContain("idKaryawan");
     expect(prompt).toContain("Some messy data here");
     expect(prompt).toContain("rows");
+  });
+});
+
+describe("excelSerialToDate", () => {
+  it("converts Excel serial date to ISO", () => {
+    // 46257 = 2026-08-23 (Excel epoch 1899-12-30)
+    expect(excelSerialToDate(46257)).toBe("2026-08-23");
+  });
+  it("returns null for invalid", () => {
+    expect(excelSerialToDate(0)).toBeNull();
+    expect(excelSerialToDate(NaN)).toBeNull();
+  });
+});
+
+describe("excelSerialToTime", () => {
+  it("converts Excel serial time fraction to HH:MM", () => {
+    // 0.3333... = 08:00
+    expect(excelSerialToTime(0.3333333333333333)).toBe("08:00");
+    // 0.5 = 12:00
+    expect(excelSerialToTime(0.5)).toBe("12:00");
+  });
+  it("returns null for out-of-range", () => {
+    expect(excelSerialToTime(1.5)).toBeNull();
+    expect(excelSerialToTime(-0.1)).toBeNull();
+  });
+});
+
+describe("normalizeExcelCell", () => {
+  it("converts serial date cell", () => {
+    expect(normalizeExcelCell("46257", "date")).toBe("2026-08-23");
+  });
+  it("converts serial time cell", () => {
+    expect(normalizeExcelCell("0.5", "time")).toBe("12:00");
+  });
+  it("passes through plain strings", () => {
+    expect(normalizeExcelCell("2026-08-21", "date")).toBe("2026-08-21");
+    expect(normalizeExcelCell("08:00", "time")).toBe("08:00");
+  });
+  it("returns empty for blank", () => {
+    expect(normalizeExcelCell("", "date")).toBe("");
   });
 });
