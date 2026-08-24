@@ -58,6 +58,16 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "lms_learning",
+    label: "Pusat Pelatihan (LMS)",
+    icon: "fa-solid fa-graduation-cap",
+    items: [
+      { href: "/portal/streamer/lms", label: "Modul & Ujian Streamer", icon: "fa-solid fa-book-open-reader", roles: ["STREAMER", "STAFF", "OTS", "TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+      { href: "/portal/trainer/learning-test", label: "Kelola Materi & Ujian", icon: "fa-solid fa-pen-to-square", roles: ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+      { href: "/portal/trainer/hasil-jawaban", label: "Hasil Ujian & Quiz", icon: "fa-solid fa-square-poll-vertical", roles: ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+    ],
+  },
+  {
     id: "finance",
     label: "Finance & Keuangan",
     icon: "fa-solid fa-wallet",

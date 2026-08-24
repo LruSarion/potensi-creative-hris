@@ -117,7 +117,6 @@ export function normalizeDate(v: string | number | Date | null | undefined): str
   return null;
 }
 
-<<<<<<< HEAD
 /** Clean time strings (e.g. "10:00:00", "10.00", "10:00", "10") -> HH:MM. */
 export function cleanTime(t: string | null | undefined, defaultTime = "10:00"): string {
   if (!t) return defaultTime;
@@ -132,7 +131,8 @@ export function cleanTime(t: string | null | undefined, defaultTime = "10:00"): 
     return `${str.padStart(2, "0")}:00`;
   }
   return defaultTime;
-=======
+}
+
 /** Convert an Excel serial date (days since 1899-12-30) to YYYY-MM-DD. */
 export function excelSerialToDate(serial: number): string | null {
   if (!isFinite(serial) || serial <= 0) return null;
@@ -161,7 +161,6 @@ export function normalizeExcelCell(v: string, kind: "date" | "time"): string {
     return excelSerialToTime(n) ?? t;
   }
   return t;
->>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
 }
 
 /** Normalize gender/jabatan/tier aliases to canonical values. */

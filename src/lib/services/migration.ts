@@ -147,22 +147,6 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
   const wb = XLSX.read(fileContent, { type: "base64", cellDates: true });
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
-<<<<<<< HEAD
-  const raw2D = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
-  const linesOfCells = raw2D.map((row) => (Array.isArray(row) ? row.map((c) => (c == null ? "" : String(c).trim())) : []));
-  const headerIdx = findHeaderRowIndex(linesOfCells);
-  const headers = (linesOfCells[headerIdx] ?? []).map((h) => String(h).trim());
-
-  const rows: Record<string, string>[] = [];
-  for (let i = headerIdx + 1; i < linesOfCells.length; i++) {
-    const cells = linesOfCells[i];
-    if (!cells || cells.every((v) => !v)) continue;
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => {
-      if (h) {
-        row[h] = (cells[idx] ?? "").trim();
-      }
-=======
   const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" }) as unknown[][];
 
   // Find the best header row: the one with the most known-keyword matches.
@@ -176,7 +160,6 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
       headerIdx = i;
     }
   }
-  // If no row looks like a header, fall back to row 0.
   if (bestScore <= 0) headerIdx = 0;
 
   const headers = (aoa[headerIdx] ?? []).map((c) => (c == null ? "" : String(c).trim()));
@@ -185,8 +168,9 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
     const cells = (aoa[i] ?? []).map((c) => (c == null ? "" : String(c).trim()));
     const row: Record<string, string> = {};
     headers.forEach((h, idx) => {
-      row[h] = cells[idx] ?? "";
->>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
+      if (h) {
+        row[h] = (cells[idx] ?? "").trim();
+      }
     });
     if (Object.values(row).every((v) => !v)) continue;
     rows.push(row);
@@ -307,14 +291,13 @@ export async function importKaryawan(rows: Record<string, string>[]) {
 export async function importJadwalRows(rows: Record<string, string>[]) {
   const user = await requireRole(...IMPORT_ROLES);
   const inputRows: z.infer<typeof jadwalImportSchema>[] = [];
-<<<<<<< HEAD
   for (let idx = 0; idx < rows.length; idx++) {
     const r = rows[idx];
     const rawIdJadwal = pick(["id jadwal", "idjadwal", "id_jadwal", "id"], r) ?? "";
     const idJadwal = rawIdJadwal.trim() || `JAD-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
 
     let rawTanggal = pick(["tanggal", "date", "tgl", "waktu", "day", "hari", "periode"], r) ?? "";
-    const tanggal = normalizeDate(rawTanggal) || rawTanggal;
+    const tanggal = normalizeExcelCell(rawTanggal, "date") || normalizeDate(rawTanggal) || rawTanggal;
 
     const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";
     const cabang = pick(["cabang studio", "cabang", "studio"], r) ?? "";
@@ -322,19 +305,8 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
 
     const rawMulai = pick(["jam mulai", "jam mulai live", "jam_mulai_live", "start", "mulai"], r) ?? "";
     const rawSelesai = pick(["jam selesai", "jam selesai live", "jam_selesai_live", "end", "selesai"], r) ?? "";
-    const mulai = cleanTime(rawMulai, "10:00");
-    const selesai = cleanTime(rawSelesai, "12:00");
-
-=======
-  for (const r of rows) {
-    const idJadwal = pick(["id jadwal", "idjadwal", "id_jadwal"], r) ?? "";
-    const tanggal = normalizeExcelCell(pick(["tanggal", "date", "tgl"], r) ?? "", "date");
-    const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";
-    const cabang = pick(["cabang studio", "cabang", "studio"], r) ?? "";
-    const nomor = pick(["nomor studio", "no studio", "nomor_studio"], r) ?? "";
-    const mulai = normalizeExcelCell(pick(["jam mulai", "jam mulai live", "jam_mulai_live", "start"], r) ?? "10:00", "time");
-    const selesai = normalizeExcelCell(pick(["jam selesai", "jam selesai live", "jam_selesai_live", "end"], r) ?? "12:00", "time");
->>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
+    const mulai = normalizeExcelCell(rawMulai, "time") || cleanTime(rawMulai, "10:00");
+    const selesai = normalizeExcelCell(rawSelesai, "time") || cleanTime(rawSelesai, "12:00");
     const streamer = pick(["streamer", "host", "nama host", "nama_streamer"], r) ?? "";
     const judul = pick(["judul live", "judul", "campaign"], r) ?? "";
     const promo = pick(["promo live", "promo", "voucher"], r) ?? "";
