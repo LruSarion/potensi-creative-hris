@@ -117,6 +117,7 @@ export function normalizeDate(v: string | number | Date | null | undefined): str
   return null;
 }
 
+<<<<<<< HEAD
 /** Clean time strings (e.g. "10:00:00", "10.00", "10:00", "10") -> HH:MM. */
 export function cleanTime(t: string | null | undefined, defaultTime = "10:00"): string {
   if (!t) return defaultTime;
@@ -131,6 +132,36 @@ export function cleanTime(t: string | null | undefined, defaultTime = "10:00"): 
     return `${str.padStart(2, "0")}:00`;
   }
   return defaultTime;
+=======
+/** Convert an Excel serial date (days since 1899-12-30) to YYYY-MM-DD. */
+export function excelSerialToDate(serial: number): string | null {
+  if (!isFinite(serial) || serial <= 0) return null;
+  const ms = Math.round((serial - 25569) * 86400 * 1000);
+  const d = new Date(ms);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
+/** Convert an Excel serial time (fraction of a day) to HH:MM. */
+export function excelSerialToTime(serial: number): string | null {
+  if (!isFinite(serial) || serial < 0 || serial >= 1) return null;
+  const totalMin = Math.round(serial * 24 * 60);
+  const h = Math.floor(totalMin / 60) % 24;
+  const m = totalMin % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Normalize a cell that may be an Excel serial date/time or a plain string. */
+export function normalizeExcelCell(v: string, kind: "date" | "time"): string {
+  const t = v.trim();
+  if (!t) return "";
+  const n = Number(t);
+  if (isFinite(n)) {
+    if (kind === "date") return excelSerialToDate(n) ?? t;
+    return excelSerialToTime(n) ?? t;
+  }
+  return t;
+>>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
 }
 
 /** Normalize gender/jabatan/tier aliases to canonical values. */

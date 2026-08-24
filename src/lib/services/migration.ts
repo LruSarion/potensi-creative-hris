@@ -5,6 +5,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 import { createJadwalBatch } from "@/lib/services/jadwal";
 import { karyawanSchema } from "@/lib/schemas/karyawan";
+import { normalizeExcelCell } from "@/lib/services/converter-utils";
 import type { Role } from "@/generated/prisma/enums";
 import { cleanTime, normalizeDate, normalizeEnum } from "./converter-utils";
 
@@ -110,6 +111,30 @@ function parseCsvLine(line: string): string[] {
  * Parse file content into rows. Supports CSV text or Excel (xlsx/xls).
  * `fileContent` is a base64-encoded buffer for Excel, or raw CSV string.
  */
+/** Known header keywords used to locate the real header row in a messy sheet. */
+const HEADER_KEYWORDS = [
+  "id jadwal", "idjadwal", "id_jadwal", "tanggal", "tgl", "platform", "marketplace",
+  "jam mulai", "jam_mulai", "jam selesai", "jam_selesai", "streamer", "host", "nama host",
+  "cabang", "studio", "nomor studio", "judul", "promo", "produk", "id karyawan", "idkaryawan",
+  "nama lengkap", "nama", "nik", "gender", "jabatan", "email", "periode", "bulan", "total jam",
+  "rate", "gross", "gaji", "tipe", "kategori", "waktu", "catatan", "nama client", "client", "brand",
+];
+
+/** Score how "header-like" a row is: count cells that match known header keywords. */
+function headerScore(cells: string[]): number {
+  return cells.filter((c) => {
+    const t = c.trim().toLowerCase();
+    return HEADER_KEYWORDS.some((k) => t === k || t.startsWith(k) || t.includes(k));
+  }).length;
+}
+
+/**
+ * Parse an Excel sheet into rows, auto-detecting the real header row.
+ * Many legacy files have a title row (e.g. "PLOTING JADWAL LIVE HARIAN...") above
+ * the actual column headers; sheet_to_json would treat the title as the header and
+ * mangle the real columns into __EMPTY_*. We scan for the row that best matches
+ * known column names and use that as the header.
+ */
 export function parseImportFile(fileContent: string, fileName: string): { rows: Record<string, string>[]; headers: string[]; sheetName?: string } {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".csv") || lower.endsWith(".txt")) {
@@ -122,6 +147,7 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
   const wb = XLSX.read(fileContent, { type: "base64", cellDates: true });
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
+<<<<<<< HEAD
   const raw2D = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
   const linesOfCells = raw2D.map((row) => (Array.isArray(row) ? row.map((c) => (c == null ? "" : String(c).trim())) : []));
   const headerIdx = findHeaderRowIndex(linesOfCells);
@@ -136,6 +162,31 @@ export function parseImportFile(fileContent: string, fileName: string): { rows: 
       if (h) {
         row[h] = (cells[idx] ?? "").trim();
       }
+=======
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" }) as unknown[][];
+
+  // Find the best header row: the one with the most known-keyword matches.
+  let headerIdx = 0;
+  let bestScore = -1;
+  for (let i = 0; i < aoa.length; i++) {
+    const cells = (aoa[i] ?? []).map((c) => (c == null ? "" : String(c).trim()));
+    const score = headerScore(cells);
+    if (score > bestScore) {
+      bestScore = score;
+      headerIdx = i;
+    }
+  }
+  // If no row looks like a header, fall back to row 0.
+  if (bestScore <= 0) headerIdx = 0;
+
+  const headers = (aoa[headerIdx] ?? []).map((c) => (c == null ? "" : String(c).trim()));
+  const rows: Record<string, string>[] = [];
+  for (let i = headerIdx + 1; i < aoa.length; i++) {
+    const cells = (aoa[i] ?? []).map((c) => (c == null ? "" : String(c).trim()));
+    const row: Record<string, string> = {};
+    headers.forEach((h, idx) => {
+      row[h] = cells[idx] ?? "";
+>>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
     });
     if (Object.values(row).every((v) => !v)) continue;
     rows.push(row);
@@ -256,6 +307,7 @@ export async function importKaryawan(rows: Record<string, string>[]) {
 export async function importJadwalRows(rows: Record<string, string>[]) {
   const user = await requireRole(...IMPORT_ROLES);
   const inputRows: z.infer<typeof jadwalImportSchema>[] = [];
+<<<<<<< HEAD
   for (let idx = 0; idx < rows.length; idx++) {
     const r = rows[idx];
     const rawIdJadwal = pick(["id jadwal", "idjadwal", "id_jadwal", "id"], r) ?? "";
@@ -273,6 +325,16 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
     const mulai = cleanTime(rawMulai, "10:00");
     const selesai = cleanTime(rawSelesai, "12:00");
 
+=======
+  for (const r of rows) {
+    const idJadwal = pick(["id jadwal", "idjadwal", "id_jadwal"], r) ?? "";
+    const tanggal = normalizeExcelCell(pick(["tanggal", "date", "tgl"], r) ?? "", "date");
+    const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";
+    const cabang = pick(["cabang studio", "cabang", "studio"], r) ?? "";
+    const nomor = pick(["nomor studio", "no studio", "nomor_studio"], r) ?? "";
+    const mulai = normalizeExcelCell(pick(["jam mulai", "jam mulai live", "jam_mulai_live", "start"], r) ?? "10:00", "time");
+    const selesai = normalizeExcelCell(pick(["jam selesai", "jam selesai live", "jam_selesai_live", "end"], r) ?? "12:00", "time");
+>>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
     const streamer = pick(["streamer", "host", "nama host", "nama_streamer"], r) ?? "";
     const judul = pick(["judul live", "judul", "campaign"], r) ?? "";
     const promo = pick(["promo live", "promo", "voucher"], r) ?? "";
@@ -516,4 +578,4 @@ export async function previewMigration(params: { fileContent: string; fileName: 
 
 // ---------- SMART HEURISTIC NORMALIZER ----------
 // Re-exported from a pure module (no DB/auth) so it's unit-testable.
-export { detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum } from "./converter-utils";
+export { detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, excelSerialToDate, excelSerialToTime, normalizeExcelCell } from "./converter-utils";
