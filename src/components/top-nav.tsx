@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import NotificationBell from "@/components/notification-bell";
 
-export default function TopNav() {
-  const { data: session } = useSession();
+
+export default function TopNav({
+  onToggleMobileMenu,
+}: {
+  onToggleMobileMenu?: () => void;
+}) {
+  const { data: session, status } = useSession();
   const pathname = usePathname();
   const [timeStr, setTimeStr] = useState("");
 
@@ -27,63 +32,87 @@ export default function TopNav() {
   }, []);
 
   const pathTitles: Record<string, string> = {
-    "/dashboard": "Command Center Overview",
-    "/streamer-dashboard": "Streamer & Host Hub",
-    "/staff-dashboard": "Staff & OTS Hub",
-    "/input-jadwal": "Jadwal Live Streaming",
-    "/input-karyawan": "Master Karyawan & Host",
-    "/client": "Brand Partner & Klien",
-    "/view-data": "Master Data Explorer",
-    "/approval": "Pusat Persetujuan",
-    "/pengajuan-izin": "Pengajuan Izin & Cuti",
-    "/pengajuan-lembur": "Pengajuan Lembur Extra",
-    "/tukar-shift": "Tukar Shift Siaran",
-    "/penilaian-sdm": "Evaluasi KPI Host",
-    "/payroll": "Kompensasi & Payroll",
-    "/suara-karyawan": "Suara Karyawan & Aspirasi",
+    "/dashboard": "Dashboard",
+    "/streamer-dashboard": "Streamer Dashboard",
+    "/staff-dashboard": "Staff Dashboard",
+    "/input-jadwal": "Input Jadwal",
+    "/input-karyawan": "Input Karyawan",
+    "/client": "Client",
+    "/view-data": "View Data",
+    "/approval": "Approval",
+    "/pengajuan-izin": "Pengajuan Cuti/Izin",
+    "/pengajuan-lembur": "Pengajuan Lembur",
+    "/tukar-shift": "Tukar Shift",
+    "/penilaian-sdm": "Penilaian SDM",
+    "/payroll": "Payroll",
+    "/suara-karyawan": "Suara Karyawan",
+    "/master-data": "Master Data",
+    "/history-log": "History Log",
     "/portal/operation": "Portal Operations Board",
-    "/portal/finance": "Portal Keuangan Agency",
+    "/portal/finance": "Portal Keuangan",
     "/portal/qc": "Portal Quality Control",
-    "/portal/trainer": "Portal Trainer & Akademi",
+    "/portal/trainer": "Portal Trainer",
     "/portal/client": "Portal Brand Client",
     "/portal/streamer/lms": "LMS & Akademi Host",
-    "/admin": "Admin Control Center",
-    "/history-log": "Audit & History Log",
-    "/analytics-gmv": "Analytics GMV Bulanan",
-    "/finance-insentif": "Rekap Denda & Insentif Pelapor",
+    "/admin": "Master Data",
+    "/analytics-gmv": "Analytics GMV",
+
+    "/finance-insentif": "Rekap Denda & Insentif",
     "/qc-violations": "Pelanggaran QC Live",
-    "/sop-management": "Manajemen SOP & Tugas",
-    "/streamer-directory": "Direktori Streamer & Sertifikasi",
+    "/sop-management": "Manajemen SOP",
+    "/streamer-directory": "Direktori Streamer",
   };
 
   const currentTitle = pathTitles[pathname] ?? "HRIS Potensi Creative";
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between flex-shrink-0 relative z-30">
-      <div className="flex items-center gap-3">
-        <h2 className="text-sm font-bold text-slate-800 tracking-tight">{currentTitle}</h2>
+    <header className="z-30 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0 w-full shadow-sm sticky top-0">
+      <div className="flex items-center gap-4">
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            onClick={onToggleMobileMenu}
+            className="lg:hidden text-slate-500 hover:text-blue-600 transition"
+            title="Buka Menu"
+          >
+            <i className="fa-solid fa-bars text-xl" />
+          </button>
+        )}
+        <h1 className="font-bold text-lg hidden sm:block text-slate-800 tracking-tight">{currentTitle}</h1>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Clock */}
-        <div className="hidden sm:flex items-center gap-2 text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-xl">
-          <i className="fa-solid fa-clock text-blue-600" />
+      <div className="flex items-center gap-3 sm:gap-5">
+        {/* Real-time Clock */}
+        <div className="hidden md:flex items-center gap-2 text-xs font-mono font-medium text-slate-500 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+          <i className="fa-regular fa-clock text-blue-600" />
           <span>{timeStr || "Loading..."}</span>
         </div>
 
-        {/* Notification Bell — real inbox (LogAktivitas NOTIFICATION rows) */}
+        {/* Notification Bell */}
         <NotificationBell />
 
-        {/* User Role Badge */}
-        <div className="flex items-center gap-2">
-          <span className="hidden md:inline-block text-xs font-semibold text-slate-700">
-            {session?.user?.name ?? session?.user?.email}
-          </span>
-          <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 uppercase">
-            {session?.user?.role ?? "STAFF"}
-          </span>
+        {/* User Info */}
+        <div className="text-right flex flex-col justify-center">
+          <div className="text-xs sm:text-sm font-bold text-slate-900 leading-tight">
+            {session?.user?.name ?? session?.user?.email ?? (status === "loading" ? "Memuat..." : "Karyawan")}
+          </div>
+          <div className="text-[10px] sm:text-xs text-slate-500 font-medium mt-0.5 capitalize">
+            {session?.user?.role ? session.user.role.replace(/_/g, " ").toLowerCase() : "Staff"}
+          </div>
         </div>
+
+        <div className="h-6 sm:h-8 w-px bg-slate-200"></div>
+
+        <button
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          className="text-slate-500 hover:text-red-600 transition"
+          title="Keluar"
+        >
+          <i className="fa-solid fa-arrow-right-from-bracket text-lg" />
+        </button>
       </div>
     </header>
   );
 }
+
+

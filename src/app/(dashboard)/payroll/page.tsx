@@ -68,35 +68,71 @@ export default function PayrollPage() {
   const rupiah = (val: number | string | undefined) =>
     `Rp ${Number(val ?? 0).toLocaleString("id-ID")}`;
 
+  const [activeTab, setActiveTab] = useState<"payroll" | "atur-gaji" | "history">("payroll");
+
   return (
     <div className="space-y-6">
-      {/* Header & Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      {/* Header persis ref-website-lama/payroll.html */}
+      <div className="flex flex-wrap justify-between items-end mb-6 gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Kompensasi & Payroll Streamer</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Perhitungan gaji berbasis tiering jam live, validasi absensi aktual, lembur, dan slip gaji.
-          </p>
+          <h1 className="text-2xl font-bold text-slate-900">Payroll Management</h1>
+          <p className="text-slate-500 text-sm mt-1">Kelola perhitungan gaji, parameter master, dan riwayat arsip.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
-            <span className="text-xs text-slate-400 font-medium mr-2">Periode:</span>
-            <input
-              type="text"
-              value={periode}
-              onChange={(e) => setPeriode(e.target.value)}
-              className="text-xs font-semibold text-slate-800 outline-none w-28 bg-transparent"
-              placeholder="mis. Agustus 2026"
-            />
-          </div>
+
+        <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+          <label className="text-sm font-medium text-slate-600 pl-2">Periode Aktif:</label>
+          <input
+            type="text"
+            value={periode}
+            onChange={(e) => setPeriode(e.target.value)}
+            className="border border-slate-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-32"
+            placeholder="Agustus 2026"
+          />
           <button
             onClick={() => setCalcModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-xl text-xs transition shadow-md shadow-blue-600/20 flex items-center gap-1.5"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-sm flex items-center gap-1.5"
           >
-            <span>⚡</span>
-            <span>Hitung Payroll Periode</span>
+            <i className="fa-solid fa-bolt" />
+            <span>Hitung Gaji</span>
           </button>
         </div>
+      </div>
+
+      {/* Tab Navigation persis ref-website-lama/payroll.html */}
+      <div className="flex flex-wrap gap-2 border border-slate-200 p-1.5 rounded-xl bg-slate-50 mb-6">
+        <button
+          onClick={() => setActiveTab("payroll")}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
+            activeTab === "payroll"
+              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
+              : "text-slate-600 hover:bg-white font-medium"
+          }`}
+        >
+          <i className="fa-solid fa-money-bill-wave" />
+          <span>Payroll Bulan Ini</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("atur-gaji")}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
+            activeTab === "atur-gaji"
+              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
+              : "text-slate-600 hover:bg-white font-medium"
+          }`}
+        >
+          <i className="fa-solid fa-sliders" />
+          <span>Atur Master Gaji</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("history")}
+          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
+            activeTab === "history"
+              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
+              : "text-slate-600 hover:bg-white font-medium"
+          }`}
+        >
+          <i className="fa-solid fa-box-archive" />
+          <span>History / Arsip</span>
+        </button>
       </div>
 
       {/* Alerts */}

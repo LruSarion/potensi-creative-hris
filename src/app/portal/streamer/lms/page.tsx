@@ -2,9 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import VideoLessonPlayer from "@/components/lms/video-lesson-player";
 
-type Question = { id: string; type: string; question: string; options: string[] | null; isNote?: boolean };
-type Lesson = { id: string; title: string; order: number; content?: string | null; videoId?: string | null };
+type Question = {
+  id: string;
+  type: string;
+  question: string;
+  options: string[] | null;
+  correctAnswer?: string | null;
+  eventTime?: number | null;
+  lessonId?: string | null;
+  isNote?: boolean;
+};
+type Lesson = { id: string; title: string; order: number; content?: string | null; videoId?: string | null; videoDuration?: number | null };
 type Module = { id: string; title: string; order: number; passingScore: number; lessons: Lesson[]; questions: Question[] };
 type Certificate = { id: string; code: string; issuedAt: string };
 type Enrollment = {
@@ -118,29 +128,52 @@ export default function LmsAkademiPage() {
             <div className="px-5 py-3 bg-slate-50 text-xs font-bold text-slate-600 uppercase tracking-wider">
               <i className="fa-solid fa-book-open mr-1.5 text-blue-500" /> Materi Modul
             </div>
-            {activeModule.lessons.map((l) => (
-              <div key={l.id} className="p-5 space-y-3">
-                <h4 className="font-bold text-slate-800 text-sm">{l.title}</h4>
-                {l.videoId && (
-                  <div className="rounded-xl overflow-hidden aspect-video bg-black">
-                    <iframe className="w-full h-full" src={`https://www.youtube.com/embed/${l.videoId}`} allowFullScreen />
-                  </div>
-                )}
-                {l.content && (
-                  <div className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-100">{l.content}</div>
-                )}
-              </div>
-            ))}
+            {activeModule.lessons.map((l) => {
+              // Questions tied to this specific lesson (for video-timed questions)
+              const lessonQuestions = activeModule.questions
+                .filter((q) => q.lessonId === l.id || (!q.lessonId && activeModule.lessons.filter((x) => x.videoId).length === 1 && q.eventTime != null))
+                .map((q) => ({
+                  id: q.id,
+                  question: q.question,
+                  options: q.options,
+                  correctAnswer: q.correctAnswer ?? null,
+                  eventTime: q.eventTime ?? null,
+                  isNote: q.isNote ?? false,
+                }));
+              const hasTimedQuestions = lessonQuestions.some((q) => q.eventTime != null);
+              return (
+                <div key={l.id} className="p-5 space-y-3">
+                  <h4 className="font-bold text-slate-800 text-sm">{l.title}</h4>
+                  {l.videoId ? (
+                    <VideoLessonPlayer
+                      lesson={{
+                        id: l.id,
+                        title: l.title,
+                        videoId: l.videoId,
+                        videoDuration: l.videoDuration ?? null,
+                        content: l.content ?? null,
+                      }}
+                      enrollmentId={activeEnroll.id}
+                      questions={hasTimedQuestions ? lessonQuestions : []}
+                      onSubmitted={load}
+                    />
+                  ) : null}
+                  {l.content && (
+                    <div className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap bg-slate-50 rounded-xl p-4 border border-slate-100">{l.content}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
-        {activeModule.questions.filter((q) => !q.isNote).length > 0 && !quizResult && (
+        {activeModule.questions.filter((q) => !q.isNote && q.eventTime == null).length > 0 && !quizResult && (
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-600 uppercase tracking-wider">
               <i className="fa-solid fa-circle-question mr-1.5 text-amber-500" />
-              Kuis Modul ({activeModule.questions.filter((q) => !q.isNote).length} Soal)
+              Kuis Modul ({activeModule.questions.filter((q) => !q.isNote && q.eventTime == null).length} Soal)
             </div>
             <div className="divide-y divide-slate-100">
-              {activeModule.questions.filter((q) => !q.isNote).map((q, idx) => (
+              {activeModule.questions.filter((q) => !q.isNote && q.eventTime == null).map((q, idx) => (
                 <div key={q.id} className="p-5 space-y-3">
                   <p className="text-sm font-semibold text-slate-800">{idx + 1}. {q.question}</p>
                   {q.type === "MCQ" && q.options ? (

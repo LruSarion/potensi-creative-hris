@@ -4,6 +4,141 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
+import { generateGoogleCalendarUrl } from "@/lib/google-calendar-utils";
+
+// --- Safe Date & Time Formatting Helpers (Prevents "Invalid Date" Errors) ---
+function formatDateSafe(val: any, options?: Intl.DateTimeFormatOptions, fallback = "–"): string {
+  if (!val) return fallback;
+  try {
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const [y, m, d] = trimmed.split("-").map(Number);
+        const dt = new Date(y, m - 1, d);
+        if (!isNaN(dt.getTime())) {
+          return dt.toLocaleDateString("id-ID", options ?? { day: "2-digit", month: "short", year: "numeric" });
+        }
+      }
+    }
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return fallback;
+    return dt.toLocaleDateString("id-ID", options ?? { day: "2-digit", month: "short", year: "numeric" });
+  } catch {
+    return fallback;
+  }
+}
+
+function formatTimeSafe(val: any, fallback = "–"): string {
+  if (!val) return fallback;
+  try {
+    if (typeof val === "string") {
+      const trimmed = val.trim();
+      if (/^\d{1,2}:\d{2}/.test(trimmed)) {
+        const parts = trimmed.split(":");
+        const hh = parts[0].padStart(2, "0");
+        const mm = parts[1].padStart(2, "0");
+        return `${hh}:${mm}`;
+      }
+    }
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return fallback;
+    return dt.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return fallback;
+  }
+}
+
+function formatDateTimeSafe(val: any, fallback = "–"): string {
+  if (!val) return fallback;
+  try {
+    const dt = new Date(val);
+    if (isNaN(dt.getTime())) return fallback;
+    return dt.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return fallback;
+  }
+}
+
+// Format duration in human-readable Days, Hours, and Minutes (e.g. "1 Hari 2 Jam 15 Menit")
+function formatLateDuration(totalMinutes: number): string {
+  if (totalMinutes <= 0) return "0 Menit";
+
+  const days = Math.floor(totalMinutes / 1440);
+  const remainingMinutesAfterDays = totalMinutes % 1440;
+  const hours = Math.floor(remainingMinutesAfterDays / 60);
+  const minutes = remainingMinutesAfterDays % 60;
+
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} Hari`);
+  if (hours > 0) parts.push(`${hours} Jam`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes} Menit`);
+
+  return parts.join(" ");
+}
+
+// Dynamic check-in late validator based on current time vs scheduled start time
+function getLateCheckInStatus(jadwal: Jadwal | null): {
+  isLate: boolean;
+  minutesLate: number;
+  lateDurationText: string;
+  scheduledTimeText: string;
+} {
+  if (!jadwal || !jadwal.jamMulaiLive) {
+    return { isLate: false, minutesLate: 0, lateDurationText: "", scheduledTimeText: "" };
+  }
+
+  const now = new Date();
+  let scheduledStart: Date | null = null;
+
+  if (jadwal.jamMulaiLive.includes("T")) {
+    scheduledStart = new Date(jadwal.jamMulaiLive);
+  } else {
+    let year = now.getFullYear();
+    let month = now.getMonth();
+    let day = now.getDate();
+
+    if (jadwal.tanggal) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(jadwal.tanggal.trim())) {
+        const [y, m, d] = jadwal.tanggal.trim().split("-").map(Number);
+        year = y;
+        month = m - 1;
+        day = d;
+      } else {
+        const dt = new Date(jadwal.tanggal);
+        if (!isNaN(dt.getTime())) {
+          year = dt.getFullYear();
+          month = dt.getMonth();
+          day = dt.getDate();
+        }
+      }
+    }
+
+    const [hh, mm] = jadwal.jamMulaiLive.split(":").map(Number);
+    scheduledStart = new Date(year, month, day, hh || 0, mm || 0);
+  }
+
+  if (!scheduledStart || isNaN(scheduledStart.getTime())) {
+    return { isLate: false, minutesLate: 0, lateDurationText: "", scheduledTimeText: "" };
+  }
+
+  const diffMs = now.getTime() - scheduledStart.getTime();
+  const minutesLate = Math.floor(diffMs / 60000);
+  const scheduledTimeText = formatTimeSafe(jadwal.jamMulaiLive);
+  const lateDurationText = formatLateDuration(minutesLate > 0 ? minutesLate : 0);
+
+  return {
+    isLate: minutesLate > 0,
+    minutesLate: minutesLate > 0 ? minutesLate : 0,
+    lateDurationText,
+    scheduledTimeText,
+  };
+}
+
 
 type Jadwal = {
   id: string;
@@ -17,7 +152,7 @@ type Jadwal = {
   liveState: string;
   client?: { namaClient: string } | null;
   produk?: { namaProduk: string; sku: string }[];
-  absensi?: { reportedGmv: number | null }[];
+  absensi?: { reportedGmv: number | null; waktuMasuk: string; waktuKeluar: string | null }[];
 };
 
 type DashboardData = {
@@ -46,8 +181,36 @@ type DashboardData = {
   }[];
 };
 
+type AbsensiHistory = {
+  id: string;
+  tipe: string;
+  kategori: string;
+  waktuMasuk: string;
+  waktuKeluar: string | null;
+  reportedGmv: number | null;
+  isTerusan: boolean;
+  jadwal?: {
+    idJadwal: string;
+    platform: string | null;
+    client?: { namaClient: string } | null;
+  } | null;
+};
+
+const TABS = [
+  { id: "checkin", label: "Check In", icon: "fa-solid fa-arrow-right-to-bracket" },
+  { id: "checkout", label: "Check Out", icon: "fa-solid fa-arrow-right-from-bracket" },
+  { id: "terbatas", label: "Terbatas", icon: "fa-solid fa-bolt" },
+  { id: "jadwal", label: "Jadwal", icon: "fa-regular fa-calendar" },
+  { id: "request", label: "Request", icon: "fa-solid fa-file-pen" },
+  { id: "riwayat", label: "History", icon: "fa-solid fa-clock-rotate-left" },
+  { id: "report", label: "Report", icon: "fa-solid fa-chart-pie", adminOnly: true },
+];
+
 export default function StreamerDashboardPage() {
   const { data: session } = useSession();
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role ?? "");
+
+  const [activeTab, setActiveTab] = useState("checkin");
   const [jadwal, setJadwal] = useState<Jadwal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -57,33 +220,42 @@ export default function StreamerDashboardPage() {
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [pendingGmvList, setPendingGmvList] = useState<any[]>([]);
   const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
-  const [violations, setViolations] = useState<any[]>([]);
-  const [violationSummary, setViolationSummary] = useState<{ count: number; byCategory: Record<string, number>; critical: number } | null>(null);
+  const [absensiHistory, setAbsensiHistory] = useState<AbsensiHistory[]>([]);
 
-  // Checkin modal/inputs
-  const [checkinModalOpen, setCheckinModalOpen] = useState(false);
-  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  // Check-in form state
   const [selectedJadwalId, setSelectedJadwalId] = useState("");
+  const [selectedJadwalDetail, setSelectedJadwalDetail] = useState<Jadwal | null>(null);
   const [fotoBuktiUrl, setFotoBuktiUrl] = useState("");
+  const [alasanTerlambat, setAlasanTerlambat] = useState("");
+
+  // Check-out form state
   const [reportedGmv, setReportedGmv] = useState("");
-  
-  // Pending GMV submit
+
+  // Pending GMV
   const [pendingGmvId, setPendingGmvId] = useState("");
   const [pendingGmvModalOpen, setPendingGmvModalOpen] = useState(false);
 
+  // Request Tab state
+  const [requestStatus, setRequestStatus] = useState<any>(null);
+  const [requestSubTab, setRequestSubTab] = useState<"libur" | "sesi">("libur");
+  const [leaveDate, setLeaveDate] = useState("");
+  const [leaveReason, setLeaveReason] = useState("");
+  const [shiftDate, setShiftDate] = useState("");
+  const [selectedSesi, setSelectedSesi] = useState<"SESI_1" | "SESI_2" | "SESI_3">("SESI_2");
+  const [shiftNote, setShiftNote] = useState("");
+  const [submittingRequest, setSubmittingRequest] = useState(false);
+
   useEffect(() => {
     loadData();
-    loadViolations();
+    loadRequestStatus();
   }, []);
 
-  async function loadViolations() {
+  async function loadRequestStatus() {
     try {
-      const [listRes, sumRes] = await Promise.all([
-        fetch("/api/qc-violation").then((r) => r.json()),
-        fetch("/api/qc-violation?view=summary").then((r) => r.json()),
-      ]);
-      if (listRes.status === "success") setViolations(listRes.data ?? []);
-      if (sumRes.status === "success") setViolationSummary(sumRes.data);
+      const res = await fetch("/api/streamer?view=request-status").then((r) => r.json());
+      if (res.status === "success") {
+        setRequestStatus(res.data);
+      }
     } catch {
       // ignore
     }
@@ -93,12 +265,13 @@ export default function StreamerDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes, dRes, pRes, tRes] = await Promise.all([
+      const [jRes, sRes, dRes, pRes, tRes, hRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
         fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=dashboard").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=pending-gmv").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
         fetch("/api/payroll?tiering=1").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+        fetch("/api/absensi?view=history").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);
@@ -107,6 +280,7 @@ export default function StreamerDashboardPage() {
       if (sRes.status === "success") setActiveSession(sRes.data);
       if (dRes.status === "success") setDashboardData(dRes.data);
       if (pRes.status === "success") setPendingGmvList(pRes.data || []);
+      if (hRes.status === "success") setAbsensiHistory(hRes.data || []);
       if (tRes.status === "success") {
         setTiering((tRes.data ?? []).map((b: any) => ({
           tier: b.tier,
@@ -122,16 +296,87 @@ export default function StreamerDashboardPage() {
     }
   }
 
+  // Conflict calculation for leaveDate
+  const conflictingJadwal = leaveDate && requestStatus?.activeJadwal
+    ? requestStatus.activeJadwal.find((j: any) => {
+        const jDate = new Date(j.tanggal).toISOString().slice(0, 10);
+        return jDate === leaveDate;
+      })
+    : null;
+  const hasScheduleConflict = Boolean(conflictingJadwal);
+
+  async function handleLeaveSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!leaveDate) return;
+    setSubmittingRequest(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/streamer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "leave-request", tanggal: leaveDate, alasan: leaveReason }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("✅ Pengajuan Libur berhasil dikirim! Menunggu persetujuan Eksekutif.");
+        setLeaveDate("");
+        setLeaveReason("");
+        loadRequestStatus();
+      } else {
+        setError(d.message ?? "Gagal mengirim pengajuan libur");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    } finally {
+      setSubmittingRequest(false);
+    }
+  }
+
+  async function handleShiftSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!shiftDate) return;
+    setSubmittingRequest(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/streamer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "shift-request", tanggal: shiftDate, sesi: selectedSesi, catatan: shiftNote }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("✅ Request Sesi Live berhasil dikirim! Menunggu konfirmasi Eksekutif.");
+        setShiftDate("");
+        setShiftNote("");
+        loadRequestStatus();
+      } else {
+        setError(d.message ?? "Gagal mengirim request sesi live");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    } finally {
+      setSubmittingRequest(false);
+    }
+  }
+
   async function handleCheckIn() {
     if (!selectedJadwalId) {
       setError("Pilih jadwal live yang akan di-checkin");
       return;
     }
-    
+
+    // Dynamic late check
+    const lateStatus = getLateCheckInStatus(selectedJadwalDetail);
+    if (lateStatus.isLate && !alasanTerlambat.trim()) {
+      setError(`Sesi ini terlambat ${lateStatus.lateDurationText} dari jadwal (${lateStatus.scheduledTimeText} WIB). Harap isi Alasan Keterlambatan.`);
+      return;
+    }
+
     setActionLoading(true);
     setError("");
     setSuccess("");
-
     try {
       const res = await fetch("/api/absensi", {
         method: "POST",
@@ -140,16 +385,20 @@ export default function StreamerDashboardPage() {
           tipe: "CHECK_IN",
           kategori: "STREAMER",
           jadwalId: selectedJadwalId,
-          fotoBuktiUrl: fotoBuktiUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300",
+          fotoBuktiUrl: fotoBuktiUrl || undefined,
+          alasan: alasanTerlambat || undefined,
           isTerusan: !!activeSession,
         }),
       });
       const d = await res.json();
       if (d.status === "success") {
-        setSuccess("Presensi Check-In berhasil! Status sesi live sekarang ON-AIR.");
-        setCheckinModalOpen(false);
-        setReportedGmv("");
+        setSuccess("✅ Presensi Check-In berhasil! Status sesi live sekarang ON-AIR.");
+        setSelectedJadwalId("");
+        setSelectedJadwalDetail(null);
+        setFotoBuktiUrl("");
+        setAlasanTerlambat("");
         loadData();
+        setActiveTab("jadwal");
       } else {
         setError(d.message ?? "Gagal melakukan check-in");
       }
@@ -160,11 +409,6 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  function handleCheckOutClick(jadwalId?: string) {
-    if (jadwalId) setSelectedJadwalId(jadwalId);
-    setCheckoutModalOpen(true);
-  }
-
   async function handleCheckOutSubmit() {
     if (!reportedGmv) {
       setError("Harap isi total GMV income untuk sesi ini.");
@@ -173,7 +417,6 @@ export default function StreamerDashboardPage() {
     setActionLoading(true);
     setError("");
     setSuccess("");
-
     try {
       const res = await fetch("/api/absensi", {
         method: "POST",
@@ -181,16 +424,16 @@ export default function StreamerDashboardPage() {
         body: JSON.stringify({
           tipe: "CHECK_OUT",
           kategori: "STREAMER",
-          jadwalId: selectedJadwalId || undefined,
+          jadwalId: activeSession ? undefined : undefined,
           reportedGmv: parseFloat(reportedGmv),
         }),
       });
       const d = await res.json();
       if (d.status === "success") {
-        setSuccess("Presensi Check-Out berhasil! Sesi streaming tersimpan ke rekap payroll.");
-        setCheckoutModalOpen(false);
+        setSuccess("✅ Presensi Check-Out berhasil! Sesi streaming tersimpan ke rekap payroll.");
         setReportedGmv("");
         loadData();
+        setActiveTab("riwayat");
       } else {
         setError(d.message ?? "Gagal melakukan check-out");
       }
@@ -209,7 +452,6 @@ export default function StreamerDashboardPage() {
     setActionLoading(true);
     setError("");
     setSuccess("");
-
     try {
       const res = await fetch(`/api/absensi?id=${pendingGmvId}`, {
         method: "PATCH",
@@ -218,7 +460,7 @@ export default function StreamerDashboardPage() {
       });
       const d = await res.json();
       if (d.status === "success") {
-        setSuccess("GMV berhasil disimpan!");
+        setSuccess("✅ GMV berhasil disimpan!");
         setPendingGmvModalOpen(false);
         setReportedGmv("");
         loadData();
@@ -232,24 +474,21 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  // Calculate live hours
-
-  const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
-
   const totalLiveHours = dashboardData?.totalJam ?? 0;
-  // Resolve the current tier + rate from the REAL tiering config (DB), so the
-  // displayed tier is always accurate and matches payroll.
   const matchedTier = tiering.find((b) => totalLiveHours >= b.jamMinimal && totalLiveHours <= b.jamMaksimal);
   const currentTier = matchedTier?.tier ?? (tiering.length ? "Tidak ada tier" : "Basic");
   const currentRate = matchedTier?.ratePerJam ?? 25000;
+  const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
+
+  const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
 
   return (
     <div className="space-y-6">
-      {/* Header & Host Profile */}
+      {/* Profile Header */}
       <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-2xl font-black text-white shadow-inner">
+            <div className="w-14 h-14 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-2xl shadow-inner">
               <i className="fa-solid fa-headset text-blue-300" />
             </div>
             <div>
@@ -261,41 +500,24 @@ export default function StreamerDashboardPage() {
                   STREAMER
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-1">
-                {session?.user?.email}
-              </p>
+              <p className="text-xs text-slate-300 mt-0.5">{session?.user?.email}</p>
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={() => setCheckinModalOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-lg shadow-emerald-600/30 flex items-center gap-2"
-            >
-              <i className="fa-solid fa-video" />
-              <span>Check-In Live Stream</span>
-            </button>
-            {activeSession && (
-              <button
-                onClick={() => handleCheckOutClick()}
-                disabled={actionLoading}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition shadow-lg shadow-red-600/30 flex items-center gap-2"
-              >
-                <i className="fa-solid fa-stopwatch" />
-                <span>Check-Out Live</span>
-              </button>
-            )}
-          </div>
+          {currentLiveJadwal && (
+            <div className="flex items-center gap-2 bg-rose-500/20 border border-rose-400/30 px-4 py-2 rounded-xl animate-pulse">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-ping" />
+              <span className="text-xs font-bold text-rose-200">SEDANG ON AIR</span>
+            </div>
+          )}
         </div>
 
-        {/* Tier & Hour Progress (Realtime) */}
+        {/* Tier & Hours Progress */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-800/80 text-xs">
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Tier Pencapaian</span>
             <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold text-white">
-                {currentTier}
-              </span>
+              <span className="text-base font-extrabold text-white">{currentTier}</span>
               <span className="text-[10px] text-amber-300 font-semibold bg-amber-400/20 px-2 py-0.5 rounded-full">
                 Rp {currentRate.toLocaleString("id-ID")}/jam
               </span>
@@ -316,7 +538,7 @@ export default function StreamerDashboardPage() {
         </div>
       </div>
 
-      {/* Alerts */}
+      {/* Global Alerts */}
       {success && (
         <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-2">
           <i className="fa-solid fa-circle-check text-emerald-600 text-sm" />
@@ -329,477 +551,968 @@ export default function StreamerDashboardPage() {
           <span>{error}</span>
         </div>
       )}
-      
+
       {/* Pending GMV Alerts */}
       {pendingGmvList.map((p) => (
-        <div key={p.id} className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-pulse">
+        <div key={p.id} className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
           <div className="flex items-start gap-3">
             <i className="fa-solid fa-triangle-exclamation text-red-600 text-xl mt-1" />
             <div>
               <h3 className="font-black text-red-700 uppercase tracking-wider text-xs">PENTING: LAPORAN GMV TERTUNDA</h3>
               <p className="text-xs text-red-800 mt-0.5">
-                Anda memiliki sesi yang otomatis ditutup (Absensi Terusan) tanpa laporan GMV. 
-                <br className="hidden sm:block" />
-                Sesi: <strong>{p.jadwal?.client?.namaClient ?? "Klien"} ({p.jadwal?.platform})</strong> pada {new Date(p.jadwal?.tanggal).toLocaleDateString("id-ID")}.
+                Sesi: <strong>{p.jadwal?.client?.namaClient ?? "Klien"} ({p.jadwal?.platform})</strong> pada {formatDateSafe(p.jadwal?.tanggal)}.
               </p>
             </div>
           </div>
           <button
-            onClick={() => {
-              setPendingGmvId(p.id);
-              setPendingGmvModalOpen(true);
-            }}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md shadow-red-600/20 whitespace-nowrap"
+            onClick={() => { setPendingGmvId(p.id); setPendingGmvModalOpen(true); }}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md whitespace-nowrap"
           >
             Lengkapi GMV Sesi Ini
           </button>
         </div>
       ))}
 
-      {/* Contract Countdown Alert */}
+      {/* Contract Alert */}
       {dashboardData?.kontrakDaysLeft !== null && dashboardData?.kontrakDaysLeft !== undefined && dashboardData.kontrakDaysLeft <= 30 && (
         <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 flex items-start gap-3">
           <i className="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5" />
           <div>
             <div className="text-xs font-black text-amber-800">Perhatian: Kontrak Hampir Berakhir!</div>
             <div className="text-[11px] text-amber-700 mt-0.5">
-              Kontrak Anda ({dashboardData.karyawan?.kontrakType ?? "Kontrak"}) akan berakhir dalam{" "}
-              <strong>{dashboardData.kontrakDaysLeft} hari</strong> lagi. Segera hubungi HR untuk proses perpanjangan.
+              Kontrak Anda ({dashboardData.karyawan?.kontrakType ?? "Kontrak"}) akan berakhir dalam <strong>{dashboardData.kontrakDaysLeft} hari</strong> lagi.
             </div>
           </div>
         </div>
       )}
 
-      {/* Active On-Air Stream Banner (if currently live) */}
-      {currentLiveJadwal && (
-        <div className="bg-rose-50 border-2 border-rose-400 rounded-3xl p-5 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4 animate-pulse">
-          <div className="flex items-center gap-3">
-            <span className="w-3.5 h-3.5 rounded-full bg-rose-600 animate-ping"></span>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-rose-700 uppercase tracking-wider">SEDANG ON AIR (LIVE STREAMING)</span>
-                <span className="text-[10px] bg-rose-600 text-white font-bold px-2 py-0.5 rounded-md">{currentLiveJadwal.platform}</span>
-              </div>
-              <p className="text-xs text-slate-700 mt-0.5">
-                Brand: <strong>{currentLiveJadwal.client?.namaClient ?? "Klien"}</strong> • Studio: {currentLiveJadwal.studio ?? "Timoho Studio 1"}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => handleCheckOutClick(currentLiveJadwal.id)}
-            disabled={actionLoading}
-            className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition shadow-md shadow-rose-600/20"
-          >
-            Selesaikan Sesi & Check-Out
-          </button>
-        </div>
-      )}
-
-      {/* Realtime Stats Cards */}
-      {dashboardData && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
-            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-              <i className="fa-solid fa-coins" /> Estimasi Gaji Bersih
-            </div>
-            <div className="text-lg font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
-            <div className="text-[10px] text-slate-500 mt-1">Setelah denda • {dashboardData.periode}</div>
-          </div>
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
-            <div className="text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-              <i className="fa-solid fa-chart-line" /> Total GMV Dilaporkan
-            </div>
-            <div className="text-lg font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
-            <div className="text-[10px] text-slate-500 mt-1">Dari semua sesi {dashboardData.periode}</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-sm">
-            <div className="text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-              <i className="fa-solid fa-clock" /> Total Jam Live
-            </div>
-            <div className="text-lg font-black text-purple-700">{dashboardData.totalJam} Jam</div>
-            <div className="text-[10px] text-slate-500 mt-1">
-              Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "—"}</span>
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-sm">
-            <div className="text-[10px] text-red-600 font-bold uppercase tracking-wider mb-1 flex items-center gap-1">
-              <i className="fa-solid fa-gavel" /> Total Denda
-            </div>
-            <div className="text-lg font-black text-red-700">Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</div>
-            <div className="text-[10px] text-slate-500 mt-1">{dashboardData.incidents.length} Pelanggaran tercatat</div>
-          </div>
-        </div>
-      )}
-
-      {/* Violations Table */}
-      {dashboardData && dashboardData.incidents.length > 0 && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <i className="fa-solid fa-triangle-exclamation text-rose-500" /> Rekap Pelanggaran Bulan Ini
-              </h3>
-              <p className="text-[10px] text-slate-400 mt-0.5">Hanya pelanggaran yang sudah disetujui SPV</p>
-            </div>
-            <span className="bg-red-100 text-red-700 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-red-200">
-              {dashboardData.incidents.length} Kasus
-            </span>
-          </div>
-          <div className="divide-y divide-slate-50">
-            {dashboardData.incidents.map((inc) => (
-              <div key={inc.id} className="px-5 py-3 flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-semibold text-slate-800">{inc.title}</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    Kategori: <span className="text-slate-600 font-medium">{inc.category ?? "—"}</span> •{" "}
-                    {new Date(inc.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  {inc.fineApplied > 0 ? (
-                    <span className="text-xs font-bold text-red-600">− Rp {inc.fineApplied.toLocaleString("id-ID")}</span>
-                  ) : (
-                    <span className="text-[10px] text-slate-400 italic">Tanpa denda</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="px-5 py-3 bg-red-50 border-t border-red-100 flex justify-between items-center">
-            <span className="text-xs text-red-700 font-semibold">Total Potongan Denda</span>
-            <span className="text-sm font-black text-red-700">− Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</span>
-          </div>
-        </div>
-      )}
-
-
-      {/* Quick Shortcuts */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Link
-          href="/tukar-shift"
-          className="bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center gap-3 transition shadow-sm"
-        >
-          <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-sm">
-            <i className="fa-solid fa-arrows-rotate" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-800">Tukar Shift</div>
-            <div className="text-[10px] text-slate-400">Penggantian jadwal</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/pengajuan-izin"
-          className="bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center gap-3 transition shadow-sm"
-        >
-          <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm">
-            <i className="fa-solid fa-file-signature" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-800">Pengajuan Izin</div>
-            <div className="text-[10px] text-slate-400">Sakit / Cuti / Keperluan</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/pengajuan-lembur"
-          className="bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center gap-3 transition shadow-sm"
-        >
-          <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm">
-            <i className="fa-solid fa-clock" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-800">Lembur Extra</div>
-            <div className="text-[10px] text-slate-400">1.5x Hourly Rate</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/portal/streamer/lms"
-          className="bg-white hover:bg-slate-50 border border-slate-200 rounded-2xl p-3.5 flex items-center gap-3 transition shadow-sm"
-        >
-          <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">
-            <i className="fa-solid fa-graduation-cap" />
-          </div>
-          <div>
-            <div className="text-xs font-bold text-slate-800">LMS Akademi</div>
-            <div className="text-[10px] text-slate-400">Modul selling & SOP</div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Main Schedule List */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">Jadwal Live Streaming Saya</h3>
-            <p className="text-[11px] text-slate-400">Pastikan hadir 15 menit sebelum jam mulai untuk persiapan brief & sample produk.</p>
-          </div>
-          <span className="text-xs text-slate-500 font-semibold">{jadwal.length} Jadwal</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">ID Sesi</th>
-                <th className="px-4 py-3">Tanggal & Jam</th>
-                <th className="px-4 py-3">Brand & Platform</th>
-                <th className="px-4 py-3">Lokasi Studio</th>
-                <th className="px-4 py-3">Total GMV</th>
-                <th className="px-4 py-3">Status Sesi</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {jadwal.map((j) => (
-                <tr key={j.id} className="hover:bg-slate-50/80 transition">
-                  <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{j.idJadwal}</td>
-                  <td className="px-4 py-3">
-                    <div className="font-semibold text-slate-800">
-                      {new Date(j.tanggal).toLocaleDateString("id-ID", {
-                        weekday: "short",
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </div>
-                    <div className="text-[11px] text-blue-600 font-mono">
-                      {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                      {" - "}
-                      {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WIB
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-bold text-slate-800">{j.client?.namaClient ?? "Brand Partner"}</div>
-                    <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                      {j.platform ?? "Shopee Live"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 font-medium">
-                    <i className="fa-solid fa-location-dot text-slate-400 mr-1.5" />
-                    {j.studio ?? "Timoho Studio 1"}
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-emerald-700">
-                    {j.absensi && j.absensi.length > 0 && j.absensi.some(a => a.reportedGmv !== null) 
-                      ? `Rp ${j.absensi.reduce((sum, a) => sum + Number(a.reportedGmv || 0), 0).toLocaleString("id-ID")}` 
-                      : <span className="text-[10px] text-slate-400 font-normal italic">Belum ada</span>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        j.liveState === "LIVE"
-                          ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
-                          : j.status === "SELESAI"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-blue-50 text-blue-700 border-blue-200"
-                      }`}
-                    >
-                      {j.liveState === "LIVE" ? "🔴 ON AIR" : j.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {j.liveState === "LIVE" ? (
-                      <button
-                        onClick={() => handleCheckOutClick(j.id)}
-                        className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                      >
-                        Check-Out
-                      </button>
-                    ) : j.status === "SELESAI" || j.liveState === "CLOSED" ? (
-                      <span className="text-[10px] text-slate-400 font-bold italic">Selesai</span>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          setSelectedJadwalId(j.id);
-                          setCheckinModalOpen(true);
-                        }}
-                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
-                      >
-                        Check-In
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {jadwal.length === 0 && !loading && (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              Belum ada jadwal live streaming yang ditugaskan kepada Anda.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* QC Violations */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-            <i className="fa-solid fa-shield-halved text-amber-500" />
-            Catatan Pelanggaran QC
-          </h3>
-          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-            (violationSummary?.count ?? 0) > 0 ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
-          }`}>
-            {(violationSummary?.count ?? 0) > 0 ? `${violationSummary?.count} pelanggaran` : "Bersih ✓"}
-          </span>
-        </div>
-        {violations.length > 0 ? (
-          <div className="divide-y divide-slate-100 max-h-64 overflow-y-auto">
-            {violations.map((v) => (
-              <div key={v.id} className="p-4 flex items-start gap-3">
-                {v.photoUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={v.photoUrl} alt="Bukti" className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
+      {/* TAB NAVIGATION — Streamlined & High Aesthetic */}
+      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+          {visibleTabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
+                  isActive
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 scale-[1.02]"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/80"
+                }`}
+              >
+                <i className={`${tab.icon} ${isActive ? "text-white" : "text-slate-400"}`} />
+                <span className="truncate">{tab.label}</span>
+                {tab.id === "checkout" && pendingGmvList.length > 0 && (
+                  <span className="bg-amber-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                    {pendingGmvList.length}
+                  </span>
                 )}
-                {v.videoUrl && !v.photoUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <video src={v.videoUrl} controls className="w-14 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0" />
-                )}
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">
-                      {v.category}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      v.severity === "CRITICAL" || v.severity === "HIGH" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
-                    }`}>
-                      {v.severity}
-                    </span>
-                  </div>
-                  {v.description && <div className="text-[11px] text-slate-600 mt-1">{v.description}</div>}
-                  <div className="text-[10px] text-slate-400 mt-1">{new Date(v.createdAt).toLocaleString("id-ID")}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-6 text-center text-slate-400 text-xs">
-            <i className="fa-solid fa-circle-check text-2xl text-emerald-400 block mb-1" />
-            Tidak ada catatan pelanggaran QC.
-          </div>
-        )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Check-In Modal */}
-      {checkinModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-video text-emerald-600" />
-                <span>Presensi Check-In Live Stream</span>
-              </h3>
-              <button onClick={() => setCheckinModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
-            </div>
+      {/* ======== TAB: CHECK IN ======== */}
+      {activeTab === "checkin" && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
+          <h3 className="font-bold text-lg text-slate-900 mb-1 border-b border-slate-100 pb-2">Form Check-In Live</h3>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+            {/* Left: Jadwal selection + summary card */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Pilih Sesi Jadwal</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Pilih Jadwal Anda *</label>
               <select
                 value={selectedJadwalId}
-                onChange={(e) => setSelectedJadwalId(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSelectedJadwalId(val);
+                  const found = jadwal.find((j) => j.id === val) ?? null;
+                  setSelectedJadwalDetail(found);
+                }}
+                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                required
               >
                 <option value="">-- Pilih Jadwal Siaran --</option>
                 {jadwal
                   .filter((j) => j.status !== "SELESAI" && j.liveState !== "CLOSED" && j.liveState !== "LIVE")
                   .map((j) => (
-                  <option key={j.id} value={j.id}>
-                    {j.idJadwal} - {j.client?.namaClient ?? "Brand"} ({new Date(j.tanggal).toLocaleDateString("id-ID")})
-                  </option>
-                ))}
+                    <option key={j.id} value={j.id}>
+                      {j.idJadwal} – {j.client?.namaClient ?? "Brand"} ({formatDateSafe(j.tanggal)})
+                    </option>
+                  ))}
               </select>
+
+              {/* Dark card summary (matching ref-website-lama ciSummary) */}
+              {selectedJadwalDetail && (
+                <div className="mt-4 bg-[#1e293b] rounded-xl p-5 shadow-lg w-full">
+                  <h4 className="text-sm font-bold text-white mb-3 border-b border-slate-700 pb-2">Rangkuman Jadwal Terpilih</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p>
+                      <p className="text-sm font-bold text-blue-400">{selectedJadwalDetail.idJadwal}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">Tanggal</p>
+                      <p className="text-sm font-bold text-white">{formatDateSafe(selectedJadwalDetail.tanggal, { weekday: "short", day: "numeric", month: "short" })}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">Waktu Live</p>
+                      <p className="text-sm font-bold text-emerald-400">
+                        {formatTimeSafe(selectedJadwalDetail.jamMulaiLive)}
+                        {" – "}
+                        {formatTimeSafe(selectedJadwalDetail.jamSelesaiLive)} WIB
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">Brand / Client</p>
+                      <p className="text-sm font-bold text-white">{selectedJadwalDetail.client?.namaClient ?? "–"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">Platform</p>
+                      <p className="text-sm font-bold text-white">{selectedJadwalDetail.platform ?? "–"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 mb-0.5">Lokasi Studio</p>
+                      <p className="text-sm font-bold text-white">{selectedJadwalDetail.studio ?? "–"}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {/* Right: Photo + dynamic late reason */}
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Foto Bukti / Studio Selfie</label>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Foto Masuk (Selfie Kamera) *</label>
               <CameraCapture
                 value={fotoBuktiUrl}
                 onChange={setFotoBuktiUrl}
-                label="📷 Ambil Foto Check-In"
+                label="📷 Buka Kamera PC/HP"
               />
-            </div>
 
-            {activeSession && (
-              <div className="bg-amber-50 p-3 rounded-xl border border-amber-200">
-                <label className="block text-xs font-bold text-amber-800 mb-1.5 flex items-center gap-2">
-                  <i className="fa-solid fa-triangle-exclamation" /> Absensi Terusan Terdeteksi
-                </label>
-                <p className="text-[10px] text-amber-700">
-                  Anda belum melakukan check-out untuk sesi sebelumnya. Sistem akan <strong>otomatis menutup sesi sebelumnya</strong>. Laporan GMV untuk sesi sebelumnya dapat Anda lengkapi nanti di Dashboard.
-                </p>
-              </div>
-            )}
+              {(() => {
+                const lateStatus = getLateCheckInStatus(selectedJadwalDetail);
+                if (!selectedJadwalDetail) {
+                  return (
+                    <div className="mt-4">
+                      <label className="block text-sm font-bold text-slate-700 mb-1">Alasan Terlambat (Opsional)</label>
+                      <textarea
+                        value={alasanTerlambat}
+                        onChange={(e) => setAlasanTerlambat(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"
+                        rows={2}
+                        placeholder="Pilih jadwal siaran terlebih dahulu..."
+                      />
+                    </div>
+                  );
+                }
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setCheckinModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleCheckIn}
-                disabled={actionLoading}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-emerald-600/20 disabled:opacity-50"
-              >
-                {actionLoading ? "Memproses..." : "Konfirmasi Check-In"}
-              </button>
+                if (lateStatus.isLate) {
+                  return (
+                    <div className="mt-4 bg-red-50/80 border border-red-200 p-4 rounded-2xl space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-black text-red-800 flex items-center gap-1.5">
+                          <span>⚠️ Alasan Terlambat (Wajib Diisi)</span>
+                          <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">Wajib</span>
+                        </label>
+                        <span className="text-[11px] font-bold text-red-700 font-mono bg-red-100 px-2.5 py-0.5 rounded-md">
+                          Terlambat {lateStatus.lateDurationText}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-red-700 leading-tight">
+                        Waktu saat ini sudah melewati jadwal siaran (<strong>{lateStatus.scheduledTimeText} WIB</strong>). Harap isi alasan keterlambatan Anda.
+                      </p>
+                      <textarea
+                        value={alasanTerlambat}
+                        onChange={(e) => setAlasanTerlambat(e.target.value)}
+                        className="w-full border border-red-300 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-red-500 outline-none bg-white font-medium shadow-inner"
+                        rows={2}
+                        placeholder="Contoh: Kendala macet di jalan / persiapan alat studio..."
+                        required
+                      />
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="mt-4 bg-emerald-50/80 border border-emerald-200 p-4 rounded-2xl space-y-1.5 shadow-xs">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+                        <span>✅ Presensi Tepat Waktu</span>
+                      </label>
+                      <span className="text-[11px] font-bold text-emerald-700 font-mono bg-emerald-100 px-2 py-0.5 rounded-md">
+                        Jadwal: {lateStatus.scheduledTimeText} WIB
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-700 leading-tight">
+                      Anda melakukan check-in tepat waktu sebelum jam siaran dimulai. Alasan keterlambatan tidak diperlukan.
+                    </p>
+                    <textarea
+                      value={alasanTerlambat}
+                      onChange={(e) => setAlasanTerlambat(e.target.value)}
+                      className="w-full border border-emerald-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                      rows={2}
+                      placeholder="Catatan tambahan (Opsional)..."
+                    />
+                  </div>
+                );
+              })()}
             </div>
+          </div>
+
+          {activeSession && (
+            <div className="mt-4 bg-amber-50 p-3.5 rounded-xl border border-amber-200">
+              <label className="block text-xs font-bold text-amber-800 mb-1 flex items-center gap-2">
+                <i className="fa-solid fa-triangle-exclamation" /> Absensi Terusan Terdeteksi
+              </label>
+              <p className="text-[10px] text-amber-700">
+                Anda belum melakukan check-out untuk sesi sebelumnya. Sistem akan <strong>otomatis menutup sesi sebelumnya</strong>. Laporan GMV dapat dilengkapi di tab History.
+              </p>
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-5 mt-5 flex justify-end">
+            <button
+              type="button"
+              onClick={handleCheckIn}
+              disabled={actionLoading || !selectedJadwalId}
+              className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition shadow-md w-full md:w-auto disabled:opacity-50"
+            >
+              <i className="fa-solid fa-cloud-arrow-up mr-2" />
+              {actionLoading ? "Memproses..." : "Submit Check-In"}
+            </button>
           </div>
         </div>
       )}
 
-      {/* Check-Out Modal */}
-      {checkoutModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-stopwatch text-red-600" />
-                <span>Presensi Check-Out & Lapor GMV</span>
-              </h3>
-              <button onClick={() => setCheckoutModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
-            </div>
+      {/* ======== TAB: CHECK OUT ======== */}
+      {activeTab === "checkout" && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
+          <h3 className="font-bold text-lg text-slate-900 mb-1 border-b border-slate-100 pb-2">Form Check-Out Live</h3>
 
+          {activeSession ? (
+            <>
+              {/* Dark card summary of active session */}
+              <div className="mt-4 bg-[#1e293b] rounded-xl p-5 shadow-lg w-full mb-6">
+                <h4 className="text-sm font-bold text-white mb-3 border-b border-slate-700 pb-2">Detail Sesi Aktif Anda</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-3">
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Waktu Check-In</p>
+                    <p className="text-sm font-bold text-emerald-400">
+                      {formatTimeSafe(activeSession.waktu)} WIB
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Durasi Berlangsung</p>
+                    <p className="text-sm font-bold text-blue-400">
+                      {Math.round((Date.now() - new Date(activeSession.waktu).getTime()) / 60000)} Menit
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Status</p>
+                    <p className="text-sm font-bold text-rose-400">🔴 ON AIR</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-1">Nominal GMV (Rp) *</label>
+                  <input
+                    type="number"
+                    value={reportedGmv}
+                    onChange={(e) => setReportedGmv(e.target.value)}
+                    placeholder="Contoh: 1500000"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-slate-50 mb-4"
+                    required
+                  />
+                  <div className="bg-red-50 border border-red-200 p-3 rounded-lg flex items-start gap-1.5 leading-tight">
+                    <i className="fa-solid fa-triangle-exclamation text-red-600 mt-0.5 text-xs" />
+                    <span className="text-[10px] text-red-700">
+                      <strong>PENTING:</strong> Hanya masukkan income GMV yang dihasilkan pada <strong>sesi INI SAJA</strong>.
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Foto Bukti GMV *</label>
+                  <CameraCapture
+                    value={fotoBuktiUrl}
+                    onChange={setFotoBuktiUrl}
+                    label="📷 Ambil Bukti / Selfie Keluar"
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-100 pt-5 mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleCheckOutSubmit}
+                  disabled={actionLoading || !reportedGmv}
+                  className="bg-amber-500 text-white font-bold py-3 px-8 rounded-xl hover:bg-amber-600 transition shadow-md w-full md:w-auto disabled:opacity-50"
+                >
+                  <i className="fa-solid fa-upload mr-2" />
+                  {actionLoading ? "Memproses..." : "Selesaikan Sesi (Check-Out)"}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 p-6 text-center text-slate-400 text-sm">
+              <i className="fa-solid fa-video-slash text-3xl mb-3 block text-slate-300" />
+              Anda tidak memiliki sesi live aktif saat ini.
+              <br />
+              <span className="text-xs">Lakukan Check-In terlebih dahulu di tab <strong>Check In</strong>.</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======== TAB: TERBATAS ======== */}
+      {activeTab === "terbatas" && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 border-b border-slate-200 pb-3 gap-4">
+            <h3 className="font-bold text-lg text-slate-900">
+              <i className="fa-solid fa-bolt text-amber-500 mr-2" />
+              Aksi Khusus
+            </h3>
+          </div>
+
+          {/* Pending GMV list */}
+          <div>
+            <h4 className="text-sm font-bold text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg mb-4">
+              <i className="fa-solid fa-triangle-exclamation mr-2" />
+              Peringatan: Laporan GMV yang Belum Dilengkapi
+            </h4>
+
+            {pendingGmvList.length > 0 ? (
+              <div className="overflow-auto rounded-lg border border-slate-200 mb-4 max-h-[400px]">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-3">NO</th>
+                      <th className="px-4 py-3">ID JADWAL</th>
+                      <th className="px-4 py-3">INFO LIVE</th>
+                      <th className="px-4 py-3 text-center">AKSI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                    {pendingGmvList.map((p, idx) => (
+                      <tr key={p.id}>
+                        <td className="px-4 py-3 text-center">{idx + 1}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-blue-600">{p.jadwal?.idJadwal ?? "–"}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-slate-800">{p.jadwal?.client?.namaClient ?? "Klien"}</div>
+                          <div className="text-xs text-slate-500">{p.jadwal?.platform} • {formatDateSafe(p.jadwal?.tanggal)}</div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => { setPendingGmvId(p.id); setPendingGmvModalOpen(true); }}
+                            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition"
+                          >
+                            Lengkapi GMV
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="p-6 text-center text-slate-400 text-xs">
+                <i className="fa-solid fa-circle-check text-2xl text-emerald-400 block mb-2" />
+                Tidak ada tanggungan GMV. Bagus!
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ======== TAB: JADWAL ======== */}
+      {activeTab === "jadwal" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi Ini (Wajib)</label>
-              <input
-                type="number"
-                value={reportedGmv}
-                onChange={(e) => setReportedGmv(e.target.value)}
-                placeholder="Contoh: 1500000"
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Masukkan angka tanpa titik/koma. Contoh: 1500000 untuk 1,5 Juta.</p>
-              <div className="mt-2 text-[10px] text-red-700 bg-red-50 border border-red-200 p-2 rounded-lg flex items-start gap-1.5 leading-tight">
-                <i className="fa-solid fa-triangle-exclamation mt-0.5" />
-                <span>
-                  <strong>PENTING:</strong> Harap hanya memasukkan income GMV yang dihasilkan pada <strong>sesi INI SAJA</strong>. Jangan masukkan akumulasi dari sesi sebelumnya atau gabungan dengan host lain.
-                </span>
+              <h3 className="font-bold text-slate-800 text-sm">Jadwal Live Streaming Saya</h3>
+              <p className="text-[11px] text-slate-400">Hadir 15 menit sebelum jam mulai untuk persiapan brief & sample produk.</p>
+            </div>
+            <span className="text-xs text-slate-500 font-semibold">{jadwal.length} Jadwal</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">ID Sesi</th>
+                  <th className="px-4 py-3">Tanggal & Jam</th>
+                  <th className="px-4 py-3">Brand & Platform</th>
+                  <th className="px-4 py-3">Lokasi Studio</th>
+                  <th className="px-4 py-3">Total GMV</th>
+                  <th className="px-4 py-3">Status Sesi</th>
+                  <th className="px-4 py-3 text-right">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {jadwal.map((j) => (
+                  <tr key={j.id} className="hover:bg-slate-50/80 transition">
+                    <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{j.idJadwal}</td>
+                    <td className="px-4 py-3">
+                      <div className="font-semibold text-slate-800">
+                        {formatDateSafe(j.tanggal, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                      </div>
+                      <div className="text-[11px] text-blue-600 font-mono">
+                        {formatTimeSafe(j.jamMulaiLive)}
+                        {" - "}
+                        {formatTimeSafe(j.jamSelesaiLive)} WIB
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-bold text-slate-800">{j.client?.namaClient ?? "Brand Partner"}</div>
+                      <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{j.platform ?? "Shopee Live"}</span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600 font-medium">
+                      <i className="fa-solid fa-location-dot text-slate-400 mr-1.5" />
+                      {j.studio ?? "Studio 1"}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-emerald-700">
+                      {j.absensi && j.absensi.length > 0 && j.absensi.some(a => a.reportedGmv !== null)
+                        ? `Rp ${j.absensi.reduce((sum, a) => sum + Number(a.reportedGmv || 0), 0).toLocaleString("id-ID")}`
+                        : <span className="text-[10px] text-slate-400 font-normal italic">Belum ada</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                        j.liveState === "LIVE"
+                          ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                          : j.status === "SELESAI"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-blue-50 text-blue-700 border-blue-200"
+                      }`}>
+                        {j.liveState === "LIVE" ? "🔴 ON AIR" : j.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <a
+                          href={generateGoogleCalendarUrl({
+                            title: `🔴 Live Streaming: ${j.client?.namaClient ?? "Brand Partner"} (${j.platform ?? "Shopee Live"})`,
+                            description: `Jadwal Siaran Live Streaming Agency Potensi Creative\nID Sesi: ${j.idJadwal}\nStudio: ${j.studio ?? "Studio 1"}\nPengingat otomatis diset: 30 mnt & 15 mnt sebelum siaran.`,
+                            location: `Studio ${j.studio ?? "Studio 1"}, Potensi Creative`,
+                            startTime: j.jamMulaiLive,
+                            endTime: j.jamSelesaiLive,
+                            reminderMinutes: [30, 15],
+                          })}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Tambah Pengingat Google Calendar (Pop-up 30m & 15m)"
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                        >
+                          <i className="fa-solid fa-calendar-plus text-blue-600" />
+                          <span className="hidden sm:inline">Sync GCal</span>
+                        </a>
+
+                        {j.liveState === "LIVE" ? (
+                          <button
+                            onClick={() => setActiveTab("checkout")}
+                            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                          >
+                            Check-Out
+                          </button>
+                        ) : j.status === "SELESAI" || j.liveState === "CLOSED" ? (
+                          <span className="text-[10px] text-slate-400 font-bold italic">Selesai</span>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setSelectedJadwalId(j.id);
+                              setSelectedJadwalDetail(j);
+                              setActiveTab("checkin");
+                            }}
+                            className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                          >
+                            Check-In
+                          </button>
+                        )}
+                      </div>
+                    </td>
+
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {jadwal.length === 0 && !loading && (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                Belum ada jadwal live streaming yang ditugaskan kepada Anda.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ======== TAB: REQUEST ======== */}
+      {activeTab === "request" && (
+        <div className="space-y-6">
+          {/* Header & Quota Overview */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+                  <i className="fa-solid fa-file-pen text-blue-600" />
+                  Pusat Pengajuan Streamer
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Ajukan permohonan Libur dan preferensi Request Sesi Live siaran.
+                </p>
+              </div>
+
+              {/* Quota Indicators */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2">
+                  <div className="text-[10px] uppercase font-bold text-blue-700">Sisa Kuota Libur</div>
+                  <div className="text-sm font-bold text-blue-900">
+                    {requestStatus ? `${requestStatus.sisaKuotaLibur} / ${requestStatus.defaultKuotaLibur} Hari` : "Memuat..."}
+                  </div>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-xl px-3.5 py-2">
+                  <div className="text-[10px] uppercase font-bold text-purple-700">Sisa Kuota Sesi</div>
+                  <div className="text-sm font-bold text-purple-900">
+                    {requestStatus ? `${requestStatus.sisaKuotaShift} / ${requestStatus.defaultKuotaShift} Kali` : "Memuat..."}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            {/* Form Toggle Off Banners */}
+            {requestStatus && (!requestStatus.allowLiburRequest || !requestStatus.allowShiftRequest) && (
+              <div className="mt-4 space-y-2">
+                {!requestStatus.allowLiburRequest && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                    <i className="fa-solid fa-lock text-amber-600" />
+                    <span><strong>Form Pengajuan Libur Ditutup:</strong> Tim Manajemen sedang menutup akses pengajuan libur sementara.</span>
+                  </div>
+                )}
+                {!requestStatus.allowShiftRequest && (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                    <i className="fa-solid fa-lock text-amber-600" />
+                    <span><strong>Form Request Sesi Live Ditutup:</strong> Tim Manajemen sedang menutup akses request sesi live sementara.</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Request Type Sub-tabs */}
+            <div className="flex gap-2 border-b border-slate-100 pt-5 pb-1">
               <button
                 type="button"
-                onClick={() => setCheckoutModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
+                onClick={() => setRequestSubTab("libur")}
+                className={`pb-2.5 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+                  requestSubTab === "libur"
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
               >
-                Batal
+                <i className="fa-solid fa-calendar-xmark" />
+                <span>Pengajuan Libur</span>
               </button>
               <button
                 type="button"
-                onClick={handleCheckOutSubmit}
-                disabled={actionLoading || !reportedGmv}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-red-600/20 disabled:opacity-50"
+                onClick={() => setRequestSubTab("sesi")}
+                className={`pb-2.5 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
+                  requestSubTab === "sesi"
+                    ? "border-purple-600 text-purple-600"
+                    : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
               >
-                {actionLoading ? "Memproses..." : "Konfirmasi Check-Out"}
+                <i className="fa-solid fa-video" />
+                <span>Request Sesi Live (3 Shift)</span>
               </button>
             </div>
+
+            {/* Form 1: Pengajuan Libur */}
+            {requestSubTab === "libur" && (
+              <div className="pt-5 space-y-4">
+                {requestStatus?.allowLiburRequest === false ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-slate-400 text-xs">
+                    <i className="fa-solid fa-ban text-3xl text-slate-300 block mb-2" />
+                    Pengajuan Libur saat ini sedang dinonaktifkan oleh Eksekutif.
+                  </div>
+                ) : (
+                  <form onSubmit={handleLeaveSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Tanggal Libur yang Diajukan *
+                        </label>
+                        <input
+                          type="date"
+                          value={leaveDate}
+                          onChange={(e) => setLeaveDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Alasan Libur
+                        </label>
+                        <input
+                          type="text"
+                          value={leaveReason}
+                          onChange={(e) => setLeaveReason(e.target.value)}
+                          placeholder="mis. Keperluan keluarga, istirahat..."
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Conflict Warning if schedule exists */}
+                    {hasScheduleConflict && (
+                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
+                        <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
+                        <div>
+                          <strong>Peringatan Jadwal Live Terjadwal:</strong> Anda sudah memiliki sesi live aktif pada tanggal ini ({conflictingJadwal?.idJadwal} - {conflictingJadwal?.platform}).
+                          <div className="text-[11px] text-amber-700 mt-0.5">
+                            Pengajuan tetap dapat dikirimkan dan akan masuk status <strong>Menunggu Persetujuan Eksekutif</strong>.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={submittingRequest || !leaveDate}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {submittingRequest ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                        <span>{submittingRequest ? "Mengirim..." : "Kirim Pengajuan Libur"}</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* Form 2: Request Sesi Live (3 Sesi Shift) */}
+            {requestSubTab === "sesi" && (
+              <div className="pt-5 space-y-4">
+                {requestStatus?.allowShiftRequest === false ? (
+                  <div className="p-8 text-center bg-slate-50 rounded-xl border border-slate-200 text-slate-400 text-xs">
+                    <i className="fa-solid fa-ban text-3xl text-slate-300 block mb-2" />
+                    Request Sesi Live saat ini sedang dinonaktifkan oleh Eksekutif.
+                  </div>
+                ) : (
+                  <form onSubmit={handleShiftSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Tanggal Sesi *
+                        </label>
+                        <input
+                          type="date"
+                          value={shiftDate}
+                          onChange={(e) => setShiftDate(e.target.value)}
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                          Pilihan Sesi Live (Shift 24 Jam) *
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { key: "SESI_1", label: "Sesi 1", time: "00:00 - 08:00", icon: "fa-moon" },
+                            { key: "SESI_2", label: "Sesi 2", time: "08:00 - 16:00", icon: "fa-sun" },
+                            { key: "SESI_3", label: "Sesi 3", time: "16:00 - 00:00", icon: "fa-cloud-sun" },
+                          ].map((s) => (
+                            <button
+                              key={s.key}
+                              type="button"
+                              onClick={() => setSelectedSesi(s.key as any)}
+                              className={`p-2.5 rounded-xl border text-left transition ${
+                                selectedSesi === s.key
+                                  ? "border-purple-600 bg-purple-50/70 text-purple-900 ring-2 ring-purple-500/20"
+                                  : "border-slate-200 hover:border-purple-200 text-slate-700 bg-white"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 text-xs font-bold">
+                                <i className={`fa-solid ${s.icon} text-purple-600`} />
+                                <span>{s.label}</span>
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono mt-0.5">{s.time}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                        Catatan Tambahan (Opsional)
+                      </label>
+                      <input
+                        type="text"
+                        value={shiftNote}
+                        onChange={(e) => setShiftNote(e.target.value)}
+                        placeholder="mis. Request sesi pagi karena kuliah sore..."
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        type="submit"
+                        disabled={submittingRequest || !shiftDate}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-purple-600/20 disabled:opacity-50 flex items-center gap-2"
+                      >
+                        {submittingRequest ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                        <span>{submittingRequest ? "Mengirim..." : "Kirim Request Sesi Live"}</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Riwayat Pengajuan Streamer */}
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+            <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i className="fa-solid fa-clock-rotate-left text-slate-500" />
+                Riwayat Pengajuan Libur & Sesi Live Bulan Ini
+              </h4>
+              <span className="text-xs text-slate-400 font-mono">
+                {((requestStatus?.leaveRequests?.length ?? 0) + (requestStatus?.shiftRequests?.length ?? 0))} Pengajuan
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">Tanggal Pengajuan</th>
+                    <th className="px-4 py-3">Tipe Permohonan</th>
+                    <th className="px-4 py-3">Keterangan / Detail</th>
+                    <th className="px-4 py-3">Status Persetujuan</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {requestStatus && (requestStatus.leaveRequests.length > 0 || requestStatus.shiftRequests.length > 0) ? (
+                    <>
+                      {requestStatus.leaveRequests.map((l: any) => (
+                        <tr key={l.id} className="hover:bg-slate-50/80 transition">
+                          <td className="px-4 py-3 font-semibold text-slate-800">
+                            {formatDateSafe(l.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                              🏖️ Libur Streamer
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{l.alasan || "–"}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              l.status === "APPROVED"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : l.status === "REJECTED"
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}>
+                              {l.status === "APPROVED" ? "Disetujui" : l.status === "REJECTED" ? "Ditolak" : "Menunggu Approval"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {requestStatus.shiftRequests.map((s: any) => (
+                        <tr key={s.id} className="hover:bg-slate-50/80 transition">
+                          <td className="px-4 py-3 font-semibold text-slate-800">
+                            {formatDateSafe(s.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                              📹 {s.jenis?.replace("REQUEST_", "") || "Sesi Live"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{s.alasan || "–"}</td>
+                          <td className="px-4 py-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                              s.status === "APPROVED"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : s.status === "REJECTED"
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
+                            }`}>
+                              {s.status === "APPROVED" ? "Disetujui" : s.status === "REJECTED" ? "Ditolak" : "Menunggu Approval"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </>
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="p-6 text-center text-slate-400 text-xs">
+                        Belum ada riwayat pengajuan libur atau request sesi live.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Other Portal Links */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Link
+              href="/pengajuan?tab=tukar-shift"
+              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-blue-400 hover:bg-blue-50/40 transition group text-center shadow-sm"
+            >
+              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
+                <i className="fa-solid fa-right-left" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-800 text-xs group-hover:text-blue-700">Tukar Shift</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Penggantian jadwal live streaming</div>
+              </div>
+            </Link>
+
+            <Link
+              href="/pengajuan?tab=izin"
+              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-amber-400 hover:bg-amber-50/40 transition group text-center shadow-sm"
+            >
+              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
+                <i className="fa-solid fa-file-signature" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-800 text-xs group-hover:text-amber-700">Pengajuan Izin / Cuti</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Sakit, cuti tahunan, atau keperluan</div>
+              </div>
+            </Link>
+
+            <Link
+              href="/pengajuan?tab=lembur"
+              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-purple-400 hover:bg-purple-50/40 transition group text-center shadow-sm"
+            >
+              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
+                <i className="fa-regular fa-clock" />
+              </div>
+              <div>
+                <div className="font-bold text-slate-800 text-xs group-hover:text-purple-700">Pengajuan Lembur</div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Tambahan jam siaran (1.5x rate)</div>
+              </div>
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ======== TAB: HISTORY / RIWAYAT ======== */}
+      {activeTab === "riwayat" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Riwayat Presensi & Sesi Live</h3>
+              <p className="text-[11px] text-slate-400">Log absensi check-in / check-out bulan ini</p>
+            </div>
+            <span className="text-xs text-slate-500 font-semibold">{absensiHistory.length} Entri</span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Jadwal / Sesi</th>
+                  <th className="px-4 py-3">Tipe</th>
+                  <th className="px-4 py-3">Waktu Masuk</th>
+                  <th className="px-4 py-3">Waktu Keluar</th>
+                  <th className="px-4 py-3">GMV Dilaporkan</th>
+                  <th className="px-4 py-3">Keterangan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {absensiHistory.map((h) => (
+                  <tr key={h.id} className="hover:bg-slate-50/80 transition">
+                    <td className="px-4 py-3.5">
+                      <div className="font-mono font-bold text-blue-600 text-[10px]">{h.jadwal?.idJadwal ?? "–"}</div>
+                      <div className="text-[10px] text-slate-400">{h.jadwal?.client?.namaClient ?? "–"} {h.jadwal?.platform ? `• ${h.jadwal.platform}` : ""}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        h.tipe === "CHECK_IN" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
+                      }`}>
+                        {h.tipe === "CHECK_IN" ? "Check-In" : "Check-Out"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">
+                      {formatDateTimeSafe(h.waktuMasuk)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-700">
+                      {h.waktuKeluar
+                        ? formatDateTimeSafe(h.waktuKeluar)
+                        : <span className="text-slate-400 italic text-[10px]">Belum checkout</span>}
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-emerald-700">
+                      {h.reportedGmv !== null && h.reportedGmv !== undefined
+                        ? `Rp ${Number(h.reportedGmv).toLocaleString("id-ID")}`
+                        : <span className="text-slate-400 italic text-[10px]">Belum dilaporkan</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {h.isTerusan && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700">Terusan</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {absensiHistory.length === 0 && (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                Belum ada riwayat presensi tersimpan.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ======== TAB: REPORT (Admin Only) ======== */}
+      {activeTab === "report" && isAdmin && (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
+          <h3 className="font-bold text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">Laporan Performa Streamer</h3>
+
+          {/* Stat Cards */}
+          {dashboardData && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+                <div className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Estimasi Gaji Bersih</div>
+                <div className="text-lg font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1">Setelah denda • {dashboardData.periode}</div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
+                <div className="text-[10px] text-blue-600 font-bold uppercase mb-1">Total GMV Dilaporkan</div>
+                <div className="text-lg font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1">Dari semua sesi</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-sm">
+                <div className="text-[10px] text-purple-600 font-bold uppercase mb-1">Total Jam Live</div>
+                <div className="text-lg font-black text-purple-700">{dashboardData.totalJam} Jam</div>
+                <div className="text-[10px] text-slate-500 mt-1">Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "–"}</span></div>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-sm">
+                <div className="text-[10px] text-red-600 font-bold uppercase mb-1">Total Denda</div>
+                <div className="text-lg font-black text-red-700">Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1">{dashboardData.incidents.length} Pelanggaran</div>
+              </div>
+            </div>
+          )}
+
+          <div className="text-center text-slate-400 text-sm">
+            <i className="fa-solid fa-chart-pie text-3xl mb-2 block text-slate-300" />
+            Laporan lengkap tersedia di halaman Analytics GMV.
+            <br />
+            <Link href="/analytics-gmv" className="text-blue-600 hover:underline font-semibold text-xs mt-1 inline-block">
+              → Buka Analytics GMV
+            </Link>
           </div>
         </div>
       )}
@@ -810,30 +1523,21 @@ export default function StreamerDashboardPage() {
           <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-file-invoice-dollar text-red-600" />
-                <span>Lengkapi GMV Tertunda</span>
+                <i className="fa-solid fa-triangle-exclamation text-red-600" />
+                <span>Lengkapi Laporan GMV</span>
               </h3>
               <button onClick={() => setPendingGmvModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
-
-            <div className="bg-red-50 p-3 rounded-xl border border-red-200">
-              <p className="text-[10px] text-red-800">
-                Silakan masukkan GMV untuk sesi sebelumnya yang ditutup otomatis saat Absensi Terusan. Laporan ini wajib untuk perhitungan insentif bulanan Anda.
-              </p>
-            </div>
-
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi Ini (Wajib)</label>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi (Wajib)</label>
               <input
                 type="number"
                 value={reportedGmv}
                 onChange={(e) => setReportedGmv(e.target.value)}
                 placeholder="Contoh: 1500000"
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-[10px] text-slate-500 mt-1">Masukkan angka tanpa titik/koma. Contoh: 1500000 untuk 1,5 Juta.</p>
             </div>
-
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -846,7 +1550,7 @@ export default function StreamerDashboardPage() {
                 type="button"
                 onClick={handlePendingGmvSubmit}
                 disabled={actionLoading || !reportedGmv}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-red-600/20 disabled:opacity-50"
+                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition disabled:opacity-50"
               >
                 {actionLoading ? "Menyimpan..." : "Simpan GMV"}
               </button>

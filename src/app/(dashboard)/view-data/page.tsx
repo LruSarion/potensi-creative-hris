@@ -7,6 +7,7 @@ export default function ViewDataPage() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("karyawan");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     fetch("/api/view-data")
@@ -17,6 +18,9 @@ export default function ViewDataPage() {
       })
       .catch(() => setError("Koneksi error"));
   }, []);
+
+  // Reset search when tab changes
+  useEffect(() => setSearch(""), [activeTab]);
 
   if (error) {
     return (
@@ -40,17 +44,25 @@ export default function ViewDataPage() {
     tiering: { label: "Master Tiering", count: data.tiering?.length ?? 0, icon: "fa-layer-group" },
   };
 
-  const currentRows: any[] = data[activeTab] ?? [];
+  const allRows: any[] = data[activeTab] ?? [];
+
+  // Apply search filter across all visible (non-object) fields
+  const currentRows = search
+    ? allRows.filter((row) =>
+        Object.keys(row)
+          .filter((k) => typeof row[k] !== "object")
+          .some((k) => String(row[k] ?? "").toLowerCase().includes(search.toLowerCase()))
+      )
+    : allRows;
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Master Data Explorer</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Inspeksi data master multi-tabel ERP agency live streaming secara visual dan terstruktur.
-        </p>
+      {/* Header persis ref-website-lama/view-data.html */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">View Data</h1>
+        <p className="text-slate-500 text-sm mt-1">Lihat dan cari data operasional dari database pusat.</p>
       </div>
+
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-2">
@@ -68,11 +80,7 @@ export default function ViewDataPage() {
             >
               <i className={`fa-solid ${cfg.icon}`} />
               <span>{cfg.label}</span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
-                  active ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"
-                }`}
-              >
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${active ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}>
                 {cfg.count}
               </span>
             </button>
@@ -81,50 +89,57 @@ export default function ViewDataPage() {
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-2">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <h3 className="font-bold text-slate-800 text-sm">
-            Tabel {tabConfig[activeTab]?.label ?? activeTab} ({currentRows.length} baris)
+            Tabel {tabConfig[activeTab]?.label ?? activeTab}
+            <span className="text-slate-400 font-normal ml-2">({currentRows.length} baris{search ? ` dari ${allRows.length}` : ""})</span>
           </h3>
-          <button
-            onClick={() => {
-              if (currentRows.length === 0) return;
-              const headers = Object.keys(currentRows[0]).filter((k) => typeof currentRows[0][k] !== "object");
-              const csvContent =
-                headers.join(",") +
-                "\n" +
-                currentRows
-                  .map((r) =>
-                    headers
-                      .map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`)
-                      .join(",")
-                  )
-                  .join("\n");
-              const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `Export_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
-              a.click();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition"
-          >
-            <i className="fa-solid fa-file-csv text-emerald-600" />
-            <span>Ekspor CSV</span>
-          </button>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Search */}
+            <div className="relative flex-1 sm:flex-none">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Cari di kolom mana pun..."
+                className="w-full sm:w-44 pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+              />
+            </div>
+
+            <button
+              onClick={() => {
+                if (currentRows.length === 0) return;
+                const headers = Object.keys(currentRows[0]).filter((k) => typeof currentRows[0][k] !== "object");
+                const csvContent =
+                  headers.join(",") +
+                  "\n" +
+                  currentRows.map((r) => headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `Export_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition whitespace-nowrap"
+            >
+              <i className="fa-solid fa-file-csv text-emerald-600" />
+              <span>Ekspor CSV</span>
+            </button>
+          </div>
         </div>
+
         <div className="overflow-x-auto">
           {currentRows.length > 0 ? (
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>
-                  {Object.keys(currentRows[0])
-                    .filter((k) => typeof currentRows[0][k] !== "object")
-                    .map((col) => (
-                      <th key={col} className="px-4 py-3 uppercase tracking-wider font-mono text-[10px]">
-                        {col}
-                      </th>
-                    ))}
+                  {Object.keys(currentRows[0]).filter((k) => typeof currentRows[0][k] !== "object").map((col) => (
+                    <th key={col} className="px-4 py-3 uppercase tracking-wider font-mono text-[10px]">{col}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -135,9 +150,11 @@ export default function ViewDataPage() {
                       .map((col, colIdx) => (
                         <td key={col} className="px-4 py-3 font-mono text-slate-700 max-w-xs truncate">
                           {activeTab === "karyawan" && colIdx === 0 ? (
-                            <Link href={`/karyawan/${row.id}`} className="text-blue-600 hover:underline font-semibold">{String(row[col] ?? "-")}</Link>
+                            <Link href={`/karyawan/${row.id}`} className="text-blue-600 hover:underline font-semibold">
+                              {String(row[col] ?? "–")}
+                            </Link>
                           ) : (
-                            String(row[col] ?? "-")
+                            String(row[col] ?? "–")
                           )}
                         </td>
                       ))}
@@ -147,7 +164,7 @@ export default function ViewDataPage() {
             </table>
           ) : (
             <div className="p-8 text-center text-slate-400 text-xs">
-              Tidak ada data pada tabel ini.
+              {search ? "Tidak ada data yang cocok dengan pencarian Anda." : "Tidak ada data pada tabel ini."}
             </div>
           )}
         </div>

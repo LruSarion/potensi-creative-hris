@@ -99,13 +99,12 @@ export default function InputKaryawanPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Master Karyawan & Onboarding Talent</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Pendaftaran host streamer, staf studio, rekening penggajian, dan manajemen data SDM agency.
-        </p>
+      {/* Header persis ref-website-lama/input-karyawan.html */}
+      <div className="mb-6 lg:mb-8">
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">Input Karyawan</h1>
+        <p className="text-slate-500 text-sm lg:text-base">Tambahkan data karyawan baru secara kolektif atau perbarui data existing.</p>
       </div>
+
 
       {/* Alerts */}
       {success && (

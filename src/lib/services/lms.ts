@@ -280,10 +280,11 @@ export async function updateVideoWatch(input: { enrollmentId: string; lessonId: 
 
   const lesson = await db.lesson.findUnique({ where: { id: input.lessonId }, include: { module: true } });
   if (!lesson) throw AppError.notFound("Lesson tidak ditemukan");
-  if (!lesson.videoDuration) throw AppError.conflict("Lesson bukan video interaktif");
+  // videoDuration may be null if trainer didn't set it; fall back to reported watchSeconds
+  const effectiveDuration = lesson.videoDuration ?? input.watchSeconds;
 
-  const watchSeconds = Math.min(Math.max(0, Math.round(input.watchSeconds)), lesson.videoDuration);
-  const watchPct = lesson.videoDuration > 0 ? Math.round((watchSeconds / lesson.videoDuration) * 100) : 0;
+  const watchSeconds = Math.min(Math.max(0, Math.round(input.watchSeconds)), effectiveDuration || input.watchSeconds);
+  const watchPct = effectiveDuration > 0 ? Math.round((watchSeconds / effectiveDuration) * 100) : 0;
   const completed = input.completed === true || watchPct >= 100;
 
   const existing = await db.videoWatch.findUnique({
@@ -292,7 +293,7 @@ export async function updateVideoWatch(input: { enrollmentId: string; lessonId: 
 
   if (existing) {
     const merged = Math.max(existing.watchSeconds, watchSeconds);
-    const mergedPct = lesson.videoDuration > 0 ? Math.round((merged / lesson.videoDuration) * 100) : 0;
+    const mergedPct = effectiveDuration > 0 ? Math.round((merged / effectiveDuration) * 100) : 0;
     return db.videoWatch.update({
       where: { id: existing.id },
       data: {

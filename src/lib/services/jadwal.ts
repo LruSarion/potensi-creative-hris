@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requirePermission, tenantWhere } from "@/lib/auth-helpers";
+import { syncJadwalToGoogleCalendar } from "@/lib/services/google-calendar";
 import {
   computeDurationMinutes,
   computePeriodeBulan,
@@ -190,6 +191,23 @@ export async function createJadwal(input: JadwalInput) {
     await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, nextStudio, transitionConfig);
   }
 
+  // Blacklist Enforcement: Check if streamer is blacklisted for this client
+  if (parsed.clientId && parsed.streamerKaryawanId) {
+    const blacklisted = await db.streamerBlacklist.findUnique({
+      where: {
+        clientId_karyawanId: {
+          clientId: parsed.clientId,
+          karyawanId: parsed.streamerKaryawanId,
+        },
+      },
+    });
+    if (blacklisted) {
+      throw AppError.badRequest(
+        `Streamer ini masuk dalam daftar BLACKLIST klien tersebut (${blacklisted.alasan ?? "Dilarang menugaskan"}).`
+      );
+    }
+  }
+
   const studioIdentifier = `${parsed.cabangStudio ?? ""} ${parsed.nomorStudio ?? ""}`.trim();
   if (studioIdentifier) {
     await assertStudioRoomAvailable(studioIdentifier, start, end, user.tenantId);
@@ -200,7 +218,7 @@ export async function createJadwal(input: JadwalInput) {
   });
   if (existing) throw AppError.conflict("ID Jadwal sudah terdaftar");
 
-  return db.jadwal.create({
+  const created = await db.jadwal.create({
     data: {
       ...normalizeJadwalData(parsed),
       tenantId: user.tenantId,
@@ -211,6 +229,11 @@ export async function createJadwal(input: JadwalInput) {
       periodeBulan: computePeriodeBulan(tanggal),
     },
   });
+
+  // Auto Sync to Streamer Google Calendar in background
+  syncJadwalToGoogleCalendar(created.id).catch(() => {});
+
+  return created;
 }
 
 export async function updateJadwal(id: string, input: JadwalInput) {
@@ -231,7 +254,7 @@ export async function updateJadwal(id: string, input: JadwalInput) {
     await assertTokenJedaOk(parsed.streamerKaryawanId, start, end, user.tenantId, nextStudio, transitionConfig, id);
   }
 
-  return db.jadwal.update({
+  const updated = await db.jadwal.update({
     where: { id },
     data: {
       ...normalizeJadwalData(parsed),
@@ -242,6 +265,11 @@ export async function updateJadwal(id: string, input: JadwalInput) {
       periodeBulan: computePeriodeBulan(tanggal),
     },
   });
+
+  // Auto Sync to Streamer Google Calendar in background
+  syncJadwalToGoogleCalendar(updated.id).catch(() => {});
+
+  return updated;
 }
 
 /**
@@ -310,6 +338,12 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
       created.push(row);
     }
     return created;
+  }).then((createdRows) => {
+    // Background Google Calendar Sync for all created batch rows
+    for (const r of createdRows) {
+      syncJadwalToGoogleCalendar(r.id).catch(() => {});
+    }
+    return createdRows;
   });
 }
 
@@ -317,3 +351,34 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
 export function jadwalDurationMinutes(j: { jamMulaiLive: Date; jamSelesaiLive: Date }): number {
   return computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
 }
+
+/**
+ * Calculate total hours assigned to a streamer in a given month.
+ * Used for Golongan 4 Alert (>156 hours / month).
+ */
+export async function getStreamerMonthlyHoursAccumulator(streamerKaryawanId: string, periodeBulan?: string) {
+  const currentPeriode = periodeBulan ?? computePeriodeBulan(new Date());
+  const rows = await db.jadwal.findMany({
+    where: {
+      streamerKaryawanId,
+      periodeBulan: currentPeriode,
+      status: { notIn: ["DIBATALKAN", "REJECTED"] },
+    },
+    select: { jamMulaiLive: true, jamSelesaiLive: true },
+  });
+
+  const totalMinutes = rows.reduce((acc, r) => acc + computeDurationMinutes(r.jamMulaiLive, r.jamSelesaiLive), 0);
+  const totalHours = Math.round((totalMinutes / 60) * 10) / 10;
+  const isGolongan4Warning = totalHours >= 150; // Approaching or over 156h
+  const isGolongan4Exceeded = totalHours >= 156;
+
+  return {
+    streamerKaryawanId,
+    periodeBulan: currentPeriode,
+    totalMinutes,
+    totalHours,
+    isGolongan4Warning,
+    isGolongan4Exceeded,
+  };
+}
+

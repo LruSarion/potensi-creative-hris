@@ -1,145 +1,267 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { Suspense, useState, useEffect } from "react";
 import type { Role } from "@/generated/prisma/enums";
 
-type NavItem = {
+type NavSubItem = {
   href: string;
   label: string;
   icon: string;
   roles: Role[];
-  section?: string;
+  tabKey?: string;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  // Overview
-  { href: "/dashboard", label: "Overview Utama", icon: "fa-chart-pie", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER", "CLIENT", "STREAMER", "STAFF", "OTS"], section: "Menu Utama" },
-  { href: "/streamer-dashboard", label: "Streamer Hub", icon: "fa-video", roles: ["STREAMER"], section: "Menu Utama" },
-  { href: "/staff-dashboard", label: "Staff & OTS Hub", icon: "fa-id-badge", roles: ["STAFF", "OTS"], section: "Menu Utama" },
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: string;
+  items: NavSubItem[];
+};
 
-  // Operasional
-  { href: "/input-jadwal", label: "Jadwal Live", icon: "fa-calendar-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },
-  { href: "/input-karyawan", label: "Data Karyawan", icon: "fa-user-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Operasional & Jadwal" },
-  { href: "/client", label: "Brand & Klien", icon: "fa-building", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },
-  { href: "/view-data", label: "Master Data Explorer", icon: "fa-database", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Operasional & Jadwal" },
-  { href: "/analytics-gmv", label: "Analytics GMV Bulanan", icon: "fa-chart-line", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "CLIENT", "CLIENT_ADMIN"], section: "Operasional & Jadwal" },
-  { href: "/approval", label: "Approval Center", icon: "fa-check-double", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"], section: "Operasional & Jadwal" },
-
-  // Pengajuan & SDM
-  { href: "/pengajuan-izin", label: "Pengajuan Izin", icon: "fa-file-signature", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], section: "SDM & Kompensasi" },
-  { href: "/pengajuan-lembur", label: "Pengajuan Lembur", icon: "fa-clock", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], section: "SDM & Kompensasi" },
-  { href: "/tukar-shift", label: "Tukar Shift Live", icon: "fa-arrows-rotate", roles: ["STREAMER", "STAFF", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "SDM & Kompensasi" },
-  { href: "/penilaian-sdm", label: "Evaluasi KPI Host", icon: "fa-star", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"], section: "SDM & Kompensasi" },
-  { href: "/payroll", label: "Payroll & Kompensasi", icon: "fa-money-bill-wave", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "SDM & Kompensasi" },
-  { href: "/finance-insentif", label: "Rekap Denda & Insentif Pelapor", icon: "fa-receipt", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "SDM & Kompensasi" },
-  { href: "/suara-karyawan", label: "Suara Karyawan", icon: "fa-comment-dots", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "QC_REVIEWER"], section: "SDM & Kompensasi" },
-
-  // Portals
-  { href: "/portal/operation", label: "Portal Operations", icon: "fa-sliders", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Portals Khusus" },
-  { href: "/portal/finance", label: "Portal Keuangan", icon: "fa-wallet", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "Portals Khusus" },
-  { href: "/portal/qc", label: "Portal Quality Control", icon: "fa-clipboard-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"], section: "Portals Khusus" },
-  { href: "/portal/trainer", label: "Portal Trainer", icon: "fa-chalkboard-user", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
-  { href: "/portal/trainer/learning-test", label: "Materi Video Interaktif", icon: "fa-circle-play", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
-  { href: "/portal/trainer/hasil-jawaban", label: "Hasil Jawaban Streamer", icon: "fa-file-circle-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "TRAINER"], section: "Portals Khusus" },
-  { href: "/portal/client", label: "Portal Klien & Proyek Saya", icon: "fa-briefcase", roles: ["SUPER_ADMIN", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
-  { href: "/streamer-directory", label: "Direktori Streamer & Sertifikasi", icon: "fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
-  { href: "/pipeline", label: "Marketplace Pipeline", icon: "fa-diagram-project", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"], section: "Portals Khusus" },
-  { href: "/sop-management", label: "Manajemen SOP & Tugas", icon: "fa-clipboard-list", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], section: "Portals Khusus" },
-  { href: "/migration", label: "Impor Data Lama (Excel/CSV)", icon: "fa-file-import", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"], section: "Portals Khusus" },
-  { href: "/qc-violations", label: "Pelanggaran QC Live", icon: "fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER", "TRAINER"], section: "Portals Khusus" },
-  { href: "/portal/streamer", label: "Marketplace Proyek", icon: "fa-store", roles: ["STREAMER", "OTS", "SUPER_ADMIN"], section: "Portals Khusus" },
-  { href: "/portal/streamer/lms", label: "LMS & Akademi Host", icon: "fa-graduation-cap", roles: ["SUPER_ADMIN", "STREAMER", "OTS"], section: "Portals Khusus" },
-  { href: "/admin", label: "Admin Console", icon: "fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
-  { href: "/history-log", label: "Audit & History Log", icon: "fa-clock-rotate-left", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"], section: "Portals Khusus" },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "dashboards",
+    label: "Dashboard Utama",
+    icon: "fa-solid fa-gauge-high",
+    items: [
+      { href: "/dashboard", label: "Dashboard Ringkasan", icon: "fa-solid fa-border-all", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER"] },
+      { href: "/streamer-dashboard", label: "Streamer Dashboard", icon: "fa-solid fa-video", roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+      { href: "/staff-dashboard", label: "Staff Dashboard", icon: "fa-solid fa-id-badge", roles: ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
+    ],
+  },
+  {
+    id: "pengajuan",
+    label: "Pusat Pengajuan",
+    icon: "fa-solid fa-paper-plane",
+    items: [
+      { href: "/pengajuan", label: "Ringkasan Pusat Pengajuan", icon: "fa-solid fa-receipt", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "QC_REVIEWER"] },
+      { href: "/pengajuan?tab=lembur", label: "Pengajuan Lembur", icon: "fa-regular fa-clock", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "lembur" },
+      { href: "/pengajuan?tab=izin", label: "Pengajuan Cuti / Izin", icon: "fa-solid fa-calendar-xmark", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "izin" },
+      { href: "/pengajuan?tab=tukar-shift", label: "Tukar Shift Streamer", icon: "fa-solid fa-right-left", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], tabKey: "tukar-shift" },
+      { href: "/pengajuan?tab=suara", label: "Suara Karyawan & Aspirasi", icon: "fa-regular fa-comment-dots", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE"], tabKey: "suara" },
+    ],
+  },
+  {
+    id: "operasional",
+    label: "Operasional & SDM",
+    icon: "fa-solid fa-people-roof",
+    items: [
+      { href: "/approval", label: "Pusat Approval", icon: "fa-regular fa-square-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
+      { href: "/penilaian-sdm", label: "Penilaian SDM (KPI)", icon: "fa-regular fa-star", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"] },
+      { href: "/input-jadwal", label: "Kelola Jadwal Siaran", icon: "fa-regular fa-calendar-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
+      { href: "/input-karyawan", label: "Kelola Data Karyawan", icon: "fa-solid fa-user-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+      { href: "/client", label: "Klien & Partner Brand", icon: "fa-solid fa-handshake", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
+      { href: "/view-data", label: "View Master Database", icon: "fa-solid fa-database", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+    ],
+  },
+  {
+    id: "finance",
+    label: "Finance & Keuangan",
+    icon: "fa-solid fa-wallet",
+    items: [
+      { href: "/payroll", label: "Payroll & Gaji Streamer", icon: "fa-solid fa-money-bill-wave", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] },
+      { href: "/finance-insentif", label: "Rekap Insentif & Denda", icon: "fa-solid fa-receipt", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] },
+      { href: "/analytics-gmv", label: "Analytics & Laporan GMV", icon: "fa-solid fa-chart-line", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "CLIENT"] },
+    ],
+  },
+  {
+    id: "fitur_lanjutan",
+    label: "Fitur Lanjutan & Pengaturan",
+    icon: "fa-solid fa-sliders",
+    items: [
+      { href: "/streamer-directory", label: "Direktori Streamer", icon: "fa-solid fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT"] },
+      { href: "/qc-violations", label: "Pelanggaran QC & SOP", icon: "fa-solid fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"] },
+      { href: "/sop-management", label: "Manajemen Dokumen SOP", icon: "fa-solid fa-clipboard-list", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
+      { href: "/pipeline", label: "Session Pipeline", icon: "fa-solid fa-diagram-project", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
+      { href: "/migration", label: "Impor Data Excel", icon: "fa-solid fa-file-import", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE"] },
+      { href: "/admin", label: "Pengaturan Sistem (Master)", icon: "fa-solid fa-gear", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
+      { href: "/history-log", label: "History Activity Log", icon: "fa-solid fa-clock-rotate-left", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
+    ],
+  },
 ];
 
-export default function Sidebar() {
+function SidebarNavContent({
+  onCloseMobile,
+}: {
+  onCloseMobile?: () => void;
+}) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user?.role ?? "SUPER_ADMIN") as Role;
 
-  const visible = NAV_ITEMS.filter((item) => item.roles.includes(role));
-  const sections = Array.from(new Set(visible.map((item) => item.section ?? "General")));
+  const activeTabQuery = searchParams.get("tab");
+
+  // Track accordion open states per group
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    // Auto expand group that contains current active path
+    const initialOpen: Record<string, boolean> = {};
+    NAV_GROUPS.forEach((group) => {
+      const hasActiveChild = group.items.some((item) => {
+        if (item.roles.includes(role)) {
+          if (item.href.startsWith("/pengajuan")) {
+            return pathname === "/pengajuan" || pathname.startsWith("/pengajuan");
+          }
+          return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+        }
+        return false;
+      });
+      if (hasActiveChild) {
+        initialOpen[group.id] = true;
+      }
+    });
+    setOpenGroups((prev) => ({ ...initialOpen, ...prev }));
+  }, [pathname, role]);
+
+  function toggleGroup(groupId: string) {
+    setOpenGroups((prev) => ({
+      ...prev,
+      [groupId]: !prev[groupId],
+    }));
+  }
 
   return (
-    <aside className="w-64 bg-slate-900 border-r border-slate-800 flex flex-col h-full select-none text-slate-300 flex-shrink-0">
-      {/* Brand Header */}
-      <div className="h-16 flex items-center px-5 border-b border-slate-800 flex-shrink-0 bg-slate-950/60 gap-3">
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/30">
-          <i className="fa-solid fa-bolt text-sm" />
-        </div>
-        <div className="flex flex-col">
-          <span className="text-sm font-black tracking-tight text-white leading-tight">POTENSI CREATIVE</span>
-          <span className="text-[10px] text-blue-400 font-semibold tracking-wider uppercase">Live Agency ERP</span>
-        </div>
-      </div>
+    <div className="flex-1 overflow-y-auto sidebar-scroll py-4 px-3 space-y-3 custom-scrollbar">
+      {NAV_GROUPS.map((group) => {
+        // Filter items matching user's role
+        const visibleItems = group.items.filter((item) => item.roles.includes(role));
+        if (visibleItems.length === 0) return null;
 
-      {/* Navigation Links */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5 custom-scrollbar">
-        {sections.map((sec) => (
-          <div key={sec} className="space-y-1">
-            <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              {sec}
-            </div>
-            {visible
-              .filter((item) => (item.section ?? "General") === sec)
-              .map((item) => {
-                // An item is a "parent" if another nav item's href starts with this href + "/".
-                // Parents should only highlight on exact match, not when a child page is active.
-                const hasExplicitChild = visible.some(
-                  (other) => other.href !== item.href && other.href.startsWith(item.href + "/")
-                );
-                const isActive = pathname === item.href ||
-                  (!hasExplicitChild && item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all group ${
-                      isActive
-                        ? "bg-blue-600 text-white shadow-md shadow-blue-600/30 font-bold"
-                        : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/60"
-                    }`}
-                  >
-                    <i
-                      className={`fa-solid ${item.icon} w-4 text-center text-xs transition-transform group-hover:scale-110 ${
-                        isActive ? "text-white" : "text-slate-400 group-hover:text-blue-400"
+        const isOpen = openGroups[group.id] ?? true; // Default to open for clean UX
+
+        // Check if group contains current active path
+        const isGroupActive = visibleItems.some((item) => {
+          if (item.href.startsWith("/pengajuan")) {
+            return pathname === "/pengajuan" || pathname.startsWith("/pengajuan");
+          }
+          return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+        });
+
+        return (
+          <div key={group.id} className="space-y-1">
+            {/* Group Header Button */}
+            <button
+              type="button"
+              onClick={() => toggleGroup(group.id)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition select-none ${
+                isGroupActive
+                  ? "bg-blue-50/80 text-blue-900 border border-blue-100"
+                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <i className={`${group.icon} text-sm ${isGroupActive ? "text-blue-600" : "text-slate-400"}`} />
+                <span className="uppercase tracking-wider text-[11px] font-black">{group.label}</span>
+              </div>
+              <i
+                className={`fa-solid fa-chevron-down text-[10px] transition-transform duration-200 ${
+                  isOpen ? "rotate-180 text-blue-600" : "text-slate-400"
+                }`}
+              />
+            </button>
+
+            {/* Group Sub-Items */}
+            {isOpen && (
+              <div className="space-y-1 pl-2 border-l-2 border-slate-100 ml-3 pt-0.5">
+                {visibleItems.map((item) => {
+                  let isActive = false;
+
+                  if (item.href.startsWith("/pengajuan")) {
+                    if (pathname === "/pengajuan") {
+                      if (item.tabKey) {
+                        isActive = activeTabQuery === item.tabKey;
+                      } else {
+                        isActive = !activeTabQuery;
+                      }
+                    }
+                  } else {
+                    isActive =
+                      pathname === item.href ||
+                      (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+                  }
+
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={onCloseMobile}
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                        isActive
+                          ? "bg-blue-600 text-white shadow-xs font-bold"
+                          : "text-slate-600 hover:bg-slate-100 hover:text-blue-600"
                       }`}
-                    />
-                    <span className="truncate">{item.label}</span>
-                  </Link>
-                );
-              })}
+                    >
+                      <i
+                        className={`${item.icon} w-4 text-center ${
+                          isActive ? "text-white" : "text-slate-400"
+                        }`}
+                      />
+                      <span className="truncate">{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        ))}
-      </nav>
+        );
+      })}
+    </div>
+  );
+}
 
-      {/* User Footer & Logout */}
-      <div className="p-3 border-t border-slate-800 bg-slate-950/40 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 uppercase">
-            {(session?.user?.name ?? session?.user?.email ?? "U")[0]}
-          </div>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-slate-200 truncate">
-              {session?.user?.name ?? session?.user?.email ?? "Pengguna"}
+export default function Sidebar({
+  mobileOpen = false,
+  onCloseMobile,
+}: {
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
+}) {
+  return (
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden transition-opacity"
+        />
+      )}
+
+      {/* Sidebar Component */}
+      <aside
+        id="sidebar"
+        className={`fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col z-50 transform transition-transform duration-300 h-full ${
+          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
+        {/* Brand Header */}
+        <div className="h-16 flex items-center px-6 border-b border-slate-100 flex-shrink-0 justify-between">
+          <div className="flex items-center">
+            <div className="bg-blue-600 text-white font-bold p-1.5 rounded-lg w-8 h-8 flex items-center justify-center mr-3 text-sm">
+              P
             </div>
-            <div className="text-[10px] font-mono text-slate-500 truncate capitalize">
-              {session?.user?.role?.toLowerCase() ?? "staff"}
-            </div>
+            <span className="font-bold text-lg text-slate-900">Potensi Creative</span>
           </div>
+          {onCloseMobile && (
+            <button
+              className="lg:hidden text-slate-400 hover:text-red-500 transition"
+              onClick={onCloseMobile}
+              aria-label="Tutup Sidebar"
+            >
+              <i className="fa-solid fa-xmark text-xl"></i>
+            </button>
+          )}
         </div>
 
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          title="Keluar"
-          className="w-8 h-8 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition flex-shrink-0"
-        >
-          <i className="fa-solid fa-right-from-bracket text-xs" />
-        </button>
-      </div>
-    </aside>
+        {/* Navigation Links */}
+        <Suspense fallback={<div className="p-4 text-xs text-slate-400">Loading sidebar...</div>}>
+          <SidebarNavContent onCloseMobile={onCloseMobile} />
+        </Suspense>
+      </aside>
+    </>
   );
 }

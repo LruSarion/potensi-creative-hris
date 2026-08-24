@@ -1,5 +1,15 @@
 import { apiHandler } from "@/lib/api-handler";
-import { getMyJadwal, getMyAbsensi, getMyReport, getMySesiAktif, getMyDashboard, getPendingGmv } from "@/lib/services/streamer";
+import {
+  getMyJadwal,
+  getMyAbsensi,
+  getMyReport,
+  getMySesiAktif,
+  getMyDashboard,
+  getPendingGmv,
+  getStreamerRequestStatus,
+  submitLeaveRequest,
+  submitShiftRequest,
+} from "@/lib/services/streamer";
 
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
@@ -10,5 +20,17 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "sesi") return getMySesiAktif();
   if (view === "dashboard") return getMyDashboard();
   if (view === "pending-gmv") return getPendingGmv();
+  if (view === "request-status") return getStreamerRequestStatus();
   return getMyJadwal();
+});
+
+export const POST = apiHandler(async (req: Request) => {
+  const body = await req.json();
+  if (body.action === "leave-request" || body.action === "libur") {
+    return submitLeaveRequest({ tanggal: body.tanggal, alasan: body.alasan });
+  }
+  if (body.action === "shift-request" || body.action === "sesi") {
+    return submitShiftRequest({ tanggal: body.tanggal, sesi: body.sesi, catatan: body.catatan });
+  }
+  throw new Error("Action tidak dikenali");
 });

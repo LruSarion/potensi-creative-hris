@@ -220,3 +220,137 @@ export async function getPendingGmv() {
     }
   });
 }
+
+/** Get form controls & leave/shift request status for current streamer */
+export async function getStreamerRequestStatus() {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const karyawanId = user.karyawanId;
+  if (!karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+
+  const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+  const cfg = (tenant?.config ?? {}) as Record<string, any>;
+
+  const allowLiburRequest = cfg.allowLiburRequest !== false; // default true
+  const allowShiftRequest = cfg.allowShiftRequest !== false; // default true
+  const defaultKuotaLibur = typeof cfg.defaultKuotaLibur === "number" ? cfg.defaultKuotaLibur : 4;
+  const defaultKuotaShift = typeof cfg.defaultKuotaShift === "number" ? cfg.defaultKuotaShift : 4;
+
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  // Fetch streamer's leave & shift requests for current month
+  const [leaveRequests, shiftRequests, activeJadwal] = await Promise.all([
+    db.izin.findMany({
+      where: {
+        karyawanId,
+        jenis: { in: ["LIBUR_STREAMER", "CUTI_TAHUNAN", "SAKIT", "KEPERLUAN_PRIBADI"] },
+        tanggalMulai: { gte: startOfMonth, lt: endOfMonth },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.izin.findMany({
+      where: {
+        karyawanId,
+        jenis: { in: ["REQUEST_SESI_1", "REQUEST_SESI_2", "REQUEST_SESI_3"] },
+        tanggalMulai: { gte: startOfMonth, lt: endOfMonth },
+      },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.jadwal.findMany({
+      where: {
+        streamerKaryawanId: karyawanId,
+        tanggal: { gte: startOfMonth, lt: endOfMonth },
+        status: { notIn: ["DIBATALKAN", "REJECTED"] },
+      },
+      select: { id: true, idJadwal: true, tanggal: true, jamMulaiLive: true, jamSelesaiLive: true, platform: true },
+    }),
+  ]);
+
+  const approvedLeaves = leaveRequests.filter((l) => l.status === "APPROVED").length;
+  const approvedShifts = shiftRequests.filter((s) => s.status === "APPROVED").length;
+
+  return {
+    allowLiburRequest,
+    allowShiftRequest,
+    defaultKuotaLibur,
+    defaultKuotaShift,
+    sisaKuotaLibur: Math.max(0, defaultKuotaLibur - approvedLeaves),
+    sisaKuotaShift: Math.max(0, defaultKuotaShift - approvedShifts),
+    leaveRequests,
+    shiftRequests,
+    activeJadwal,
+  };
+}
+
+/** Submit leave request by streamer */
+export async function submitLeaveRequest(input: { tanggal: string; alasan?: string }) {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const karyawanId = user.karyawanId;
+  if (!karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+
+  const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+  const cfg = (tenant?.config ?? {}) as Record<string, any>;
+  if (cfg.allowLiburRequest === false) {
+    throw AppError.forbidden("Pengajuan libur saat ini sedang ditutup oleh Manajemen.");
+  }
+
+  const tgl = new Date(input.tanggal);
+  const startOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 0, 0, 0);
+  const endOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 23, 59, 59);
+
+  // Check if streamer has an active live schedule on this day
+  const existingJadwal = await db.jadwal.findFirst({
+    where: {
+      streamerKaryawanId: karyawanId,
+      tanggal: { gte: startOfDay, lte: endOfDay },
+      status: { notIn: ["DIBATALKAN", "REJECTED"] },
+    },
+  });
+
+  const conflictNote = existingJadwal
+    ? ` [Peringatan: Jadwal Live ${existingJadwal.idJadwal} aktif]`
+    : "";
+
+  return db.izin.create({
+    data: {
+      karyawanId,
+      tanggalMulai: startOfDay,
+      tanggalSelesai: endOfDay,
+      jenis: "LIBUR_STREAMER",
+      alasan: `${input.alasan ?? "Pengajuan Libur Streamer"}${conflictNote}`,
+      status: "PENDING",
+    },
+  });
+}
+
+/** Submit 3-Session Live request (SESI_1: 00-08, SESI_2: 08-16, SESI_3: 16-00) */
+export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1" | "SESI_2" | "SESI_3"; catatan?: string }) {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const karyawanId = user.karyawanId;
+  if (!karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+
+  const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+  const cfg = (tenant?.config ?? {}) as Record<string, any>;
+  if (cfg.allowShiftRequest === false) {
+    throw AppError.forbidden("Pengajuan request sesi live saat ini sedang ditutup oleh Manajemen.");
+  }
+
+  const tgl = new Date(input.tanggal);
+  const sesiLabel = {
+    SESI_1: "Sesi 1 (00:00 - 08:00)",
+    SESI_2: "Sesi 2 (08:00 - 16:00)",
+    SESI_3: "Sesi 3 (16:00 - 00:00)",
+  }[input.sesi] || "Sesi Live";
+
+  return db.izin.create({
+    data: {
+      karyawanId,
+      tanggalMulai: tgl,
+      tanggalSelesai: tgl,
+      jenis: `REQUEST_${input.sesi}`,
+      alasan: `${sesiLabel} - ${input.catatan ?? "Permintaan Sesi Live"}`,
+      status: "PENDING",
+    },
+  });
+}

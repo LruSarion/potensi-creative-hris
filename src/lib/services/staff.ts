@@ -3,7 +3,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 
 /**
- * Staff/OTS dashboard: helper data + own absensi session.
+ * Staff/OTS dashboard: helper data + own absensi session + stats.
  */
 
 /** Require STAFF/OTS (or admin) and return karyawan id. */
@@ -41,4 +41,33 @@ export async function getMySesiAktif() {
   });
   if (lastCheckOut && lastCheckOut.waktu > lastCheckIn.waktu) return null;
   return lastCheckIn;
+}
+
+/** Monthly attendance stats for staff member. */
+export async function getStaffStats() {
+  const karyawanId = await requireStaff();
+
+  const checkIns = await db.absensi.findMany({
+    where: { karyawanId, tipe: "CHECK_IN" },
+    orderBy: { waktu: "desc" },
+    take: 100,
+  });
+
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const thisMonthCheckIns = checkIns.filter((c) => new Date(c.waktu) >= startOfMonth);
+
+  const activeDaysSet = new Set(
+    thisMonthCheckIns.map((c) => new Date(c.waktu).toISOString().split("T")[0])
+  );
+  const hariAktif = activeDaysSet.size;
+  const jamKerja = Math.round(hariAktif * 8 * 10) / 10;
+
+  return {
+    jamKerja,
+    hariAktif,
+    sisaCuti: 12,
+  };
 }

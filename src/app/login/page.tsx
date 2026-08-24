@@ -71,20 +71,45 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-100/20">
-        {/* Header Branding */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-8 text-center text-white relative">
-          <div className="w-16 h-16 bg-white/10 backdrop-blur-md rounded-2xl mx-auto flex items-center justify-center mb-3 shadow-inner border border-white/20">
-            <span className="text-3xl font-extrabold text-white">P</span>
+    <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100">
+        {/* Header Branding (Ref: ref-website-lama/index.html) */}
+        <div className="bg-slate-50 p-8 text-center border-b border-slate-100">
+          <div className="w-16 h-16 bg-blue-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-md">
+            <span className="text-3xl font-bold text-white">P</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Potensi Creative</h1>
-          <p className="text-blue-100 text-xs font-medium tracking-wide uppercase mt-1">
+          <h1 className="text-2xl font-bold text-blue-600 mb-1">Potensi Creative</h1>
+          <p className="text-slate-500 text-sm font-medium">
             Human Resource Information System
           </p>
         </div>
 
         <div className="p-7 sm:p-8 space-y-6">
+          {/* Primary Google OAuth Button (Matching ref-deploy/index.html) */}
+          <div>
+            <button
+              type="button"
+              onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 rounded-xl py-3 px-4 font-semibold text-sm text-slate-700 hover:bg-slate-50 transition shadow-sm hover:border-slate-400 group"
+            >
+              <svg width="20" height="20" viewBox="0 0 48 48">
+                <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+                <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+                <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+              </svg>
+              <span>Masuk dengan Google (OAuth 2.0)</span>
+            </button>
+          </div>
+
+          {/* Divider */}
+          <div className="relative flex items-center justify-center">
+            <div className="border-t border-slate-200 w-full" />
+            <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider absolute">
+              atau gunakan Email & PIN
+            </span>
+          </div>
+
           {/* Main Login Form */}
           <form
             onSubmit={(e) => {
@@ -94,14 +119,14 @@ export default function LoginPage() {
             className="space-y-4"
           >
             <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Alamat Email
               </label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition bg-slate-50/50 hover:bg-white"
+                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none transition bg-white"
                 placeholder="nama@potensicreative.test"
                 required
                 autoComplete="email"
@@ -109,8 +134,8 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">
-                PIN Internal (4 Digit)
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Masukkan PIN Internal
               </label>
               <input
                 type="password"
@@ -119,7 +144,7 @@ export default function LoginPage() {
                 maxLength={8}
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-base tracking-widest text-center text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition font-mono bg-slate-50/50 hover:bg-white"
+                className="w-full border border-slate-300 rounded-lg px-4 py-3 text-lg tracking-widest text-center text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none font-mono bg-white"
                 placeholder="••••"
                 required
                 autoComplete="current-password"
@@ -127,7 +152,7 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 font-medium">
                 <span>⚠️</span>
                 <span>{error}</span>
               </div>
@@ -136,12 +161,18 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-xl transition shadow-lg shadow-blue-600/20 disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2 text-sm"
             >
               {loading ? (
-                <span>Memverifikasi...</span>
+                <>
+                  <i className="fa-solid fa-circle-notch fa-spin"></i>
+                  <span>Otentikasi...</span>
+                </>
               ) : (
-                <span>Masuk ke Dashboard</span>
+                <>
+                  <i className="fa-solid fa-right-to-bracket"></i>
+                  <span>Masuk ke Dashboard</span>
+                </>
               )}
             </button>
           </form>
@@ -149,8 +180,8 @@ export default function LoginPage() {
           {/* Divider */}
           <div className="relative flex items-center justify-center">
             <div className="border-t border-slate-200 w-full" />
-            <span className="bg-white px-3 text-[11px] font-medium text-slate-400 uppercase tracking-wider absolute">
-              Atau Akun Uji Coba (1-Click)
+            <span className="bg-white px-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider absolute">
+              Akun Uji Coba (1-Click)
             </span>
           </div>
 
@@ -163,39 +194,23 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => handleDemoClick(acc)}
                   disabled={loading}
-                  className={`text-left px-3 py-2 rounded-lg border text-xs font-medium transition hover:shadow-sm flex items-center justify-between ${acc.color}`}
+                  className={`text-left px-3 py-2 rounded-lg border text-xs font-semibold transition hover:shadow-sm flex items-center justify-between ${acc.color}`}
                 >
                   <span className="truncate">{acc.role}</span>
-                  <span className="text-[10px] opacity-60 ml-1">Demo</span>
+                  <span className="text-[10px] opacity-60 ml-1 font-mono">Demo</span>
                 </button>
               ))}
             </div>
             <p className="text-[11px] text-center text-slate-400 mt-2">
-              Klik salah satu role di atas untuk login instan (PIN: 1234).
+              Klik salah satu role di atas untuk login instan.
             </p>
           </div>
+        </div>
 
-          {/* Google OAuth Option (only when provider configured) */}
-          {googleEnabled && (
-            <div className="pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-                className="w-full flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 rounded-xl py-2.5 font-medium text-xs text-slate-600 hover:bg-slate-100 transition"
-              >
-              <svg width="16" height="16" viewBox="0 0 48 48">
-                <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
-                <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
-                <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
-                <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
-              </svg>
-              Masuk dengan Google (OAuth)
-            </button>
-            </div>
-          )}
+        <div className="bg-slate-50 p-4 border-t border-slate-100 text-center">
+          <p className="text-xs text-slate-400">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
         </div>
       </div>
     </div>
   );
 }
-

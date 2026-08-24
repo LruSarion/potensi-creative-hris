@@ -1,23 +1,74 @@
 import { apiHandler } from "@/lib/api-handler";
 import { db } from "@/lib/db";
-import { requirePermission } from "@/lib/auth-helpers";
+import { requirePermission, requireRole } from "@/lib/auth-helpers";
 import { computeDurationMinutes } from "@/lib/schedule-rules";
+import { AppError } from "@/lib/errors";
 
 /**
  * GET /api/scheduler-tools?view=streamer-stats&karyawanId=xxx&periode=Agustus+2026
- * Returns monthly hour accumulation, tier status, and blacklist info for a streamer.
- *
  * GET /api/scheduler-tools?view=blacklist&karyawanId=xxx&clientId=xxx
- * Checks if a streamer is blacklisted for a specific client.
+ * GET /api/scheduler-tools?view=kendali-form
+ * GET /api/scheduler-tools?view=info-streamer&periode=xxx
  */
 export const GET = apiHandler(async (req: Request) => {
-  await requirePermission("jadwal:write");
+  const user = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STREAMER", "STAFF");
 
   const url = new URL(req.url);
   const view = url.searchParams.get("view") ?? "streamer-stats";
   const karyawanId = url.searchParams.get("karyawanId") ?? "";
   const clientId = url.searchParams.get("clientId") ?? "";
   const periode = url.searchParams.get("periode") ?? "";
+
+  // View: kendali-form
+  if (view === "kendali-form") {
+    const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+    const cfg = (tenant?.config ?? {}) as Record<string, any>;
+    return {
+      allowLiburRequest: cfg.allowLiburRequest !== false,
+      allowShiftRequest: cfg.allowShiftRequest !== false,
+      defaultKuotaLibur: typeof cfg.defaultKuotaLibur === "number" ? cfg.defaultKuotaLibur : 4,
+      defaultKuotaShift: typeof cfg.defaultKuotaShift === "number" ? cfg.defaultKuotaShift : 4,
+    };
+  }
+
+  // View: info-streamer (Rekapitulasi Libur & Request Sesi Live Streamer)
+  if (view === "info-streamer") {
+    await requirePermission("jadwal:read");
+    const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+    const cfg = (tenant?.config ?? {}) as Record<string, any>;
+    const defaultKuotaLibur = typeof cfg.defaultKuotaLibur === "number" ? cfg.defaultKuotaLibur : 4;
+    const defaultKuotaShift = typeof cfg.defaultKuotaShift === "number" ? cfg.defaultKuotaShift : 4;
+
+    const [streamers, leaveRequests, shiftRequests] = await Promise.all([
+      db.karyawan.findMany({
+        where: { kategori: "STREAMER", statusAktif: "AKTIF" },
+        select: { id: true, idKaryawan: true, namaLengkap: true },
+        orderBy: { namaLengkap: "asc" },
+      }),
+      db.izin.findMany({
+        where: {
+          jenis: { in: ["LIBUR_STREAMER", "CUTI_TAHUNAN", "SAKIT", "KEPERLUAN_PRIBADI"] },
+        },
+        include: { karyawan: { select: { id: true, idKaryawan: true, namaLengkap: true } } },
+        orderBy: { tanggalMulai: "desc" },
+      }),
+      db.izin.findMany({
+        where: {
+          jenis: { in: ["REQUEST_SESI_1", "REQUEST_SESI_2", "REQUEST_SESI_3"] },
+        },
+        include: { karyawan: { select: { id: true, idKaryawan: true, namaLengkap: true } } },
+        orderBy: { tanggalMulai: "desc" },
+      }),
+    ]);
+
+    return {
+      defaultKuotaLibur,
+      defaultKuotaShift,
+      streamers,
+      leaveRequests,
+      shiftRequests,
+    };
+  }
 
   if (view === "blacklist") {
     if (!karyawanId || !clientId) return { isBlacklisted: false };
@@ -30,7 +81,6 @@ export const GET = apiHandler(async (req: Request) => {
   // streamer-stats: compute accumulated hours and tier for current or given month
   if (!karyawanId) return { totalJam: 0, tier: null, isOverlimit: false };
 
-  // Parse periode (e.g. "Agustus 2026") or default to current month
   const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   let startOfMonth: Date, endOfMonth: Date;
   const m = periode ? /^(\w+) (\d{4})$/.exec(periode.trim()) : null;
@@ -65,7 +115,6 @@ export const GET = apiHandler(async (req: Request) => {
 
   const activeTier = tieringList.slice().reverse().find((t) => totalJam >= t.jamMinimal) ?? tieringList[0] ?? null;
 
-  // Tier 4 threshold: find 4th tier from the list
   const tier4 = tieringList.length >= 4 ? tieringList[3] : null;
   const tier5 = tieringList.length >= 5 ? tieringList[4] : null;
 
@@ -83,4 +132,58 @@ export const GET = apiHandler(async (req: Request) => {
     isNearTier4,
     isOverlimit,
   };
+});
+
+export const POST = apiHandler(async (req: Request) => {
+  const user = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION");
+  if (!user.tenantId) throw AppError.forbidden("Akun tidak terhubung ke tenant");
+
+  const body = await req.json();
+
+  if (body.action === "toggle-fitur") {
+    const tenant = await db.tenant.findUnique({ where: { id: user.tenantId } });
+    const currentCfg = (tenant?.config ?? {}) as Record<string, any>;
+
+    const nextCfg = { ...currentCfg };
+    if (body.fitur === "LIBUR") {
+      nextCfg.allowLiburRequest = body.status === "ON";
+    } else if (body.fitur === "SHIFT") {
+      nextCfg.allowShiftRequest = body.status === "ON";
+    }
+
+    await db.tenant.update({
+      where: { id: user.tenantId },
+      data: { config: nextCfg },
+    });
+
+    return {
+      success: true,
+      fitur: body.fitur,
+      status: body.status,
+      config: nextCfg,
+    };
+  }
+
+  if (body.action === "save-quota") {
+    const tenant = await db.tenant.findUnique({ where: { id: user.tenantId } });
+    const currentCfg = (tenant?.config ?? {}) as Record<string, any>;
+
+    const nextCfg = {
+      ...currentCfg,
+      defaultKuotaLibur: Number(body.defaultKuotaLibur) || 4,
+      defaultKuotaShift: Number(body.defaultKuotaShift) || 4,
+    };
+
+    await db.tenant.update({
+      where: { id: user.tenantId },
+      data: { config: nextCfg },
+    });
+
+    return {
+      success: true,
+      config: nextCfg,
+    };
+  }
+
+  throw new Error("Action tidak valid");
 });

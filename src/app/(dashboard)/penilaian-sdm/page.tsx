@@ -7,10 +7,12 @@ export default function PenilaianSDMPage() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [form, setForm] = useState({
     karyawanId: "",
-    sellingSkill: 85,
-    grooming: 85,
-    productKnowledge: 80,
-    engagement: 90,
+    productKnowledge: 85,
+    interaksiPenampilan: 85,
+    metrikObjektif: 80,
+    keterampilanImprovisasi: 80,
+    kemampuanKomunikasi: 85,
+    professionalism: 90,
     gmvGenerated: 0,
     periode: "Agustus 2026",
     komentar: "",
@@ -37,8 +39,14 @@ export default function PenilaianSDMPage() {
     }
   }
 
+  // Ref-deploy weighted formula: 20%, 20%, 20%, 15%, 15%, 10%
   const compositeScore = Math.round(
-    (form.sellingSkill + form.grooming + form.productKnowledge + form.engagement) / 4
+    form.productKnowledge * 0.2 +
+      form.interaksiPenampilan * 0.2 +
+      form.metrikObjektif * 0.2 +
+      form.keterampilanImprovisasi * 0.15 +
+      form.kemampuanKomunikasi * 0.15 +
+      form.professionalism * 0.1
   );
 
   function getTier(score: number) {
@@ -66,10 +74,12 @@ export default function PenilaianSDMPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           karyawanId: form.karyawanId,
-          sellingSkill: form.sellingSkill,
-          grooming: form.grooming,
           productKnowledge: form.productKnowledge,
-          engagement: form.engagement,
+          interaksiPenampilan: form.interaksiPenampilan,
+          metrikObjektif: form.metrikObjektif,
+          keterampilanImprovisasi: form.keterampilanImprovisasi,
+          kemampuanKomunikasi: form.kemampuanKomunikasi,
+          professionalism: form.professionalism,
           gmvGenerated: Number(form.gmvGenerated),
           periode: form.periode,
           komentar: form.komentar,
@@ -92,14 +102,42 @@ export default function PenilaianSDMPage() {
 
   const tier = getTier(compositeScore);
 
+  const [activeTab, setActiveTab] = useState<"streamer" | "ots">("streamer");
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Evaluasi & Penilaian KPI Streamer</h1>
-        <p className="text-sm text-slate-500 mt-0.5">
-          Penilaian performa host live streaming berdasarkan 4 pilar kompetensi agency, audit kualitas, dan rekomendasi tiering gaji.
+      {/* Header persis ref-deploy/penilaian-sdm.html */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-slate-900">Penilaian SDM (KPI System)</h1>
+        <p className="text-slate-500 text-sm mt-1">
+          Evaluasi performa streamer berbasis 6 indikator pembobotan total skor.
         </p>
+      </div>
+
+      {/* Tab Navigation */}
+      <div className="border-b border-slate-200 flex gap-6 mb-6">
+        <button
+          onClick={() => setActiveTab("streamer")}
+          className={`pb-3 border-b-2 font-bold px-2 transition-all focus:outline-none flex items-center gap-2 ${
+            activeTab === "streamer"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-700 font-medium"
+          }`}
+        >
+          <i className="fa-solid fa-video" />
+          <span>KPI Streamer (6 Bobot Indikator)</span>
+        </button>
+        <button
+          onClick={() => setActiveTab("ots")}
+          className={`pb-3 border-b-2 font-bold px-2 transition-all focus:outline-none flex items-center gap-2 ${
+            activeTab === "ots"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-slate-500 hover:text-slate-700 font-medium"
+          }`}
+        >
+          <i className="fa-solid fa-headset" />
+          <span>KPI OTS</span>
+        </button>
       </div>
 
       {/* Alerts */}
@@ -119,7 +157,7 @@ export default function PenilaianSDMPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Rating Form (7 Cols) */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-          <h2 className="font-bold text-slate-800 text-base">Formulir Penilaian Host Live</h2>
+          <h2 className="font-bold text-slate-800 text-base">Formulir Penilaian Host Live (Ref-Deploy Standards)</h2>
 
           <form onSubmit={submit} className="space-y-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -144,7 +182,7 @@ export default function PenilaianSDMPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Periode Penilaian
+                  Periode Bulanan
                 </label>
                 <input
                   type="text"
@@ -156,82 +194,116 @@ export default function PenilaianSDMPage() {
               </div>
             </div>
 
-            {/* 4 Pillars Sliders */}
+            {/* 6 Weighted Sliders (Ref-Deploy Model) */}
             <div className="space-y-4 pt-2">
-              {/* Selling Skill */}
+              {/* Product Knowledge (20%) */}
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-slate-800">1. Selling Skill & Pitching</span>
-                  <span className="font-mono font-bold text-blue-600 text-sm">{form.sellingSkill}/100</span>
-                </div>
-                <input
-                  type="range"
-                  min={40}
-                  max={100}
-                  value={form.sellingSkill}
-                  onChange={(e) => setForm({ ...form, sellingSkill: Number(e.target.value) })}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Kemampuan call-to-action, penawaran promo, dan closing penjualan.</p>
-              </div>
-
-              {/* Grooming */}
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-slate-800">2. Grooming, Outfit & Camera Appearance</span>
-                  <span className="font-mono font-bold text-blue-600 text-sm">{form.grooming}/100</span>
-                </div>
-                <input
-                  type="range"
-                  min={40}
-                  max={100}
-                  value={form.grooming}
-                  onChange={(e) => setForm({ ...form, grooming: Number(e.target.value) })}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                />
-                <p className="text-[10px] text-slate-400 mt-1">Kerapian busana, visual studio lighting, makeup, dan ekspresi wajah.</p>
-              </div>
-
-              {/* Product Knowledge */}
-              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-slate-800">3. Product Knowledge & USP Delivery</span>
+                  <span className="text-xs font-bold text-slate-800">1. Product Knowledge (Bobot 20%)</span>
                   <span className="font-mono font-bold text-blue-600 text-sm">{form.productKnowledge}/100</span>
                 </div>
                 <input
                   type="range"
-                  min={40}
+                  min={0}
                   max={100}
                   value={form.productKnowledge}
                   onChange={(e) => setForm({ ...form, productKnowledge: Number(e.target.value) })}
                   className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">Penguasaan fitur produk klien, demo produk, dan menjawab pertanyaan chat.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Penguasaan detail produk, demo USP, dan jawaban atas pertanyaan viewer.</p>
               </div>
 
-              {/* Engagement */}
+              {/* Interaksi & Penampilan (20%) */}
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-xs font-bold text-slate-800">4. Viewer Engagement & Live Energy</span>
-                  <span className="font-mono font-bold text-blue-600 text-sm">{form.engagement}/100</span>
+                  <span className="text-xs font-bold text-slate-800">2. Interaksi & Penampilan (Bobot 20%)</span>
+                  <span className="font-mono font-bold text-blue-600 text-sm">{form.interaksiPenampilan}/100</span>
                 </div>
                 <input
                   type="range"
-                  min={40}
+                  min={0}
                   max={100}
-                  value={form.engagement}
-                  onChange={(e) => setForm({ ...form, engagement: Number(e.target.value) })}
+                  value={form.interaksiPenampilan}
+                  onChange={(e) => setForm({ ...form, interaksiPenampilan: Number(e.target.value) })}
                   className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                 />
-                <p className="text-[10px] text-slate-400 mt-1">Stamina durasi live, interaksi aktif penonton, dan retensi penonton.</p>
+                <p className="text-[10px] text-slate-400 mt-1">Visual grooming, keaktifan menyapa penonton, dan kenyamanan layar studio.</p>
+              </div>
+
+              {/* Metrik Objektif (20%) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-slate-800">3. Metrik Objektif / Sales (Bobot 20%)</span>
+                  <span className="font-mono font-bold text-blue-600 text-sm">{form.metrikObjektif}/100</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={form.metrikObjektif}
+                  onChange={(e) => setForm({ ...form, metrikObjektif: Number(e.target.value) })}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Pencapaian target GMV, rasio konversi keranjang, dan order per jam.</p>
+              </div>
+
+              {/* Keterampilan Improvisasi (15%) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-slate-800">4. Keterampilan Improvisasi (Bobot 15%)</span>
+                  <span className="font-mono font-bold text-blue-600 text-sm">{form.keterampilanImprovisasi}/100</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={form.keterampilanImprovisasi}
+                  onChange={(e) => setForm({ ...form, keterampilanImprovisasi: Number(e.target.value) })}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Handling objection, kejenuhan viewer, improvisasi saat terjadi masalah teknis.</p>
+              </div>
+
+              {/* Kemampuan Komunikasi (15%) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-slate-800">5. Kemampuan Komunikasi (Bobot 15%)</span>
+                  <span className="font-mono font-bold text-blue-600 text-sm">{form.kemampuanKomunikasi}/100</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={form.kemampuanKomunikasi}
+                  onChange={(e) => setForm({ ...form, kemampuanKomunikasi: Number(e.target.value) })}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Intonasi, artikulasi suara, kejelasan pesan promo, dan diksi yang persuasif.</p>
+              </div>
+
+              {/* Professionalism (10%) */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-100">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-xs font-bold text-slate-800">6. Professionalism & Organization (Bobot 10%)</span>
+                  <span className="font-mono font-bold text-blue-600 text-sm">{form.professionalism}/100</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={form.professionalism}
+                  onChange={(e) => setForm({ ...form, professionalism: Number(e.target.value) })}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">Ketepatan waktu kehadiran studio, kepatuhan SOP, dan sikap kerja.</p>
               </div>
             </div>
 
-            {/* Score Preview Badge */}
+            {/* Total Skor Terhitung & Tiering Preview */}
             <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-xl flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold text-blue-900">Skor Rata-Rata Terhitung</div>
-                <div className="text-xs text-blue-600 mt-0.5">Rekomendasi Penyesuaian Tiering</div>
+                <div className="text-xs font-semibold text-blue-900">Total Skor Pembobotan KPI</div>
+                <div className="text-xs text-blue-600 mt-0.5">(20% + 20% + 20% + 15% + 15% + 10%)</div>
               </div>
               <div className="flex items-center gap-3">
                 <div className="text-2xl font-black text-blue-700">{compositeScore}</div>

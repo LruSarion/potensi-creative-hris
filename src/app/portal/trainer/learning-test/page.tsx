@@ -170,6 +170,20 @@ export default function LearningTestPage() {
     }
   }
 
+  function parseSeconds(input: string): number {
+    if (!input) return 0;
+    const trimmed = input.trim();
+    if (trimmed.includes(":")) {
+      const parts = trimmed.split(":");
+      if (parts.length === 2) {
+        const m = parseInt(parts[0], 10) || 0;
+        const s = parseInt(parts[1], 10) || 0;
+        return m * 60 + s;
+      }
+    }
+    return Math.max(0, parseInt(trimmed, 10) || 0);
+  }
+
   function openQuestionModal(q?: Question) {
     setEditingQuestion(q ?? null);
     if (q) {
@@ -206,6 +220,7 @@ export default function LearningTestPage() {
       setError("Minimal 2 pilihan jawaban.");
       return;
     }
+    const parsedSec = parseSeconds(qEventTime);
     try {
       const payload: Record<string, unknown> = {
         action: "question",
@@ -216,7 +231,7 @@ export default function LearningTestPage() {
         question: qQuestion.trim(),
         options,
         correctAnswer,
-        eventTime: Number(qEventTime) || 0,
+        eventTime: parsedSec,
         isNote: false,
       };
       const r = await fetch("/api/lms", {
@@ -226,7 +241,7 @@ export default function LearningTestPage() {
       });
       const d = await r.json();
       if (d.status === "success") {
-        setSuccess(editingQuestion ? "Pertanyaan diperbarui." : "Pertanyaan waktu berhasil ditambahkan.");
+        setSuccess(editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`);
         setQuestionModal(false);
         load();
       } else {
@@ -535,15 +550,33 @@ export default function LearningTestPage() {
             </div>
             <form onSubmit={saveQuestion} className="space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Muncul di Detik ke-</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-semibold text-slate-700">Waktu Muncul Video (Detik / MM:SS)</label>
+                  <span className="text-[11px] font-bold font-mono text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200">
+                    ⏱️ {formatTime(parseSeconds(qEventTime))} ({parseSeconds(qEventTime)}s)
+                  </span>
+                </div>
                 <input
-                  type="number"
-                  min={0}
+                  type="text"
                   value={qEventTime}
                   onChange={(e) => setQEventTime(e.target.value)}
-                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500"
+                  placeholder="Contoh: 45 atau 01:30"
+                  className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500 font-mono"
                   required
                 />
+                <div className="flex items-center gap-1.5 mt-1.5">
+                  <span className="text-[10px] text-slate-400">Quick set:</span>
+                  {[15, 30, 45, 60, 90, 120].map((sec) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setQEventTime(String(sec))}
+                      className="px-2 py-0.5 bg-slate-100 hover:bg-purple-100 text-slate-600 hover:text-purple-700 rounded text-[10px] font-mono transition"
+                    >
+                      {formatTime(sec)}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">Pertanyaan</label>

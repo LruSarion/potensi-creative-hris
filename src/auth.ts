@@ -16,14 +16,11 @@ const hasGoogleCreds = Boolean(
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
-    ...(hasGoogleCreds
-      ? [
-          Google({
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          }),
-        ]
-      : []),
+    Google({
+      clientId: process.env.GOOGLE_CLIENT_ID || "demo-google-client-id.apps.googleusercontent.com",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "demo-google-client-secret",
+      allowDangerousEmailAccountLinking: true,
+    }),
     Credentials({
       name: "Email & PIN",
       credentials: {
@@ -78,10 +75,40 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
     async jwt({ token, user, account, profile }) {
       if (account?.provider === "google" && profile?.email) {
-        const dbUser = await db.user.findUnique({
-          where: { email: profile.email.toLowerCase() },
+        const userEmail = profile.email.toLowerCase();
+        let dbUser = await db.user.findUnique({
+          where: { email: userEmail },
           include: { karyawan: true },
         });
+
+        // Auto-provision or link Google account to employee if user record doesn't exist yet
+        if (!dbUser) {
+          const karyawan = await db.karyawan.findFirst({
+            where: { email: userEmail },
+          });
+
+          if (karyawan) {
+            const role: Role = karyawan.kategori === "STREAMER" ? "STREAMER" : "STAFF";
+            const newUser = await db.user.create({
+              data: {
+                email: userEmail,
+                name: profile.name ?? karyawan.namaLengkap,
+                image: (profile as { picture?: string }).picture ?? null,
+                role,
+                tenantId: karyawan.tenantId,
+              },
+            });
+            await db.karyawan.update({
+              where: { id: karyawan.id },
+              data: { userId: newUser.id },
+            });
+            dbUser = await db.user.findUnique({
+              where: { id: newUser.id },
+              include: { karyawan: true },
+            });
+          }
+        }
+
         if (dbUser) {
           token.id = dbUser.id;
           token.role = dbUser.role as Role;

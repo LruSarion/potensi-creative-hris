@@ -8,11 +8,13 @@ const RATER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "Q
 
 const penilaianSchema = z.object({
   karyawanId: z.string().min(1),
-  skor: z.number().int().min(1).max(100).optional(),
-  sellingSkill: z.number().int().min(0).max(100).optional(),
-  grooming: z.number().int().min(0).max(100).optional(),
+  skor: z.number().int().min(0).max(100).optional(),
   productKnowledge: z.number().int().min(0).max(100).optional(),
-  engagement: z.number().int().min(0).max(100).optional(),
+  interaksiPenampilan: z.number().int().min(0).max(100).optional(),
+  metrikObjektif: z.number().int().min(0).max(100).optional(),
+  keterampilanImprovisasi: z.number().int().min(0).max(100).optional(),
+  kemampuanKomunikasi: z.number().int().min(0).max(100).optional(),
+  professionalism: z.number().int().min(0).max(100).optional(),
   gmvGenerated: z.number().min(0).optional(),
   komentar: z.string().optional().nullable(),
   periode: z.string().optional().nullable(),
@@ -21,7 +23,13 @@ const penilaianSchema = z.object({
 export type PenilaianInput = z.infer<typeof penilaianSchema>;
 
 /**
- * Submit an SDM/Streamer KPI rating across the 4 core live streaming agency dimensions.
+ * Submit an SDM/Streamer KPI rating using ref-deploy 6-indicator weighted scoring system:
+ * 1. Product Knowledge (20%)
+ * 2. Interaksi & Penampilan (20%)
+ * 3. Metrik Objektif (20%)
+ * 4. Keterampilan Improvisasi (15%)
+ * 5. Kemampuan Komunikasi (15%)
+ * 6. Professionalism & Organization (10%)
  */
 export async function submitPenilaian(input: PenilaianInput) {
   const user = await requireRole(...RATER_ROLES);
@@ -31,29 +39,37 @@ export async function submitPenilaian(input: PenilaianInput) {
     throw AppError.forbidden("Tidak dapat menilai diri sendiri");
   }
 
-  // If sub-scores are provided, compute average composite score
-  let compositeScore = parsed.skor ?? 80;
-  if (
-    parsed.sellingSkill !== undefined ||
-    parsed.grooming !== undefined ||
-    parsed.productKnowledge !== undefined ||
-    parsed.engagement !== undefined
-  ) {
-    const s1 = parsed.sellingSkill ?? 80;
-    const s2 = parsed.grooming ?? 80;
-    const s3 = parsed.productKnowledge ?? 80;
-    const s4 = parsed.engagement ?? 80;
-    compositeScore = Math.round((s1 + s2 + s3 + s4) / 4);
-  }
+  // Calculate Weighted Composite Total Score (ref-deploy formula)
+  const valProd = parsed.productKnowledge ?? 80;
+  const valInteraksi = parsed.interaksiPenampilan ?? 80;
+  const valMetrik = parsed.metrikObjektif ?? 80;
+  const valImprovisasi = parsed.keterampilanImprovisasi ?? 80;
+  const valKomunikasi = parsed.kemampuanKomunikasi ?? 80;
+  const valProfesionalisme = parsed.professionalism ?? 80;
+
+  const bobotTotal =
+    valProd * 0.2 +
+    valInteraksi * 0.2 +
+    valMetrik * 0.2 +
+    valImprovisasi * 0.15 +
+    valKomunikasi * 0.15 +
+    valProfesionalisme * 0.1;
+
+  const compositeScore = parsed.skor ?? Math.round(bobotTotal);
 
   const detailObj = {
-    sellingSkill: parsed.sellingSkill ?? compositeScore,
-    grooming: parsed.grooming ?? compositeScore,
-    productKnowledge: parsed.productKnowledge ?? compositeScore,
-    engagement: parsed.engagement ?? compositeScore,
+    productKnowledge: valProd,
+    interaksiPenampilan: valInteraksi,
+    metrikObjektif: valMetrik,
+    keterampilanImprovisasi: valImprovisasi,
+    kemampuanKomunikasi: valKomunikasi,
+    professionalism: valProfesionalisme,
+    totalSkor: compositeScore,
     gmvGenerated: parsed.gmvGenerated ?? 0,
     note: parsed.komentar ?? "",
   };
+
+  const defaultPeriode = `${new Date().toLocaleString("id-ID", { month: "long" })} ${new Date().getFullYear()}`;
 
   return db.penilaianSDM.create({
     data: {
@@ -61,7 +77,7 @@ export async function submitPenilaian(input: PenilaianInput) {
       penilaiId: user.karyawanId ?? user.id,
       skor: compositeScore,
       komentar: JSON.stringify(detailObj),
-      periode: parsed.periode ?? `${new Date().toLocaleString("id-ID", { month: "long" })} ${new Date().getFullYear()}`,
+      periode: parsed.periode ?? defaultPeriode,
     },
     include: {
       karyawan: true,
