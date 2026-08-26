@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
 import { Suspense, useState, useEffect } from "react";
 import type { Role } from "@/generated/prisma/enums";
+import ChangePinModal from "@/components/change-pin-modal";
 
 type NavSubItem = {
   href: string;
@@ -271,10 +272,14 @@ export default function Sidebar({
   onCloseMobile?: () => void;
 }) {
   const { data: session } = useSession();
+  const [pinModalOpen, setPinModalOpen] = useState(false);
   const roleName = session?.user?.role ? session.user.role.replace(/_/g, " ") : "Pengguna";
 
   return (
     <>
+      {/* Change PIN Modal */}
+      <ChangePinModal isOpen={pinModalOpen} onClose={() => setPinModalOpen(false)} />
+
       {/* Mobile Backdrop Overlay */}
       {mobileOpen && (
         <div
@@ -339,14 +344,24 @@ export default function Sidebar({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => signOut({ callbackUrl: "/login" })}
-              className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
-              title="Keluar / Logout"
-            >
-              <i className="fa-solid fa-right-from-bracket text-xs"></i>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setPinModalOpen(true)}
+                className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition cursor-pointer"
+                title="Ganti PIN Keamanan"
+              >
+                <i className="fa-solid fa-key text-xs"></i>
+              </button>
+              <button
+                type="button"
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                title="Keluar / Logout"
+              >
+                <i className="fa-solid fa-right-from-bracket text-xs"></i>
+              </button>
+            </div>
           </div>
         </div>
       </aside>

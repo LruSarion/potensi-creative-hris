@@ -11,6 +11,32 @@ export default function InputKaryawanPage() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [resetPinLoading, setResetPinLoading] = useState(false);
+  const [pinResetMsg, setPinResetMsg] = useState("");
+  const [newPinVal, setNewPinVal] = useState("1234");
+
+  async function handleResetPin(email: string) {
+    if (!email) return;
+    setResetPinLoading(true);
+    setPinResetMsg("");
+    try {
+      const res = await fetch("/api/auth/pin", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetEmail: email, newPin: newPinVal || "1234" }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setPinResetMsg(`✓ PIN berhasil diatur ke '${newPinVal || "1234"}'`);
+      } else {
+        setPinResetMsg(`✕ ${data.message || "Gagal reset PIN"}`);
+      }
+    } catch {
+      setPinResetMsg("✕ Gagal menghubungi server");
+    } finally {
+      setResetPinLoading(false);
+    }
+  }
 
   const [form, setForm] = useState({
     idKaryawan: `PCS${Math.floor(100 + Math.random() * 900)}`,
@@ -482,10 +508,59 @@ export default function InputKaryawanPage() {
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* Keamanan & Reset PIN Karyawan */}
+            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <i className="fa-solid fa-shield-halved text-blue-600 text-xs" />
+                  <span className="font-bold text-slate-800 text-xs">Keamanan & PIN Login</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono">Default: 1234</span>
+              </div>
+
+              {pinResetMsg && (
+                <div className={`p-2 text-xs rounded-xl ${pinResetMsg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+                  {pinResetMsg}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={newPinVal}
+                  onChange={(e) => setNewPinVal(e.target.value.replace(/\D/g, ""))}
+                  placeholder="PIN Baru (cth: 1234)"
+                  className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center w-24 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={resetPinLoading || !selectedEmp.email}
+                  onClick={() => handleResetPin(selectedEmp.email)}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition shadow-xs disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {resetPinLoading ? (
+                    <>
+                      <i className="fa-solid fa-circle-notch fa-spin" />
+                      <span>Memproses...</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="fa-solid fa-key" />
+                      <span>Reset PIN</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-1">
               <button
-                onClick={() => setSelectedEmp(null)}
-                className="w-full bg-slate-900 hover:bg-black text-white font-semibold py-2 rounded-xl text-xs transition"
+                onClick={() => {
+                  setSelectedEmp(null);
+                  setPinResetMsg("");
+                }}
+                className="w-full bg-slate-900 hover:bg-black text-white font-semibold py-2 rounded-xl text-xs transition cursor-pointer"
               >
                 Tutup
               </button>
