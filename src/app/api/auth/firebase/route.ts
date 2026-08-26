@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       console.warn("[Firebase Auth Route] Warning fetching public certs:", e);
     }
 
-    // 1. Find or auto-provision DB User & Sync Karyawan role
+    // 1. Find DB User or Karyawan (STRICT: Reject unregistered users)
     let dbUser = await db.user.findUnique({
       where: { email },
       include: { karyawan: true },
@@ -50,24 +50,42 @@ export async function POST(req: Request) {
       where: { email },
     });
 
+    // If user is NOT registered in database, REJECT LOGIN!
+    if (!dbUser && !karyawan) {
+      return NextResponse.json(
+        {
+          error: `Email Google (${email}) belum terdaftar di sistem HRIS Potensi Creative. Silakan hubungi Administrator atau HRD untuk didaftarkan.`,
+          code: "USER_NOT_REGISTERED",
+        },
+        { status: 403 }
+      );
+    }
+
     const targetRole: Role =
       karyawan?.kategori === "STREAMER" || karyawan?.jabatan?.toLowerCase().includes("streamer")
         ? "STREAMER"
         : (dbUser?.role as Role) || "STAFF";
 
-    if (!dbUser) {
+    if (!dbUser && karyawan) {
+      // Auto-link registered karyawan to user record with initial pin
+      const { generateSalt, hashPin } = await import("@/lib/pin");
+      const defaultSalt = generateSalt();
+      const defaultPinHash = hashPin("1234", defaultSalt);
+
       dbUser = await db.user.create({
         data: {
           email,
-          name: payload.name || user?.displayName || karyawan?.namaLengkap || email.split("@")[0],
+          name: payload.name || user?.displayName || karyawan.namaLengkap || email.split("@")[0],
           image: payload.picture || user?.photoURL || null,
           role: targetRole,
-          tenantId: karyawan?.tenantId || null,
+          pinHash: defaultPinHash,
+          pinSalt: defaultSalt,
+          tenantId: karyawan.tenantId || null,
         },
         include: { karyawan: true },
       });
-    } else if (karyawan && (dbUser.role !== targetRole || !dbUser.karyawan)) {
-      // Sync role & link if Karyawan record was created after user
+    } else if (dbUser && karyawan && (dbUser.role !== targetRole || !dbUser.karyawan)) {
+      // Sync role & link if Karyawan record was updated
       dbUser = await db.user.update({
         where: { id: dbUser.id },
         data: {
@@ -78,11 +96,21 @@ export async function POST(req: Request) {
       });
     }
 
-    if (karyawan && !karyawan.userId) {
+    if (karyawan && !karyawan.userId && dbUser) {
       await db.karyawan.update({
         where: { id: karyawan.id },
         data: { userId: dbUser.id },
       });
+    }
+
+    if (!dbUser) {
+      return NextResponse.json(
+        {
+          error: `Email Google (${email}) belum terdaftar di sistem HRIS Potensi Creative. Silakan hubungi Administrator atau HRD.`,
+          code: "USER_NOT_REGISTERED",
+        },
+        { status: 403 }
+      );
     }
 
     // 2. Upsert Google Account OAuth Tokens into DB

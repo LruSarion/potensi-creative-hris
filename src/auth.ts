@@ -37,37 +37,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         isFirebaseAuth: { label: "Firebase Auth", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email) return null;
+        if (!credentials?.email || !credentials?.pin) return null;
         const email = String(credentials.email).trim().toLowerCase();
-
-        // 1. Firebase Google Auth Session Authorization
-        if (credentials.isFirebaseAuth === "true") {
-          const user = await db.user.findUnique({
-            where: { email },
-            include: { karyawan: true, accounts: true },
-          });
-
-          const hasGoogleAccount = user?.accounts.some((a) => a.provider === "google");
-          if (user && hasGoogleAccount) {
-            return {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role as Role,
-              karyawanId: user.karyawan?.id ?? null,
-              tenantId: user.tenantId ?? "",
-            };
-          }
-          return null;
-        }
-
-        // 2. Email & PIN Authorization
-        if (!credentials?.pin) return null;
         const pin = String(credentials.pin).trim();
 
         const user = await db.user.findUnique({
           where: { email },
-          include: { karyawan: true },
+          include: { karyawan: true, accounts: true },
         });
 
         if (!user || !user.pinHash || !user.pinSalt) return null;
@@ -114,32 +90,41 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           include: { karyawan: true },
         });
 
-        // Auto-provision or link Google account to employee if user record doesn't exist yet
+        // Link Google account to employee if user record doesn't exist yet
         if (!dbUser) {
           const karyawan = await db.karyawan.findFirst({
             where: { email: userEmail },
           });
 
-          if (karyawan) {
-            const role: Role = karyawan.kategori === "STREAMER" ? "STREAMER" : "STAFF";
-            const newUser = await db.user.create({
-              data: {
-                email: userEmail,
-                name: profile.name ?? karyawan.namaLengkap,
-                image: (profile as { picture?: string }).picture ?? null,
-                role,
-                tenantId: karyawan.tenantId,
-              },
-            });
-            await db.karyawan.update({
-              where: { id: karyawan.id },
-              data: { userId: newUser.id },
-            });
-            dbUser = await db.user.findUnique({
-              where: { id: newUser.id },
-              include: { karyawan: true },
-            });
+          if (!karyawan) {
+            // STRICT: Unregistered user is forbidden from logging in
+            return {};
           }
+
+          const role: Role = karyawan.kategori === "STREAMER" ? "STREAMER" : "STAFF";
+          const { generateSalt, hashPin } = await import("@/lib/pin");
+          const defaultSalt = generateSalt();
+          const defaultPinHash = hashPin("1234", defaultSalt);
+
+          const newUser = await db.user.create({
+            data: {
+              email: userEmail,
+              name: profile.name ?? karyawan.namaLengkap,
+              image: (profile as { picture?: string }).picture ?? null,
+              role,
+              pinHash: defaultPinHash,
+              pinSalt: defaultSalt,
+              tenantId: karyawan.tenantId,
+            },
+          });
+          await db.karyawan.update({
+            where: { id: karyawan.id },
+            data: { userId: newUser.id },
+          });
+          dbUser = await db.user.findUnique({
+            where: { id: newUser.id },
+            include: { karyawan: true },
+          });
         }
 
         if (dbUser) {
