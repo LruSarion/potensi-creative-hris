@@ -203,7 +203,7 @@ const TABS = [
   { id: "jadwal", label: "Jadwal", icon: "fa-regular fa-calendar" },
   { id: "request", label: "Request", icon: "fa-solid fa-file-pen" },
   { id: "riwayat", label: "History", icon: "fa-solid fa-clock-rotate-left" },
-  { id: "report", label: "Report", icon: "fa-solid fa-chart-pie", adminOnly: true },
+  { id: "report", label: "Report", icon: "fa-solid fa-chart-pie" },
 ];
 
 export default function StreamerDashboardPage() {
@@ -480,7 +480,7 @@ export default function StreamerDashboardPage() {
   const currentRate = matchedTier?.ratePerJam ?? 25000;
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
 
-  const visibleTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+  const visibleTabs = TABS;
 
   return (
     <div className="space-y-6">
@@ -1489,44 +1489,96 @@ export default function StreamerDashboardPage() {
         </div>
       )}
 
-      {/* ======== TAB: REPORT (Admin Only) ======== */}
-      {activeTab === "report" && isAdmin && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
-          <h3 className="font-bold text-lg text-slate-900 mb-4 border-b border-slate-100 pb-2">Laporan Performa Streamer</h3>
+      {/* ======== TAB: REPORT ======== */}
+      {activeTab === "report" && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
+                <i className="fa-solid fa-chart-pie text-blue-600" />
+                <span>Laporan & Evaluasi Performa Streamer</span>
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Rangkuman jam siaran live, pencapaian tiering, estimasi komisi, dan total penjualan GMV.
+              </p>
+            </div>
+            {dashboardData?.periode && (
+              <span className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-700 font-bold text-xs self-start sm:self-auto">
+                📅 Periode: {dashboardData.periode}
+              </span>
+            )}
+          </div>
 
           {/* Stat Cards */}
-          {dashboardData && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-sm">
+          {dashboardData ? (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+              <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-2xl p-4 shadow-2xs">
                 <div className="text-[10px] text-emerald-600 font-bold uppercase mb-1">Estimasi Gaji Bersih</div>
-                <div className="text-lg font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
-                <div className="text-[10px] text-slate-500 mt-1">Setelah denda • {dashboardData.periode}</div>
+                <div className="text-lg sm:text-xl font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1 font-medium">Setelah denda & insentif</div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm">
-                <div className="text-[10px] text-blue-600 font-bold uppercase mb-1">Total GMV Dilaporkan</div>
-                <div className="text-lg font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
-                <div className="text-[10px] text-slate-500 mt-1">Dari semua sesi</div>
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-2xs">
+                <div className="text-[10px] text-blue-600 font-bold uppercase mb-1">Total GMV Penjualan</div>
+                <div className="text-lg sm:text-xl font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1 font-medium">{dashboardData.totalSesi} Sesi Siaran</div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-sm">
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-2xs">
                 <div className="text-[10px] text-purple-600 font-bold uppercase mb-1">Total Jam Live</div>
-                <div className="text-lg font-black text-purple-700">{dashboardData.totalJam} Jam</div>
-                <div className="text-[10px] text-slate-500 mt-1">Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "–"}</span></div>
+                <div className="text-lg sm:text-xl font-black text-purple-700">{dashboardData.totalJam} Jam</div>
+                <div className="text-[10px] text-slate-500 mt-1 font-medium">Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "–"}</span></div>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-sm">
-                <div className="text-[10px] text-red-600 font-bold uppercase mb-1">Total Denda</div>
-                <div className="text-lg font-black text-red-700">Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</div>
-                <div className="text-[10px] text-slate-500 mt-1">{dashboardData.incidents.length} Pelanggaran</div>
+              <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-2xs">
+                <div className="text-[10px] text-red-600 font-bold uppercase mb-1">Total Denda & Penalti</div>
+                <div className="text-lg sm:text-xl font-black text-red-700">Rp {dashboardData.totalDenda.toLocaleString("id-ID")}</div>
+                <div className="text-[10px] text-slate-500 mt-1 font-medium">{dashboardData.incidents.length} Catatan Evaluasi</div>
+              </div>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-slate-400 text-xs">Memuat metrik performa...</div>
+          )}
+
+          {/* Tiering & Rate Detail */}
+          {dashboardData?.activeTier && (
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <i className="fa-solid fa-award text-amber-500 text-sm" />
+                  <span className="font-bold text-slate-800 text-xs sm:text-sm">Status Tiering Aktif: {dashboardData.activeTier.nama}</span>
+                </div>
+                <span className="text-xs font-mono font-bold text-blue-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                  Rate: Rp {dashboardData.activeTier.ratePerJam.toLocaleString("id-ID")} / Jam
+                </span>
+              </div>
+              <div className="text-xs text-slate-500">
+                Pencapaian jam live Anda bulan ini telah mencapai <strong>{dashboardData.totalJam} Jam</strong>. Tingkatkan durasi siaran untuk mencapai tiering yang lebih tinggi dan insentif bonus omset.
               </div>
             </div>
           )}
 
-          <div className="text-center text-slate-400 text-sm">
-            <i className="fa-solid fa-chart-pie text-3xl mb-2 block text-slate-300" />
-            Laporan lengkap tersedia di halaman Analytics GMV.
-            <br />
-            <Link href="/analytics-gmv" className="text-blue-600 hover:underline font-semibold text-xs mt-1 inline-block">
-              → Buka Analytics GMV
-            </Link>
+          {/* Incident / QC Violations List */}
+          {dashboardData?.incidents && dashboardData.incidents.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="font-bold text-xs text-slate-800 uppercase tracking-wider">
+                Catatan Evaluasi / Pelanggaran Bulan Ini ({dashboardData.incidents.length})
+              </h4>
+              <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden">
+                {dashboardData.incidents.map((inc) => (
+                  <div key={inc.id} className="p-3.5 bg-white flex items-center justify-between gap-3 text-xs">
+                    <div>
+                      <div className="font-bold text-slate-800">{inc.title}</div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">{inc.category ?? "Pelanggaran"} • {formatDateSafe(inc.createdAt)}</div>
+                    </div>
+                    <span className="font-mono font-bold text-red-600 px-2.5 py-1 rounded-lg bg-red-50 border border-red-100">
+                      -Rp {inc.fineApplied.toLocaleString("id-ID")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="text-center text-slate-400 text-xs pt-2">
+            <p>Untuk rincian slip gaji resmi atau pengajuan izin, silakan akses menu terkait di sistem HRIS.</p>
           </div>
         </div>
       )}

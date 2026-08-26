@@ -37,7 +37,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Pusat Pengajuan",
     icon: "fa-solid fa-paper-plane",
     items: [
-      { href: "/pengajuan", label: "Ringkasan Pusat Pengajuan", icon: "fa-solid fa-receipt", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "QC_REVIEWER"] },
       { href: "/pengajuan?tab=lembur", label: "Pengajuan Lembur", icon: "fa-regular fa-clock", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "lembur" },
       { href: "/pengajuan?tab=izin", label: "Pengajuan Cuti / Izin", icon: "fa-solid fa-calendar-xmark", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "izin" },
       { href: "/pengajuan?tab=tukar-shift", label: "Tukar Shift Streamer", icon: "fa-solid fa-right-left", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], tabKey: "tukar-shift" },
@@ -97,7 +96,7 @@ function checkIsActive(item: NavSubItem, pathname: string, activeTabQuery: strin
   if (item.href.startsWith("/pengajuan")) {
     if (pathname === "/pengajuan" || pathname.startsWith("/pengajuan/")) {
       if (item.tabKey) {
-        return activeTabQuery === item.tabKey;
+        return activeTabQuery === item.tabKey || (!activeTabQuery && item.tabKey === "lembur");
       }
       return !activeTabQuery;
     }
