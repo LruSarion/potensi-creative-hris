@@ -2,10 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { Suspense, useState, useEffect } from "react";
 import type { Role } from "@/generated/prisma/enums";
-import ChangePinModal from "@/components/change-pin-modal";
 
 type NavSubItem = {
   href: string;
@@ -271,15 +270,8 @@ export default function Sidebar({
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
 }) {
-  const { data: session } = useSession();
-  const [pinModalOpen, setPinModalOpen] = useState(false);
-  const roleName = session?.user?.role ? session.user.role.replace(/_/g, " ") : "Pengguna";
-
   return (
     <>
-      {/* Change PIN Modal */}
-      <ChangePinModal isOpen={pinModalOpen} onClose={() => setPinModalOpen(false)} />
-
       {/* Mobile Backdrop Overlay */}
       {mobileOpen && (
         <div
@@ -326,44 +318,6 @@ export default function Sidebar({
         <Suspense fallback={<div className="p-4 text-xs text-slate-400">Memuat menu...</div>}>
           <SidebarNavContent onCloseMobile={onCloseMobile} />
         </Suspense>
-
-        {/* User Profile Footer Card */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/70 flex-shrink-0">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center flex-shrink-0">
-                {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : "U"}
-              </div>
-              <div className="overflow-hidden">
-                <div className="text-xs font-bold text-slate-800 truncate leading-tight">
-                  {session?.user?.name || "Karyawan"}
-                </div>
-                <div className="text-[10px] text-blue-600 font-semibold truncate leading-tight uppercase">
-                  {roleName}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => setPinModalOpen(true)}
-                className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition cursor-pointer"
-                title="Ganti PIN Keamanan"
-              >
-                <i className="fa-solid fa-key text-xs"></i>
-              </button>
-              <button
-                type="button"
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
-                title="Keluar / Logout"
-              >
-                <i className="fa-solid fa-right-from-bracket text-xs"></i>
-              </button>
-            </div>
-          </div>
-        </div>
       </aside>
     </>
   );

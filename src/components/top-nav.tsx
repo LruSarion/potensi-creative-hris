@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import NotificationBell from "@/components/notification-bell";
-
+import ChangePinModal from "@/components/change-pin-modal";
 
 export default function TopNav({
   onToggleMobileMenu,
@@ -14,6 +14,7 @@ export default function TopNav({
   const { data: session, status } = useSession();
   const pathname = usePathname();
   const [timeStr, setTimeStr] = useState("");
+  const [pinModalOpen, setPinModalOpen] = useState(false);
 
   useEffect(() => {
     const updateTime = () => {
@@ -66,7 +67,9 @@ export default function TopNav({
   const currentTitle = pathTitles[pathname] ?? "HRIS Potensi Creative";
 
   return (
-    <header className="z-30 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0 w-full shadow-sm sticky top-0">
+    <>
+      <ChangePinModal isOpen={pinModalOpen} onClose={() => setPinModalOpen(false)} />
+      <header className="z-30 h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 flex-shrink-0 w-full shadow-sm sticky top-0">
       <div className="flex items-center gap-4">
         {onToggleMobileMenu && (
           <button
@@ -103,15 +106,27 @@ export default function TopNav({
 
         <div className="h-6 sm:h-8 w-px bg-slate-200"></div>
 
-        <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
-          className="text-slate-500 hover:text-red-600 transition"
-          title="Keluar"
-        >
-          <i className="fa-solid fa-arrow-right-from-bracket text-lg" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setPinModalOpen(true)}
+            className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            title="Ganti PIN Keamanan (6 Digit)"
+          >
+            <i className="fa-solid fa-key text-base" />
+          </button>
+
+          <button
+            onClick={() => signOut({ callbackUrl: "/login" })}
+            className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+            title="Keluar / Logout"
+          >
+            <i className="fa-solid fa-arrow-right-from-bracket text-base" />
+          </button>
+        </div>
       </div>
     </header>
+    </>
   );
 }
 
