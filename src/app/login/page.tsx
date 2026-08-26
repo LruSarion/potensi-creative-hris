@@ -61,7 +61,7 @@ export default function LoginPage() {
               setGoogleUser({
                 email: data.user.email,
                 name: data.user.name,
-                photoURL: result.user.photoURL || undefined,
+                photoURL: result.user.photoURL || data?.user?.image || undefined,
               });
               setStep("pin");
               setPin("");
@@ -121,7 +121,7 @@ export default function LoginPage() {
       setGoogleUser({
         email: data.user.email,
         name: data.user.name || result.user.displayName || undefined,
-        photoURL: result.user.photoURL || undefined,
+        photoURL: result.user.photoURL || data?.user?.image || undefined,
       });
       setStep("pin");
       setPin("");
@@ -378,9 +378,25 @@ export default function LoginPage() {
           {step === "pin" && (
             <div className="space-y-6 animate-fadeIn">
               <div className="text-center">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full mb-3 shadow-sm">
-                  <i className="fa-solid fa-shield-check text-xl"></i>
+                {/* Google Profile Picture / Avatar with Verified Checkmark */}
+                <div className="relative inline-block mx-auto mb-3">
+                  {googleUser?.photoURL ? (
+                    <img
+                      src={googleUser.photoURL}
+                      alt={googleUser?.name || "Google User"}
+                      referrerPolicy="no-referrer"
+                      className="w-16 h-16 rounded-full object-cover border-2 border-emerald-500 shadow-md mx-auto ring-4 ring-emerald-50"
+                    />
+                  ) : (
+                    <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-700 border-2 border-blue-200 font-bold text-2xl flex items-center justify-center shadow-md mx-auto">
+                      {googleUser?.name ? googleUser.name.charAt(0).toUpperCase() : (googleUser?.email ? googleUser.email.charAt(0).toUpperCase() : "U")}
+                    </div>
+                  )}
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs shadow-xs border-2 border-white" title="Akun Terverifikasi Google">
+                    <i className="fa-solid fa-check font-black text-[10px]"></i>
+                  </div>
                 </div>
+
                 <h2 className="text-lg font-bold text-slate-800">Verifikasi Google Berhasil</h2>
                 <p className="text-sm text-slate-500 mt-1">
                   Login sebagai:{" "}

@@ -159,6 +159,7 @@ export async function POST(req: Request) {
         id: dbUser.id,
         email: dbUser.email,
         name: dbUser.name,
+        image: dbUser.image || payload.picture || null,
         role: dbUser.role,
         karyawanId: dbUser.karyawan?.id ?? null,
       },
