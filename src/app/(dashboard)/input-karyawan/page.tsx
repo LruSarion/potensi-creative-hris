@@ -13,7 +13,7 @@ export default function InputKaryawanPage() {
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const [resetPinLoading, setResetPinLoading] = useState(false);
   const [pinResetMsg, setPinResetMsg] = useState("");
-  const [newPinVal, setNewPinVal] = useState("1234");
+  const [newPinVal, setNewPinVal] = useState("123456");
 
   async function handleResetPin(email: string) {
     if (!email) return;
@@ -23,11 +23,11 @@ export default function InputKaryawanPage() {
       const res = await fetch("/api/auth/pin", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetEmail: email, newPin: newPinVal || "1234" }),
+        body: JSON.stringify({ targetEmail: email, newPin: newPinVal || "123456" }),
       });
       const data = await res.json();
       if (data.status === "success") {
-        setPinResetMsg(`✓ PIN berhasil diatur ke '${newPinVal || "1234"}'`);
+        setPinResetMsg(`✓ PIN berhasil diatur ke '${newPinVal || "123456"}'`);
       } else {
         setPinResetMsg(`✕ ${data.message || "Gagal reset PIN"}`);
       }
@@ -515,7 +515,7 @@ export default function InputKaryawanPage() {
                   <i className="fa-solid fa-shield-halved text-blue-600 text-xs" />
                   <span className="font-bold text-slate-800 text-xs">Keamanan & PIN Login</span>
                 </div>
-                <span className="text-[10px] text-slate-400 font-mono">Default: 1234</span>
+                <span className="text-[10px] text-slate-400 font-mono">Default: 123456</span>
               </div>
 
               {pinResetMsg && (
@@ -530,7 +530,7 @@ export default function InputKaryawanPage() {
                   maxLength={6}
                   value={newPinVal}
                   onChange={(e) => setNewPinVal(e.target.value.replace(/\D/g, ""))}
-                  placeholder="PIN Baru (cth: 1234)"
+                  placeholder="PIN (123456)"
                   className="border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-mono text-center w-24 bg-white text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
                 />
                 <button

@@ -5,14 +5,14 @@ import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
 const DEMO_ACCOUNTS = [
-  { role: "Super Admin", email: "admin@potensicreative.test", pin: "1234", color: "bg-blue-50 text-blue-700 border-blue-200" },
-  { role: "Operations", email: "ops@potensicreative.test", pin: "1234", color: "bg-purple-50 text-purple-700 border-purple-200" },
-  { role: "Streamer", email: "streamer@potensicreative.test", pin: "1234", color: "bg-pink-50 text-pink-700 border-pink-200" },
-  { role: "Trainer", email: "trainer@potensicreative.test", pin: "1234", color: "bg-amber-50 text-amber-700 border-amber-200" },
-  { role: "QC Reviewer", email: "qc@potensicreative.test", pin: "1234", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  { role: "Finance", email: "finance@potensicreative.test", pin: "1234", color: "bg-cyan-50 text-cyan-700 border-cyan-200" },
-  { role: "Staff", email: "staff@potensicreative.test", pin: "1234", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
-  { role: "Client", email: "client@potensicreative.test", pin: "1234", color: "bg-orange-50 text-orange-700 border-orange-200" },
+  { role: "Super Admin", email: "admin@potensicreative.test", pin: "123456", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  { role: "Operations", email: "ops@potensicreative.test", pin: "123456", color: "bg-purple-50 text-purple-700 border-purple-200" },
+  { role: "Streamer", email: "streamer@potensicreative.test", pin: "123456", color: "bg-pink-50 text-pink-700 border-pink-200" },
+  { role: "Trainer", email: "trainer@potensicreative.test", pin: "123456", color: "bg-amber-50 text-amber-700 border-amber-200" },
+  { role: "QC Reviewer", email: "qc@potensicreative.test", pin: "123456", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  { role: "Finance", email: "finance@potensicreative.test", pin: "123456", color: "bg-cyan-50 text-cyan-700 border-cyan-200" },
+  { role: "Staff", email: "staff@potensicreative.test", pin: "123456", color: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+  { role: "Client", email: "client@potensicreative.test", pin: "123456", color: "bg-orange-50 text-orange-700 border-orange-200" },
 ];
 
 export default function LoginPage() {
@@ -167,7 +167,7 @@ export default function LoginPage() {
       if (!res?.error) {
         window.location.href = getRedirectTargetUrl();
       } else {
-        setError("PIN Internal tidak valid. Silakan coba lagi.");
+        setError("PIN Internal tidak valid. Silakan coba PIN default: 123456 atau hubungi Admin.");
         setPin("");
       }
     } catch {
@@ -399,19 +399,19 @@ export default function LoginPage() {
 
               <form onSubmit={handleGooglePinSubmit} className="space-y-5">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5 text-center sm:text-left">
-                    Masukkan PIN Internal
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5 text-center sm:text-left">
+                    Masukkan 6 Digit PIN Internal
                   </label>
                   <div className="relative">
                     <input
                       type={showPin ? "text" : "password"}
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      maxLength={8}
+                      maxLength={6}
                       value={pin}
-                      onChange={(e) => setPin(e.target.value)}
-                      className="w-full border border-slate-300 rounded-xl px-4 py-3 text-xl tracking-widest text-center text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none font-mono bg-white shadow-inner"
-                      placeholder="••••"
+                      onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                      className="w-full border border-slate-300 rounded-xl px-4 py-3 text-2xl tracking-[0.4em] text-center text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none font-mono bg-white shadow-inner font-bold"
+                      placeholder="••••••"
                       required
                       autoFocus
                       autoComplete="off"
@@ -425,8 +425,8 @@ export default function LoginPage() {
                       <i className={`fa-solid ${showPin ? "fa-eye-slash" : "fa-eye"}`}></i>
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 text-center mt-1.5">
-                    Masukkan PIN 4-digit yang terdaftar pada akun Anda.
+                  <p className="text-[11px] text-slate-400 text-center mt-1.5 font-medium">
+                    PIN default akun: <span className="font-mono font-bold text-blue-600">123456</span> (atau <span className="font-mono text-slate-500">1234</span>)
                   </p>
                 </div>
 

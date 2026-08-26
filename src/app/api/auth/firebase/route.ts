@@ -70,7 +70,7 @@ export async function POST(req: Request) {
       // Auto-link registered karyawan to user record with initial pin
       const { generateSalt, hashPin } = await import("@/lib/pin");
       const defaultSalt = generateSalt();
-      const defaultPinHash = hashPin("1234", defaultSalt);
+      const defaultPinHash = hashPin("123456", defaultSalt);
 
       dbUser = await db.user.create({
         data: {
@@ -84,14 +84,26 @@ export async function POST(req: Request) {
         },
         include: { karyawan: true },
       });
-    } else if (dbUser && karyawan && (dbUser.role !== targetRole || !dbUser.karyawan)) {
-      // Sync role & link if Karyawan record was updated
+    } else if (dbUser) {
+      // Sync role & ensure PIN hash/salt is present
+      const { generateSalt, hashPin } = await import("@/lib/pin");
+      let pinUpdateData: any = {};
+      if (!dbUser.pinHash || !dbUser.pinSalt) {
+        const defaultSalt = generateSalt();
+        pinUpdateData.pinSalt = defaultSalt;
+        pinUpdateData.pinHash = hashPin("123456", defaultSalt);
+      }
+      pinUpdateData.blockedUntil = null;
+      pinUpdateData.failedLogins = 0;
+
+      if (karyawan && (dbUser.role !== targetRole || !dbUser.karyawan)) {
+        pinUpdateData.role = targetRole;
+        pinUpdateData.tenantId = dbUser.tenantId || karyawan.tenantId || null;
+      }
+
       dbUser = await db.user.update({
         where: { id: dbUser.id },
-        data: {
-          role: targetRole,
-          tenantId: dbUser.tenantId || karyawan.tenantId || null,
-        },
+        data: pinUpdateData,
         include: { karyawan: true },
       });
     }

@@ -39,20 +39,20 @@ async function main() {
   }
   console.log(`  tiering: ${tiering.length} bands`);
 
-  // --- Demo users (one per role) with hashed PINs ---
+  // --- Demo users (one per role) with hashed PINs (PIN: 123456) ---
   const demoUsers = [
-    { email: "admin@potensicreative.test", name: "Admin Utama", role: "SUPER_ADMIN", pin: "1234", tenantId: agency.id },
-    { email: "ops@potensicreative.test", name: "Ops Lead", role: "OPERATION", pin: "1234", tenantId: agency.id },
-    { email: "trainer@potensicreative.test", name: "Trainer Utama", role: "TRAINER", pin: "1234", tenantId: agency.id },
-    { email: "qc@potensicreative.test", name: "QC Reviewer", role: "QC_REVIEWER", pin: "1234", tenantId: agency.id },
-    { email: "qc-manager@potensicreative.test", name: "QC Manager", role: "QC_MANAGER", pin: "1234", tenantId: agency.id },
-    { email: "finance@potensicreative.test", name: "Finance Staff", role: "FINANCE", pin: "1234", tenantId: agency.id },
-    { email: "finance-manager@potensicreative.test", name: "Finance Manager", role: "FINANCE_MANAGER", pin: "1234", tenantId: agency.id },
-    { email: "client@potensicreative.test", name: "Client Demo", role: "CLIENT", pin: "1234", tenantId: brand.id },
-    { email: "client-admin@potensicreative.test", name: "Client Admin", role: "CLIENT_ADMIN", pin: "1234", tenantId: brand.id },
-    { email: "streamer@potensicreative.test", name: "Streamer Demo", role: "STREAMER", pin: "1234", tenantId: agency.id },
-    { email: "staff@potensicreative.test", name: "Staff Demo", role: "STAFF", pin: "1234", tenantId: agency.id },
-    { email: "ots@potensicreative.test", name: "OTS Demo", role: "OTS", pin: "1234", tenantId: agency.id },
+    { email: "admin@potensicreative.test", name: "Admin Utama", role: "SUPER_ADMIN", pin: "123456", tenantId: agency.id },
+    { email: "ops@potensicreative.test", name: "Ops Lead", role: "OPERATION", pin: "123456", tenantId: agency.id },
+    { email: "trainer@potensicreative.test", name: "Trainer Utama", role: "TRAINER", pin: "123456", tenantId: agency.id },
+    { email: "qc@potensicreative.test", name: "QC Reviewer", role: "QC_REVIEWER", pin: "123456", tenantId: agency.id },
+    { email: "qc-manager@potensicreative.test", name: "QC Manager", role: "QC_MANAGER", pin: "123456", tenantId: agency.id },
+    { email: "finance@potensicreative.test", name: "Finance Staff", role: "FINANCE", pin: "123456", tenantId: agency.id },
+    { email: "finance-manager@potensicreative.test", name: "Finance Manager", role: "FINANCE_MANAGER", pin: "123456", tenantId: agency.id },
+    { email: "client@potensicreative.test", name: "Client Demo", role: "CLIENT", pin: "123456", tenantId: brand.id },
+    { email: "client-admin@potensicreative.test", name: "Client Admin", role: "CLIENT_ADMIN", pin: "123456", tenantId: brand.id },
+    { email: "streamer@potensicreative.test", name: "Streamer Demo", role: "STREAMER", pin: "123456", tenantId: agency.id },
+    { email: "staff@potensicreative.test", name: "Staff Demo", role: "STAFF", pin: "123456", tenantId: agency.id },
+    { email: "ots@potensicreative.test", name: "OTS Demo", role: "OTS", pin: "123456", tenantId: agency.id },
   ];
 
   for (const u of demoUsers) {

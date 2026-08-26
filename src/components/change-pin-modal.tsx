@@ -24,8 +24,8 @@ export default function ChangePinModal({
     setError("");
     setSuccess("");
 
-    if (newPin.length < 4) {
-      setError("PIN baru minimal 4 digit angka.");
+    if (newPin.length !== 6) {
+      setError("PIN baru harus tepat 6 digit angka.");
       return;
     }
 
@@ -72,7 +72,7 @@ export default function ChangePinModal({
             </div>
             <div>
               <h3 className="font-bold text-slate-900 text-sm">Ganti PIN Keamanan</h3>
-              <p className="text-[11px] text-slate-400">PIN 4-6 digit untuk verifikasi login</p>
+              <p className="text-[11px] text-slate-400">PIN 6 digit untuk verifikasi login</p>
             </div>
           </div>
           <button
@@ -101,7 +101,7 @@ export default function ChangePinModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              PIN Lama (Default: 1234)
+              PIN Lama (Default: 123456 / 1234)
             </label>
             <input
               type={showPins ? "text" : "password"}
@@ -116,14 +116,14 @@ export default function ChangePinModal({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              PIN Baru
+              PIN Baru (6 Digit Angka)
             </label>
             <input
               type={showPins ? "text" : "password"}
               maxLength={6}
               value={newPin}
               onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="Minimal 4 digit angka"
+              placeholder="Contoh: 123456"
               required
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-center tracking-widest text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
             />
@@ -131,14 +131,14 @@ export default function ChangePinModal({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Konfirmasi PIN Baru
+              Konfirmasi PIN Baru (6 Digit)
             </label>
             <input
               type={showPins ? "text" : "password"}
               maxLength={6}
               value={confirmPin}
               onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
-              placeholder="Ulangi PIN baru"
+              placeholder="Ulangi 6 digit PIN baru"
               required
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-center tracking-widest text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
             />
@@ -154,7 +154,7 @@ export default function ChangePinModal({
               />
               <span className="text-[11px]">Tampilkan Angka</span>
             </label>
-            <span className="text-[10px] text-slate-400 font-mono">Default: 1234</span>
+            <span className="text-[10px] text-slate-400 font-mono">Default: 123456</span>
           </div>
 
           <div className="pt-2 flex gap-2">

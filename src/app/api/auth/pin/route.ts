@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     status: "success",
     data: {
       hasPin: Boolean(user?.pinHash),
-      defaultPinHint: "PIN default sistem adalah: 1234",
+      defaultPinHint: "PIN default sistem adalah: 123456",
       failedLogins: user?.failedLogins ?? 0,
       isBlocked: Boolean(user?.blockedUntil && user.blockedUntil > new Date()),
     },
@@ -35,9 +35,10 @@ export async function PUT(req: Request) {
   const body = await req.json();
   const { currentPin, newPin, targetUserId, targetEmail } = body;
 
-  if (!newPin || String(newPin).trim().length < 4) {
+  const trimmed = String(newPin || "").trim();
+  if (!trimmed || trimmed.length < 4 || trimmed.length > 6) {
     return NextResponse.json(
-      { status: "error", message: "PIN baru harus terdiri dari minimal 4 digit angka." },
+      { status: "error", message: "PIN baru harus terdiri dari 4 hingga 6 digit angka." },
       { status: 400 }
     );
   }
