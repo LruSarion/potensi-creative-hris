@@ -78,27 +78,151 @@ async function pushTelegramForTarget(parsed: z.infer<typeof notifySchema>, tenan
   }
 }
 
-/** My inbox — notifications addressed to me (by user or my karyawan id). */
+/** My inbox — notifications addressed to me (by user, karyawan id, or role). */
 export async function myNotifications() {
   const user = await requireRole();
   const rows = await db.logAktivitas.findMany({
     where: { aksi: "NOTIFICATION" },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 100,
   });
-  return rows
+
+  const notifs = rows
     .map((r) => {
       try {
         const d = JSON.parse(r.detail ?? "{}");
         const isMine =
           (d.targetUserId && d.targetUserId === user.id) ||
-          (d.targetKaryawanId && user.karyawanId && d.targetKaryawanId === user.karyawanId);
-        return isMine ? { id: r.id, createdAt: r.createdAt, ...d } : null;
+          (d.targetKaryawanId && user.karyawanId && d.targetKaryawanId === user.karyawanId) ||
+          (d.targetRole && (d.targetRole === "ALL" || d.targetRole === user.role)) ||
+          (!d.targetUserId && !d.targetKaryawanId && !d.targetRole && user.role === "SUPER_ADMIN");
+
+        if (!isMine) return null;
+
+        return {
+          id: r.id,
+          createdAt: r.createdAt,
+          title: d.title || "Pemberitahuan Sistem",
+          message: d.message || null,
+          link: d.link || null,
+          type: d.type || "INFO",
+          isRead: Boolean(d.read || d.isRead),
+          readAt: d.readAt || null,
+        };
       } catch {
         return null;
       }
     })
     .filter(Boolean);
+
+  return notifs;
+}
+
+/** Mark a single notification as read */
+export async function markNotificationRead(id: string) {
+  const user = await requireRole();
+  const row = await db.logAktivitas.findUnique({ where: { id } });
+  if (!row || row.aksi !== "NOTIFICATION") return { success: false, message: "Notifikasi tidak ditemukan." };
+
+  try {
+    const d = JSON.parse(row.detail ?? "{}");
+    d.read = true;
+    d.isRead = true;
+    d.readAt = new Date().toISOString();
+
+    await db.logAktivitas.update({
+      where: { id },
+      data: { detail: JSON.stringify(d) },
+    });
+    return { success: true, id };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/** Mark all notifications for the current user as read */
+export async function markAllNotificationsRead() {
+  const user = await requireRole();
+  const rows = await db.logAktivitas.findMany({
+    where: { aksi: "NOTIFICATION" },
+    take: 100,
+  });
+
+  const toUpdate = rows.filter((r) => {
+    try {
+      const d = JSON.parse(r.detail ?? "{}");
+      const isMine =
+        (d.targetUserId && d.targetUserId === user.id) ||
+        (d.targetKaryawanId && user.karyawanId && d.targetKaryawanId === user.karyawanId) ||
+        (d.targetRole && (d.targetRole === "ALL" || d.targetRole === user.role)) ||
+        (!d.targetUserId && !d.targetKaryawanId && !d.targetRole && user.role === "SUPER_ADMIN");
+      return isMine && !d.read && !d.isRead;
+    } catch {
+      return false;
+    }
+  });
+
+  await Promise.all(
+    toUpdate.map(async (r) => {
+      try {
+        const d = JSON.parse(r.detail ?? "{}");
+        d.read = true;
+        d.isRead = true;
+        d.readAt = new Date().toISOString();
+        return db.logAktivitas.update({
+          where: { id: r.id },
+          data: { detail: JSON.stringify(d) },
+        });
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return { success: true, count: toUpdate.length };
+}
+
+/** Delete a single notification */
+export async function deleteNotification(id: string) {
+  const user = await requireRole();
+  const row = await db.logAktivitas.findUnique({ where: { id } });
+  if (!row || row.aksi !== "NOTIFICATION") return { success: false, message: "Notifikasi tidak ditemukan." };
+
+  await db.logAktivitas.delete({ where: { id } });
+  return { success: true, id };
+}
+
+/** Clear / delete all notifications for the current user */
+export async function clearAllNotifications() {
+  const user = await requireRole();
+  const rows = await db.logAktivitas.findMany({
+    where: { aksi: "NOTIFICATION" },
+    take: 200,
+  });
+
+  const toDeleteIds = rows
+    .filter((r) => {
+      try {
+        const d = JSON.parse(r.detail ?? "{}");
+        return (
+          (d.targetUserId && d.targetUserId === user.id) ||
+          (d.targetKaryawanId && user.karyawanId && d.targetKaryawanId === user.karyawanId) ||
+          (d.targetRole && (d.targetRole === "ALL" || d.targetRole === user.role)) ||
+          (!d.targetUserId && !d.targetKaryawanId && !d.targetRole && user.role === "SUPER_ADMIN")
+        );
+      } catch {
+        return false;
+      }
+    })
+    .map((r) => r.id);
+
+  if (toDeleteIds.length > 0) {
+    await db.logAktivitas.deleteMany({
+      where: { id: { in: toDeleteIds } },
+    });
+  }
+
+  return { success: true, count: toDeleteIds.length };
 }
 
 // ---------- T34: Permission admin ----------
