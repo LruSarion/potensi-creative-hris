@@ -54,12 +54,17 @@ export async function GET(req: Request) {
     }
 
     return NextResponse.json({
-      success: true,
+      success: results.email?.success ?? true,
       testedTo: to,
+      environmentConfig: {
+        hasResendApiKey: Boolean(process.env.RESEND_API_KEY),
+        hasSmtpHost: Boolean(process.env.SMTP_HOST),
+        emailFrom: process.env.EMAIL_FROM || "onboarding@resend.dev (default testing)",
+      },
       results,
       instructions: {
+        ifNotReceived: "Jika email belum masuk: 1) Pastikan RESEND_API_KEY sudah diisi di Vercel Environment Variables. 2) Cek folder Spam / Promosi. 3) Jika menggunakan akun Free Resend tanpa domain custom, pastikan tujuan 'to' adalah email pemilik akun Resend.",
         checkInAppBell: "Lihat ikon lonceng di pojok kanan atas Dashboard.",
-        checkEmail: `Cek kotak masuk email ${to} (atau log server jika mode dev/testing).`,
       },
     });
   } catch (error: any) {

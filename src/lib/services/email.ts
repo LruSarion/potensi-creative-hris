@@ -31,32 +31,46 @@ const smtpTransporter =
       })
     : null;
 
-const DEFAULT_FROM = process.env.EMAIL_FROM || "HRIS Potensi Creative <notifikasi@potensicreative.com>";
+const DEFAULT_FROM = process.env.EMAIL_FROM || "HRIS Potensi Creative <onboarding@resend.dev>";
 
 /**
  * Universal Email Sender Service.
  * Supports Resend API, Nodemailer (SMTP), and Dev Mode Console Fallback.
  */
-export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string; message?: string }> {
+export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string; provider?: string; message?: string; error?: string }> {
   const recipients = Array.isArray(options.to) ? options.to.join(", ") : options.to;
 
   try {
     // 1. Try Resend API if configured
     if (resend) {
-      const res = await resend.emails.send({
-        from: DEFAULT_FROM,
+      let fromAddress = DEFAULT_FROM;
+      let res = await resend.emails.send({
+        from: fromAddress,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
       });
 
+      // If custom domain is not verified yet, fallback to Resend testing sender onboarding@resend.dev
+      if (res.error && fromAddress !== "onboarding@resend.dev" && (res.error.message.toLowerCase().includes("domain") || res.error.message.toLowerCase().includes("verify"))) {
+        console.warn(`[Email Service (Resend)] Retrying with onboarding@resend.dev due to: ${res.error.message}`);
+        fromAddress = "HRIS Notification <onboarding@resend.dev>";
+        res = await resend.emails.send({
+          from: fromAddress,
+          to: options.to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+        });
+      }
+
       if (res.error) {
         throw new Error(res.error.message);
       }
 
       console.log(`[Email Service (Resend)] Sent to ${recipients} (ID: ${res.data?.id})`);
-      return { success: true, id: res.data?.id };
+      return { success: true, id: res.data?.id, provider: "Resend API" };
     }
 
     // 2. Try Nodemailer (SMTP) if configured
@@ -70,7 +84,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
       });
 
       console.log(`[Email Service (SMTP)] Sent to ${recipients} (MessageId: ${info.messageId})`);
-      return { success: true, id: info.messageId };
+      return { success: true, id: info.messageId, provider: "SMTP Transporter" };
     }
 
     // 3. Fallback for Dev Mode / Demo (logs cleanly)
@@ -81,12 +95,13 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
     console.log(`========================================================\n`);
 
     return {
-      success: true,
-      message: "Dev Mode: Email logged to console (configure RESEND_API_KEY or SMTP credentials in .env to send live emails)",
+      success: false,
+      provider: "Console Log Only (Not Sent)",
+      message: "RESEND_API_KEY atau SMTP belum dikonfigurasi di Environment Variables. Email hanya dicetak di log server.",
     };
   } catch (error: any) {
     console.error("[Email Service Error] Failed to send email:", error);
-    return { success: false, message: error.message || "Failed to send email" };
+    return { success: false, error: error.message || "Failed to send email" };
   }
 }
 
