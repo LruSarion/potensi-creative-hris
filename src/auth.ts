@@ -6,21 +6,29 @@ import { db } from "@/lib/db";
 import { verifyPin, MAX_FAILED_LOGINS, LOCKOUT_MS } from "@/lib/pin";
 import type { Role } from "@/generated/prisma/enums";
 
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET;
+
 const hasGoogleCreds = Boolean(
-  process.env.GOOGLE_CLIENT_ID &&
-  process.env.GOOGLE_CLIENT_SECRET &&
-  process.env.GOOGLE_CLIENT_ID !== "" &&
-  process.env.GOOGLE_CLIENT_SECRET !== ""
+  googleClientId &&
+  googleClientSecret &&
+  googleClientId !== "" &&
+  googleClientSecret !== "" &&
+  googleClientId !== "demo-google-client-id.apps.googleusercontent.com"
 );
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID || "demo-google-client-id.apps.googleusercontent.com",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "demo-google-client-secret",
-      allowDangerousEmailAccountLinking: true,
-    }),
+    ...(hasGoogleCreds
+      ? [
+          Google({
+            clientId: googleClientId,
+            clientSecret: googleClientSecret,
+            allowDangerousEmailAccountLinking: true,
+          }),
+        ]
+      : []),
     Credentials({
       name: "Email & PIN",
       credentials: {
