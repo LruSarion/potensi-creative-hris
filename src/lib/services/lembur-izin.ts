@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
+import { sendIzinNotificationEmail } from "@/lib/services/email";
 import type { Role } from "@/generated/prisma/enums";
 
 const APPROVER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"];
@@ -48,15 +49,29 @@ export async function submitLembur(input: LemburInput) {
 
 export async function approveLembur(id: string, approve: boolean) {
   const user = await requireRole(...APPROVER_ROLES);
-  const row = await db.lembur.findUnique({ where: { id } });
+  const row = await db.lembur.findUnique({ where: { id }, include: { karyawan: true } });
   if (!row) throw AppError.notFound("Lembur tidak ditemukan");
   if (row.karyawanId === user.karyawanId) {
     throw AppError.forbidden("Tidak dapat menyetujui pengajuan sendiri");
   }
-  return db.lembur.update({
+
+  const updated = await db.lembur.update({
     where: { id },
     data: { status: approve ? "APPROVED" : "REJECTED", approvedById: user.id },
+    include: { karyawan: true },
   });
+
+  if (updated.karyawan?.email) {
+    sendIzinNotificationEmail({
+      to: updated.karyawan.email,
+      nama: updated.karyawan.namaLengkap,
+      tipe: "Pengajuan Lembur",
+      tanggal: new Date(updated.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+      status: approve ? "APPROVED" : "REJECTED",
+    }).catch((e) => console.error("[Lembur Email Error]:", e));
+  }
+
+  return updated;
 }
 
 export async function listLembur(params?: { karyawanId?: string }) {
@@ -96,15 +111,29 @@ export async function submitIzin(input: IzinInput) {
 
 export async function approveIzin(id: string, approve: boolean) {
   const user = await requireRole(...APPROVER_ROLES);
-  const row = await db.izin.findUnique({ where: { id } });
+  const row = await db.izin.findUnique({ where: { id }, include: { karyawan: true } });
   if (!row) throw AppError.notFound("Izin tidak ditemukan");
   if (row.karyawanId === user.karyawanId) {
     throw AppError.forbidden("Tidak dapat menyetujui pengajuan sendiri");
   }
-  return db.izin.update({
+
+  const updated = await db.izin.update({
     where: { id },
     data: { status: approve ? "APPROVED" : "REJECTED", approvedById: user.id },
+    include: { karyawan: true },
   });
+
+  if (updated.karyawan?.email) {
+    sendIzinNotificationEmail({
+      to: updated.karyawan.email,
+      nama: updated.karyawan.namaLengkap,
+      tipe: `Pengajuan Izin / ${updated.jenis || "Cuti"}`,
+      tanggal: `${new Date(updated.tanggalMulai).toLocaleDateString("id-ID", { day: "numeric", month: "short" })} - ${new Date(updated.tanggalSelesai).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}`,
+      status: approve ? "APPROVED" : "REJECTED",
+    }).catch((e) => console.error("[Izin Email Error]:", e));
+  }
+
+  return updated;
 }
 
 export async function listIzin(params?: { karyawanId?: string }) {

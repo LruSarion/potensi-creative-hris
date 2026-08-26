@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 import { getTelegramConfig, sendTelegramMessage } from "@/lib/services/telegram";
 import { normalizeNotifPrefs } from "@/lib/notification-types";
+import { sendQCViolationEmail } from "@/lib/services/email";
 import type { Role } from "@/generated/prisma/enums";
 
 const QC_ROLES: Role[] = ["QC_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
@@ -78,6 +79,18 @@ export async function createViolation(input: QcViolationInput) {
 
   // Push to bound Telegram chats (respects per-user prefs for QC_VIOLATION).
   await pushViolationTelegram(recipients, title, message, link, user.tenantId);
+
+  // Send Email Notification to Streamer if email is available
+  if (streamer.email) {
+    sendQCViolationEmail({
+      to: streamer.email,
+      nama: streamer.namaLengkap,
+      jenisPelanggaran: catLabel,
+      poinPenalti: parsed.severity === "CRITICAL" || parsed.severity === "HIGH" ? 15 : parsed.severity === "MEDIUM" ? 10 : 5,
+      catatan: parsed.description ?? "Evaluasi audit QC siaran live",
+      tanggal: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+    }).catch((e) => console.error("[QC Email Error]:", e));
+  }
 
   return violation;
 }

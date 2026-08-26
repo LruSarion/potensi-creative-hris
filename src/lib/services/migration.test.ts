@@ -1,7 +1,18 @@
 import { describe, it, expect } from "vitest";
-<<<<<<< HEAD
-import { findHeaderRowIndex, parseCsv } from "@/lib/services/migration";
-import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, cleanTime } from "@/lib/services/converter-utils";
+import {
+  findHeaderRowIndex,
+  parseCsv,
+  buildLlmPrompt,
+  detectDelimiter,
+  parsePastedText,
+  normalizeRupiah,
+  normalizeDate,
+  normalizeEnum,
+  cleanTime,
+  excelSerialToDate,
+  excelSerialToTime,
+  normalizeExcelCell,
+} from "@/lib/services/converter-utils";
 
 describe("findHeaderRowIndex & parseCsv banner skipping", () => {
   it("skips title banner row on line 1 and uses line 2 as headers", () => {
@@ -22,9 +33,6 @@ describe("findHeaderRowIndex & parseCsv banner skipping", () => {
     });
   });
 });
-=======
-import { buildLlmPrompt, detectDelimiter, parsePastedText, normalizeRupiah, normalizeDate, normalizeEnum, excelSerialToDate, excelSerialToTime, normalizeExcelCell } from "@/lib/services/converter-utils";
->>>>>>> b8663ae7b9d683726a2e62b1750826ba34f300b1
 
 describe("detectDelimiter", () => {
   it("detects tab from spreadsheet paste", () => {
@@ -117,7 +125,6 @@ describe("buildLlmPrompt", () => {
 
 describe("excelSerialToDate", () => {
   it("converts Excel serial date to ISO", () => {
-    // 46257 = 2026-08-23 (Excel epoch 1899-12-30)
     expect(excelSerialToDate(46257)).toBe("2026-08-23");
   });
   it("returns null for invalid", () => {
@@ -128,9 +135,7 @@ describe("excelSerialToDate", () => {
 
 describe("excelSerialToTime", () => {
   it("converts Excel serial time fraction to HH:MM", () => {
-    // 0.3333... = 08:00
     expect(excelSerialToTime(0.3333333333333333)).toBe("08:00");
-    // 0.5 = 12:00
     expect(excelSerialToTime(0.5)).toBe("12:00");
   });
   it("returns null for out-of-range", () => {

@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 import { computeDurationMinutes, computeDurationMinutesOvernightSafe, computePeriodeBulan } from "@/lib/schedule-rules";
 import { matchTier } from "@/lib/tier";
+import { sendPayrollNotificationEmail } from "@/lib/services/email";
 import type { Role } from "@/generated/prisma/enums";
 
 const PAYROLL_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"];
@@ -197,6 +198,16 @@ export async function computePayroll(
     deductions,
     netPay,
   };
+
+  if (karyawan.email) {
+    const totalGajiFormatted = new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(grossPay);
+    sendPayrollNotificationEmail({
+      to: karyawan.email,
+      nama: karyawan.namaLengkap,
+      periode,
+      totalGajiFormatted,
+    }).catch((e) => console.error("[Payroll Email Error]:", e));
+  }
 
   return {
     payroll: record,

@@ -26,10 +26,35 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       credentials: {
         email: { label: "Email", type: "email" },
         pin: { label: "PIN", type: "password" },
+        isFirebaseAuth: { label: "Firebase Auth", type: "text" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.pin) return null;
+        if (!credentials?.email) return null;
         const email = String(credentials.email).trim().toLowerCase();
+
+        // 1. Firebase Google Auth Session Authorization
+        if (credentials.isFirebaseAuth === "true") {
+          const user = await db.user.findUnique({
+            where: { email },
+            include: { karyawan: true, accounts: true },
+          });
+
+          const hasGoogleAccount = user?.accounts.some((a) => a.provider === "google");
+          if (user && hasGoogleAccount) {
+            return {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role as Role,
+              karyawanId: user.karyawan?.id ?? null,
+              tenantId: user.tenantId ?? "",
+            };
+          }
+          return null;
+        }
+
+        // 2. Email & PIN Authorization
+        if (!credentials?.pin) return null;
         const pin = String(credentials.pin).trim();
 
         const user = await db.user.findUnique({
@@ -114,6 +139,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.role = dbUser.role as Role;
           token.karyawanId = dbUser.karyawan?.id ?? null;
           token.tenantId = dbUser.tenantId ?? "";
+
+          // Persist or update Google OAuth account tokens in DB
+          if (account?.providerAccountId) {
+            try {
+              await db.account.upsert({
+                where: {
+                  provider_providerAccountId: {
+                    provider: "google",
+                    providerAccountId: account.providerAccountId,
+                  },
+                },
+                create: {
+                  userId: dbUser.id,
+                  type: account.type ?? "oauth",
+                  provider: "google",
+                  providerAccountId: account.providerAccountId,
+                  access_token: account.access_token ?? null,
+                  refresh_token: account.refresh_token ?? null,
+                  expires_at: account.expires_at ?? null,
+                  token_type: account.token_type ?? null,
+                  scope: account.scope ?? null,
+                  id_token: account.id_token ?? null,
+                  session_state: (account.session_state as string) ?? null,
+                },
+                update: {
+                  userId: dbUser.id,
+                  access_token: account.access_token ?? undefined,
+                  refresh_token: account.refresh_token ?? undefined,
+                  expires_at: account.expires_at ?? undefined,
+                  id_token: account.id_token ?? undefined,
+                },
+              });
+            } catch (err) {
+              console.error("[Auth NextAuth] Failed to upsert Google Account tokens:", err);
+            }
+          }
         }
       } else if (user) {
         token.id = user.id;

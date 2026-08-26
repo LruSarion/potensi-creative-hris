@@ -20,6 +20,11 @@ export default function InputJadwalPage() {
   const [selectedCalendarDate, setSelectedCalendarDate] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
 
+  // Pagination & Search for "Jadwal Sesi Terdaftar" table
+  const [tableSearchQuery, setTableSearchQuery] = useState("");
+  const [tablePage, setTablePage] = useState(1);
+  const [tablePageSize, setTablePageSize] = useState(5);
+
   // Main Navigation Tabs persis ref-website-lama/input-jadwal.html
   const [mainTab, setMainTab] = useState<"streamer" | "ots" | "rubah" | "klien" | "marketplace" | "hybrid" | "kendali">("streamer");
   const [streamerSubTab, setStreamerSubTab] = useState<"form" | "info">("form");
@@ -1325,104 +1330,199 @@ export default function InputJadwalPage() {
         </div>
       )}
 
-      {/* Recent Schedules Table with Search & Filter */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">Jadwal Sesi Terdaftar</h3>
-            <span className="text-xs text-slate-500">{recentJadwal.length} sesi termonitor</span>
-          </div>
+      {/* Recent Schedules Table with Search & Pagination */}
+      {(() => {
+        const filteredJadwal = recentJadwal.filter((j) => {
+          if (!tableSearchQuery.trim()) return true;
+          const q = tableSearchQuery.toLowerCase().trim();
+          return (
+            j.idJadwal?.toLowerCase().includes(q) ||
+            j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
+            j.cabangStudio?.toLowerCase().includes(q) ||
+            j.platform?.toLowerCase().includes(q) ||
+            j.liveState?.toLowerCase().includes(q) ||
+            j.status?.toLowerCase().includes(q)
+          );
+        });
 
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Cari ID, Host, Studio..."
-              onChange={(e) => {
-                const q = e.target.value.toLowerCase();
-                // Client-side search helper if desired
-              }}
-              className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-            />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">ID Jadwal</th>
-                <th className="px-4 py-3">Platform</th>
-                <th className="px-4 py-3">Streamer</th>
-                <th className="px-4 py-3">Studio</th>
-                <th className="px-4 py-3">Waktu</th>
-                <th className="px-4 py-3">Live State</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {recentJadwal.map((j) => (
-                <tr key={j.id} className="hover:bg-slate-50/80 transition">
-                  <td className="px-4 py-3 font-mono font-medium text-blue-600">{j.idJadwal}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
-                      {j.platform ?? "General"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-800">
-                    {j.streamerKaryawan?.namaLengkap ?? "Belum di-assign"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {j.cabangStudio ? `${j.cabangStudio} #${j.nomorStudio ?? "01"}` : "-"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <div className="font-semibold text-slate-800">
-                      {new Date(j.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                    </div>
-                    <div className="text-[11px]">
-                      {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                      {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                        j.liveState === "LIVE"
-                          ? "bg-rose-100 text-rose-700 animate-pulse"
-                          : j.liveState === "REVIEW"
-                          ? "bg-amber-100 text-amber-700"
-                          : j.liveState === "CLOSED"
-                          ? "bg-slate-100 text-slate-600"
-                          : "bg-blue-100 text-blue-700"
-                      }`}
-                    >
-                      {j.liveState}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                      {j.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {!j.streamerKaryawanId && j.status !== "SELESAI" && j.liveState !== "CLOSED" && (
+        const totalTablePages = Math.max(1, Math.ceil(filteredJadwal.length / tablePageSize));
+        const currentTablePage = Math.min(tablePage, totalTablePages);
+        const startIndex = (currentTablePage - 1) * tablePageSize;
+        const endIndex = Math.min(startIndex + tablePageSize, filteredJadwal.length);
+        const paginatedJadwal = filteredJadwal.slice(startIndex, endIndex);
+
+        return (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3">
+            <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">Jadwal Sesi Terdaftar</h3>
+                <span className="text-xs text-slate-500">
+                  {filteredJadwal.length} sesi termonitor (Total: {recentJadwal.length})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={tableSearchQuery}
+                  placeholder="Cari ID, Host, Studio..."
+                  onChange={(e) => {
+                    setTableSearchQuery(e.target.value);
+                    setTablePage(1);
+                  }}
+                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+                />
+
+                <select
+                  value={tablePageSize}
+                  onChange={(e) => {
+                    setTablePageSize(Number(e.target.value));
+                    setTablePage(1);
+                  }}
+                  className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-700 bg-white outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                >
+                  <option value={5}>5 / hlm</option>
+                  <option value={10}>10 / hlm</option>
+                  <option value={20}>20 / hlm</option>
+                  <option value={50}>50 / hlm</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3">ID Jadwal</th>
+                    <th className="px-4 py-3">Platform</th>
+                    <th className="px-4 py-3">Streamer</th>
+                    <th className="px-4 py-3">Studio</th>
+                    <th className="px-4 py-3">Waktu</th>
+                    <th className="px-4 py-3">Live State</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paginatedJadwal.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                        Tidak ada jadwal sesi yang cocok.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginatedJadwal.map((j) => (
+                      <tr key={j.id} className="hover:bg-slate-50/80 transition">
+                        <td className="px-4 py-3 font-mono font-medium text-blue-600">{j.idJadwal}</td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
+                            {j.platform ?? "General"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          {j.streamerKaryawan?.namaLengkap ?? "Belum di-assign"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          {j.cabangStudio ? `${j.cabangStudio} #${j.nomorStudio ?? "01"}` : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">
+                          <div className="font-semibold text-slate-800">
+                            {new Date(j.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                          </div>
+                          <div className="text-[11px]">
+                            {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
+                            {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                              j.liveState === "LIVE"
+                                ? "bg-rose-100 text-rose-700 animate-pulse"
+                                : j.liveState === "REVIEW"
+                                ? "bg-amber-100 text-amber-700"
+                                : j.liveState === "CLOSED"
+                                ? "bg-slate-100 text-slate-600"
+                                : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            {j.liveState}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            {j.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {!j.streamerKaryawanId && j.status !== "SELESAI" && j.liveState !== "CLOSED" && (
+                            <button
+                              onClick={() => {
+                                setAssignJadwalId(j.id);
+                                setAssignStreamerId("");
+                                setAssignModalOpen(true);
+                              }}
+                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition shadow-sm"
+                            >
+                              Assign Streamer
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls Footer */}
+            {filteredJadwal.length > 0 && (
+              <div className="p-4 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <div className="text-slate-500 font-medium">
+                  Menampilkan <span className="font-semibold text-slate-700">{startIndex + 1}</span> -{" "}
+                  <span className="font-semibold text-slate-700">{endIndex}</span> dari{" "}
+                  <span className="font-semibold text-slate-700">{filteredJadwal.length}</span> sesi
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    disabled={currentTablePage <= 1}
+                    onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 disabled:hover:bg-transparent font-medium transition shadow-sm"
+                  >
+                    Sebelumnya
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalTablePages }, (_, idx) => idx + 1).map((pageNum) => (
                       <button
-                        onClick={() => {
-                          setAssignJadwalId(j.id);
-                          setAssignStreamerId("");
-                          setAssignModalOpen(true);
-                        }}
-                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition shadow-sm"
+                        key={pageNum}
+                        onClick={() => setTablePage(pageNum)}
+                        className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
+                          pageNum === currentTablePage
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-200/60"
+                        }`}
                       >
-                        Assign Streamer
+                        {pageNum}
                       </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    disabled={currentTablePage >= totalTablePages}
+                    onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
+                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 disabled:hover:bg-transparent font-medium transition shadow-sm"
+                  >
+                    Selanjutnya
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
     </div>
   )}
 

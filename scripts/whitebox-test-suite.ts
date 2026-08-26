@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { formatLogEntry } from "../src/lib/log-formatter";
 import { db } from "../src/lib/db";
 

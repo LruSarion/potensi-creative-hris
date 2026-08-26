@@ -5,9 +5,8 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 import { createJadwalBatch } from "@/lib/services/jadwal";
 import { karyawanSchema } from "@/lib/schemas/karyawan";
-import { normalizeExcelCell } from "@/lib/services/converter-utils";
+import { cleanTime, normalizeDate, normalizeEnum, normalizeExcelCell, parseCsv, findHeaderRowIndex } from "./converter-utils";
 import type { Role } from "@/generated/prisma/enums";
-import { cleanTime, normalizeDate, normalizeEnum } from "./converter-utils";
 
 const IMPORT_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"];
 
@@ -40,72 +39,7 @@ export async function fetchGoogleSheet(url: string): Promise<Record<string, stri
   return parseCsv(csv);
 }
 
-/**
- * Detect the header row index (0-based) from an array of parsed row cells.
- * Skips top title/banner rows (e.g. "PLOTING JADWAL LIVE HARIAN...").
- */
-export function findHeaderRowIndex(linesOfCells: string[][]): number {
-  if (linesOfCells.length === 0) return 0;
-
-  for (let i = 0; i < Math.min(linesOfCells.length, 10); i++) {
-    const cells = linesOfCells[i].map((c) => (c ?? "").toString().trim().toLowerCase());
-    const matchCount = cells.filter((c) =>
-      /tanggal|tgl|date|name|nama|id|streamer|host|platform|jabatan|email|status|periode|bulan|karyawan|client|brand|jam|studio|promo|produk|nik|role/i.test(c)
-    ).length;
-    const nonCount = cells.filter(Boolean).length;
-    if (matchCount >= 2 || (matchCount >= 1 && nonCount >= 3)) {
-      return i;
-    }
-  }
-  return 0;
-}
-
-/** Parse CSV text into rows of { header: value }. */
-export function parseCsv(csv: string): Record<string, string>[] {
-  const rows: Record<string, string>[] = [];
-  const rawLines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (rawLines.length === 0) return rows;
-
-  const parsedLines = rawLines.map(parseCsvLine);
-  const headerIdx = findHeaderRowIndex(parsedLines);
-  const headers = parsedLines[headerIdx].map((h) => h.trim());
-
-  for (let i = headerIdx + 1; i < parsedLines.length; i++) {
-    const cells = parsedLines[i];
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => {
-      if (h) {
-        row[h] = (cells[idx] ?? "").trim();
-      }
-    });
-    if (Object.values(row).every((v) => !v)) continue;
-    rows.push(row);
-  }
-  return rows;
-}
-
-function parseCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const c = line[i];
-    if (inQ) {
-      if (c === '"') {
-        if (line[i + 1] === '"') { cur += '"'; i++; }
-        else inQ = false;
-      } else cur += c;
-    } else if (c === '"') {
-      inQ = true;
-    } else if (c === ",") {
-      out.push(cur); cur = "";
-    } else {
-      cur += c;
-    }
-  }
-  out.push(cur);
-  return out;
-}
+export { findHeaderRowIndex, parseCsv };
 
 /**
  * Parse file content into rows. Supports CSV text or Excel (xlsx/xls).
