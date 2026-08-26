@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export type Notification = {
   id: string;
@@ -65,6 +66,7 @@ function getIconAndColor(type?: string, title?: string) {
 }
 
 export default function NotificationBell() {
+  const pathname = usePathname();
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -72,9 +74,9 @@ export default function NotificationBell() {
   const [error, setError] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/integration?view=notifications");
+      const r = await fetch("/api/integration?view=notifications", { cache: "no-store" });
       const d = await r.json();
       if (d.status === "success") {
         setItems(d.data ?? []);
@@ -85,13 +87,30 @@ export default function NotificationBell() {
     } catch {
       setError(true);
     }
-  }
+  }, []);
 
+  // Event-driven reactive updates (Page transitions & Window focus) - NO setInterval polling
   useEffect(() => {
     load();
-    const t = setInterval(load, 30_000); // 30s light polling for auto notifications
-    return () => clearInterval(t);
-  }, []);
+  }, [load, pathname]);
+
+  useEffect(() => {
+    const handleFocus = () => load();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    const handleCustomEvent = () => load();
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("app:notification-updated", handleCustomEvent);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("app:notification-updated", handleCustomEvent);
+    };
+  }, [load]);
 
   // Close on click outside
   useEffect(() => {
@@ -403,7 +422,7 @@ export default function NotificationBell() {
           {items.length > 0 && (
             <div className="p-2.5 bg-slate-50/90 border-t border-slate-100 text-center flex items-center justify-between px-4">
               <span className="text-[10px] text-slate-400 font-medium">
-                Pembaruan otomatis aktif (30s)
+                Pembaruan instan & sinkron
               </span>
               <button
                 type="button"
