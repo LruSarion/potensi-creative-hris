@@ -49,8 +49,9 @@ export default function LoginPage() {
                 redirect: false,
               });
               if (!sessionRes?.error) {
-                router.push("/dashboard");
-                router.refresh();
+                const searchParams = new URLSearchParams(window.location.search);
+                const targetUrl = searchParams.get("callbackUrl") || "/dashboard";
+                window.location.href = targetUrl;
               } else {
                 setError("Gagal membuat sesi login pengguna.");
               }
@@ -87,8 +88,9 @@ export default function LoginPage() {
       });
 
       if (!res?.error) {
-        router.push("/dashboard");
-        router.refresh();
+        const searchParams = new URLSearchParams(window.location.search);
+        const targetUrl = searchParams.get("callbackUrl") || "/dashboard";
+        window.location.href = targetUrl;
       } else {
         setError("Email atau PIN tidak valid.");
       }
@@ -140,8 +142,9 @@ export default function LoginPage() {
         throw new Error("Gagal mengaktifkan sesi login.");
       }
 
-      router.push("/dashboard");
-      router.refresh();
+      const searchParams = new URLSearchParams(window.location.search);
+      const targetUrl = searchParams.get("callbackUrl") || "/dashboard";
+      window.location.href = targetUrl;
     } catch (err: any) {
       console.error("Firebase Google Login Error:", err);
       if (err?.code === "auth/popup-closed-by-user") {
