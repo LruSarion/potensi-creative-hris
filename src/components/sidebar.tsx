@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { Suspense, useState, useEffect } from "react";
 import type { Role } from "@/generated/prisma/enums";
 
@@ -24,7 +24,7 @@ type NavGroup = {
 const NAV_GROUPS: NavGroup[] = [
   {
     id: "dashboards",
-    label: "Dashboard Utama",
+    label: "Dashboard",
     icon: "fa-solid fa-gauge-high",
     items: [
       { href: "/dashboard", label: "Dashboard Ringkasan", icon: "fa-solid fa-border-all", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER"] },
@@ -59,7 +59,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "lms_learning",
-    label: "Pusat Pelatihan (LMS)",
+    label: "Pelatihan LMS",
     icon: "fa-solid fa-graduation-cap",
     items: [
       { href: "/portal/streamer/lms", label: "Modul & Ujian Streamer", icon: "fa-solid fa-book-open-reader", roles: ["STREAMER", "STAFF", "OTS", "TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
@@ -69,7 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "finance",
-    label: "Finance & Keuangan",
+    label: "Finance & Gaji",
     icon: "fa-solid fa-wallet",
     items: [
       { href: "/payroll", label: "Payroll & Gaji Streamer", icon: "fa-solid fa-money-bill-wave", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] },
@@ -79,7 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "fitur_lanjutan",
-    label: "Fitur Lanjutan & Pengaturan",
+    label: "Fitur Lanjutan",
     icon: "fa-solid fa-sliders",
     items: [
       { href: "/streamer-directory", label: "Direktori Streamer", icon: "fa-solid fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT"] },
@@ -92,6 +92,22 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+function checkIsActive(item: NavSubItem, pathname: string, activeTabQuery: string | null) {
+  if (item.href.startsWith("/pengajuan")) {
+    if (pathname === "/pengajuan" || pathname.startsWith("/pengajuan/")) {
+      if (item.tabKey) {
+        return activeTabQuery === item.tabKey;
+      }
+      return !activeTabQuery;
+    }
+    return false;
+  }
+  if (item.href === "/dashboard") {
+    return pathname === "/dashboard";
+  }
+  return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+}
 
 function SidebarNavContent({
   onCloseMobile,
@@ -112,21 +128,16 @@ function SidebarNavContent({
     // Auto expand group that contains current active path
     const initialOpen: Record<string, boolean> = {};
     NAV_GROUPS.forEach((group) => {
-      const hasActiveChild = group.items.some((item) => {
-        if (item.roles.includes(role)) {
-          if (item.href.startsWith("/pengajuan")) {
-            return pathname === "/pengajuan" || pathname.startsWith("/pengajuan");
-          }
-          return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+      const visibleItems = group.items.filter((item) => item.roles.includes(role));
+      if (visibleItems.length > 1) {
+        const hasActiveChild = visibleItems.some((item) => checkIsActive(item, pathname, activeTabQuery));
+        if (hasActiveChild) {
+          initialOpen[group.id] = true;
         }
-        return false;
-      });
-      if (hasActiveChild) {
-        initialOpen[group.id] = true;
       }
     });
     setOpenGroups((prev) => ({ ...initialOpen, ...prev }));
-  }, [pathname, role]);
+  }, [pathname, role, activeTabQuery]);
 
   function toggleGroup(groupId: string) {
     setOpenGroups((prev) => ({
@@ -136,79 +147,107 @@ function SidebarNavContent({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto sidebar-scroll py-4 px-3 space-y-3 custom-scrollbar">
+    <div className="flex-1 overflow-y-auto sidebar-scroll py-3 px-3 space-y-1.5 custom-scrollbar">
       {NAV_GROUPS.map((group) => {
         // Filter items matching user's role
         const visibleItems = group.items.filter((item) => item.roles.includes(role));
         if (visibleItems.length === 0) return null;
 
-        const isOpen = openGroups[group.id] ?? true; // Default to open for clean UX
+        // =========================================================================
+        // CASE 1: HANYA 1 ITEM -> JANGAN DI-GROUP (Render sebagai direct top-level link)
+        // =========================================================================
+        if (visibleItems.length === 1) {
+          const item = visibleItems[0];
+          const isActive = checkIsActive(item, pathname, activeTabQuery);
 
-        // Check if group contains current active path
-        const isGroupActive = visibleItems.some((item) => {
-          if (item.href.startsWith("/pengajuan")) {
-            return pathname === "/pengajuan" || pathname.startsWith("/pengajuan");
-          }
-          return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
-        });
+          return (
+            <div key={group.id} className="py-0.5">
+              <Link
+                href={item.href}
+                onClick={onCloseMobile}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 group cursor-pointer ${
+                  isActive
+                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-bold"
+                    : "text-slate-700 hover:bg-slate-100 hover:text-blue-600"
+                }`}
+              >
+                <i
+                  className={`${item.icon || group.icon} w-5 text-center text-sm transition-transform duration-150 group-hover:scale-110 ${
+                    isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"
+                  }`}
+                />
+                <span className="truncate">{item.label}</span>
+              </Link>
+            </div>
+          );
+        }
+
+        // =========================================================================
+        // CASE 2: LEBIH DARI 1 ITEM -> RENDER ACCORDION GROUP DENGAN ANIMASI SMOOTH
+        // =========================================================================
+        const isOpen = openGroups[group.id] ?? true;
+        const isGroupActive = visibleItems.some((item) => checkIsActive(item, pathname, activeTabQuery));
 
         return (
-          <div key={group.id} className="space-y-1">
+          <div key={group.id} className="space-y-1 pt-1">
             {/* Group Header Button */}
             <button
               type="button"
               onClick={() => toggleGroup(group.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition select-none ${
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer group ${
                 isGroupActive
-                  ? "bg-blue-50/80 text-blue-900 border border-blue-100"
+                  ? "bg-blue-50 text-blue-900 border border-blue-100/80 shadow-2xs"
                   : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
               }`}
             >
               <div className="flex items-center gap-2.5">
-                <i className={`${group.icon} text-sm ${isGroupActive ? "text-blue-600" : "text-slate-400"}`} />
-                <span className="uppercase tracking-wider text-[11px] font-black">{group.label}</span>
+                <i
+                  className={`${group.icon} text-sm transition-colors ${
+                    isGroupActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
+                  }`}
+                />
+                <span className="uppercase tracking-wider text-[10.5px] font-black">{group.label}</span>
               </div>
-              <i
-                className={`fa-solid fa-chevron-down text-[10px] transition-transform duration-200 ${
-                  isOpen ? "rotate-180 text-blue-600" : "text-slate-400"
-                }`}
-              />
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-semibold ${
+                    isGroupActive ? "bg-blue-200/60 text-blue-800" : "bg-slate-200/60 text-slate-500"
+                  }`}
+                >
+                  {visibleItems.length}
+                </span>
+                <i
+                  className={`fa-solid fa-chevron-down text-[10px] transition-transform duration-200 ${
+                    isOpen ? "rotate-180 text-blue-600" : "text-slate-400"
+                  }`}
+                />
+              </div>
             </button>
 
-            {/* Group Sub-Items */}
-            {isOpen && (
-              <div className="space-y-1 pl-2 border-l-2 border-slate-100 ml-3 pt-0.5">
+            {/* Sub-items Drawer with CSS Grid Smooth Collapse */}
+            <div
+              className={`grid transition-all duration-200 ease-in-out ${
+                isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="overflow-hidden space-y-1 pl-2 border-l-2 border-slate-100 ml-3.5 pt-0.5">
                 {visibleItems.map((item) => {
-                  let isActive = false;
-
-                  if (item.href.startsWith("/pengajuan")) {
-                    if (pathname === "/pengajuan") {
-                      if (item.tabKey) {
-                        isActive = activeTabQuery === item.tabKey;
-                      } else {
-                        isActive = !activeTabQuery;
-                      }
-                    }
-                  } else {
-                    isActive =
-                      pathname === item.href ||
-                      (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
-                  }
+                  const isActive = checkIsActive(item, pathname, activeTabQuery);
 
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={onCloseMobile}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
+                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group cursor-pointer ${
                         isActive
                           ? "bg-blue-600 text-white shadow-xs font-bold"
                           : "text-slate-600 hover:bg-slate-100 hover:text-blue-600"
                       }`}
                     >
                       <i
-                        className={`${item.icon} w-4 text-center ${
-                          isActive ? "text-white" : "text-slate-400"
+                        className={`${item.icon} w-4 text-center text-xs transition-colors ${
+                          isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"
                         }`}
                       />
                       <span className="truncate">{item.label}</span>
@@ -216,7 +255,7 @@ function SidebarNavContent({
                   );
                 })}
               </div>
-            )}
+            </div>
           </div>
         );
       })}
@@ -231,46 +270,85 @@ export default function Sidebar({
   mobileOpen?: boolean;
   onCloseMobile?: () => void;
 }) {
+  const { data: session } = useSession();
+  const roleName = session?.user?.role ? session.user.role.replace(/_/g, " ") : "Pengguna";
+
   return (
     <>
       {/* Mobile Backdrop Overlay */}
       {mobileOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-900/50 lg:hidden transition-opacity"
+          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden transition-opacity duration-300"
         />
       )}
 
       {/* Sidebar Component */}
       <aside
         id="sidebar"
-        className={`fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col z-50 transform transition-transform duration-300 h-full ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        className={`fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col z-50 transform transition-transform duration-300 ease-in-out h-full select-none ${
+          mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 flex items-center px-6 border-b border-slate-100 flex-shrink-0 justify-between">
-          <div className="flex items-center">
-            <div className="bg-blue-600 text-white font-bold p-1.5 rounded-lg w-8 h-8 flex items-center justify-center mr-3 text-sm">
+        <div className="h-16 flex items-center px-5 border-b border-slate-100 flex-shrink-0 justify-between">
+          <Link href="/dashboard" className="flex items-center gap-3 group">
+            <div className="bg-blue-600 text-white font-bold p-1.5 rounded-xl w-9 h-9 flex items-center justify-center text-base shadow-sm group-hover:bg-blue-700 transition">
               P
             </div>
-            <span className="font-bold text-lg text-slate-900">Potensi Creative</span>
-          </div>
+            <div>
+              <span className="font-black text-base text-slate-900 tracking-tight block leading-tight">
+                Potensi Creative
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase block">
+                HRIS Portal
+              </span>
+            </div>
+          </Link>
+
           {onCloseMobile && (
             <button
-              className="lg:hidden text-slate-400 hover:text-red-500 transition"
+              className="lg:hidden text-slate-400 hover:text-red-500 transition p-2 cursor-pointer"
               onClick={onCloseMobile}
               aria-label="Tutup Sidebar"
             >
-              <i className="fa-solid fa-xmark text-xl"></i>
+              <i className="fa-solid fa-xmark text-lg"></i>
             </button>
           )}
         </div>
 
         {/* Navigation Links */}
-        <Suspense fallback={<div className="p-4 text-xs text-slate-400">Loading sidebar...</div>}>
+        <Suspense fallback={<div className="p-4 text-xs text-slate-400">Memuat menu...</div>}>
           <SidebarNavContent onCloseMobile={onCloseMobile} />
         </Suspense>
+
+        {/* User Profile Footer Card */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50/70 flex-shrink-0">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 font-bold text-xs flex items-center justify-center flex-shrink-0">
+                {session?.user?.name ? session.user.name.charAt(0).toUpperCase() : "U"}
+              </div>
+              <div className="overflow-hidden">
+                <div className="text-xs font-bold text-slate-800 truncate leading-tight">
+                  {session?.user?.name || "Karyawan"}
+                </div>
+                <div className="text-[10px] text-blue-600 font-semibold truncate leading-tight uppercase">
+                  {roleName}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="text-slate-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition cursor-pointer"
+              title="Keluar / Logout"
+            >
+              <i className="fa-solid fa-right-from-bracket text-xs"></i>
+            </button>
+          </div>
+        </div>
       </aside>
     </>
   );
