@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Sidebar from "@/components/sidebar";
 import TopNav from "@/components/top-nav";
-import TelegramAutoPoll from "@/components/telegram-auto-poll";
 
 export default function DashboardShell({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -16,7 +15,6 @@ export default function DashboardShell({ children }: { children: React.ReactNode
       {/* Main Content Body */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopNav onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)} />
-        <TelegramAutoPoll />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-slate-50/50">
           {children}
         </main>

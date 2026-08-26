@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import TelegramConfigAdmin from "@/components/telegram-config-admin";
 
 export default function MasterDataAdminPage() {
   const { data: session } = useSession();
@@ -417,9 +416,6 @@ export default function MasterDataAdminPage() {
               </form>
             </div>
           </div>
-
-          {/* Telegram Bot Config */}
-          <TelegramConfigAdmin />
         </div>
       )}
     </div>
