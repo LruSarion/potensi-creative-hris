@@ -1179,11 +1179,25 @@ export default function StreamerDashboardPage() {
                       </div>
                     )}
 
+                    {/* Syarat dan Ketentuan Request Libur */}
+                    <div className="p-4 bg-amber-50/90 rounded-2xl border border-amber-200 text-slate-800 space-y-2.5 shadow-2xs">
+                      <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
+                        <i className="fa-solid fa-triangle-exclamation text-amber-600 text-sm" />
+                        <span>Syarat dan Ketentuan Request Libur:</span>
+                      </div>
+                      <ul className="space-y-1.5 text-xs text-slate-700 font-medium pl-5 list-disc marker:text-amber-500 leading-relaxed">
+                        <li>Setiap streamer berhak libur 1 kali setiap periode minggu.</li>
+                        <li>Periode minggu terhitung mulai dari hari Senin sampai Minggu.</li>
+                        <li><strong className="text-red-600 font-bold">Double date</strong> dan <strong className="text-red-600 font-bold">payday</strong> tidak boleh libur.</li>
+                        <li>Pengajuan libur yang sudah terkirim tidak bisa dirubah.</li>
+                      </ul>
+                    </div>
+
                     <div className="flex justify-end pt-2">
                       <button
                         type="submit"
                         disabled={submittingRequest || !leaveDate}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                       >
                         {submittingRequest ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-paper-plane" />}
                         <span>{submittingRequest ? "Mengirim..." : "Kirim Pengajuan Libur"}</span>
