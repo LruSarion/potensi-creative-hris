@@ -8,19 +8,22 @@ export interface SendEmailOptions {
   text?: string;
 }
 
-// Resend Singleton Client
-const resendApiKey = process.env.RESEND_API_KEY;
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
+/**
+ * Universal Email Sender Service.
+ * Supports Nodemailer (SMTP), Resend API, and Dev Mode Console Fallback.
+ */
+export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string; provider?: string; message?: string; error?: string }> {
+  const recipients = Array.isArray(options.to) ? options.to.join(", ") : options.to;
 
-// SMTP Transporter Singleton
-const smtpHost = process.env.SMTP_HOST;
-const smtpUser = process.env.SMTP_USER;
-const smtpPass = process.env.SMTP_PASS;
-const smtpPort = Number(process.env.SMTP_PORT || 587);
+  try {
+    // 1. Prioritize Nodemailer (SMTP) if configured
+    const smtpHost = process.env.SMTP_HOST;
+    const smtpUser = process.env.SMTP_USER;
+    const smtpPass = process.env.SMTP_PASS;
+    const smtpPort = Number(process.env.SMTP_PORT || 587);
 
-const smtpTransporter =
-  smtpHost && smtpUser && smtpPass
-    ? nodemailer.createTransport({
+    if (smtpHost && smtpUser && smtpPass) {
+      const transporter = nodemailer.createTransport({
         host: smtpHost,
         port: smtpPort,
         secure: smtpPort === 465,
@@ -28,23 +31,31 @@ const smtpTransporter =
           user: smtpUser,
           pass: smtpPass,
         },
-      })
-    : null;
+        tls: {
+          rejectUnauthorized: false,
+        },
+      });
 
-const DEFAULT_FROM = process.env.EMAIL_FROM || "HRIS Potensi Creative <onboarding@resend.dev>";
+      const fromAddress = process.env.EMAIL_FROM || `"HRIS Potensi Creative" <${smtpUser}>`;
 
-/**
- * Universal Email Sender Service.
- * Supports Resend API, Nodemailer (SMTP), and Dev Mode Console Fallback.
- */
-export async function sendEmail(options: SendEmailOptions): Promise<{ success: boolean; id?: string; provider?: string; message?: string; error?: string }> {
-  const recipients = Array.isArray(options.to) ? options.to.join(", ") : options.to;
+      const info = await transporter.sendMail({
+        from: fromAddress,
+        to: recipients,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+      });
 
-  try {
-    // 1. Try Resend API if configured
-    if (resend) {
-      let fromAddress = DEFAULT_FROM;
-      let res = await resend.emails.send({
+      console.log(`[Email Service (SMTP)] Sent successfully to ${recipients} (MessageId: ${info.messageId})`);
+      return { success: true, id: info.messageId, provider: `SMTP (${smtpHost})` };
+    }
+
+    // 2. Try Resend API if configured
+    const resendApiKey = process.env.RESEND_API_KEY;
+    if (resendApiKey) {
+      const resendClient = new Resend(resendApiKey);
+      let fromAddress = process.env.EMAIL_FROM || "HRIS Potensi Creative <onboarding@resend.dev>";
+      let res = await resendClient.emails.send({
         from: fromAddress,
         to: options.to,
         subject: options.subject,
@@ -56,7 +67,7 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
       if (res.error && fromAddress !== "onboarding@resend.dev" && (res.error.message.toLowerCase().includes("domain") || res.error.message.toLowerCase().includes("verify"))) {
         console.warn(`[Email Service (Resend)] Retrying with onboarding@resend.dev due to: ${res.error.message}`);
         fromAddress = "HRIS Notification <onboarding@resend.dev>";
-        res = await resend.emails.send({
+        res = await resendClient.emails.send({
           from: fromAddress,
           to: options.to,
           subject: options.subject,
@@ -71,20 +82,6 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
 
       console.log(`[Email Service (Resend)] Sent to ${recipients} (ID: ${res.data?.id})`);
       return { success: true, id: res.data?.id, provider: "Resend API" };
-    }
-
-    // 2. Try Nodemailer (SMTP) if configured
-    if (smtpTransporter) {
-      const info = await smtpTransporter.sendMail({
-        from: DEFAULT_FROM,
-        to: recipients,
-        subject: options.subject,
-        html: options.html,
-        text: options.text,
-      });
-
-      console.log(`[Email Service (SMTP)] Sent to ${recipients} (MessageId: ${info.messageId})`);
-      return { success: true, id: info.messageId, provider: "SMTP Transporter" };
     }
 
     // 3. Fallback for Dev Mode / Demo (logs cleanly)
