@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 export default function InputKaryawanPage() {
   const [list, setList] = useState<any[]>([]);
+  const [tableLoading, setTableLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState("");
   const [error, setError] = useState("");
@@ -35,12 +36,15 @@ export default function InputKaryawanPage() {
   }, []);
 
   async function loadEmployees() {
+    setTableLoading(true);
     try {
       const res = await fetch("/api/employees");
       const d = await res.json();
       if (d.status === "success") setList(d.data);
     } catch {
       // ignore
+    } finally {
+      setTableLoading(false);
     }
   }
 
@@ -327,9 +331,19 @@ export default function InputKaryawanPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
               >
-                {loading ? "Mendaftarkan..." : "Daftarkan Karyawan Baru"}
+                {loading ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin"></i>
+                    <span>Mendaftarkan ke Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-user-plus"></i>
+                    <span>Daftarkan Karyawan Baru</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -376,49 +390,59 @@ export default function InputKaryawanPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filtered.map((k) => (
-                  <tr key={k.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-slate-800">{k.namaLengkap}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{k.idKaryawan}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                        {k.jabatan ?? "Streamer"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-slate-700">{k.email ?? "-"}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{k.nomorTelepon ?? "-"}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          k.statusAktif === "NON_AKTIF"
-                            ? "bg-slate-100 text-slate-500"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        }`}
-                      >
-                        {k.statusAktif ?? "AKTIF"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => setSelectedEmp(k)}
-                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition"
-                      >
-                        Detail
-                      </button>
+                {tableLoading ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-slate-500 italic">
+                      <i className="fa-solid fa-circle-notch fa-spin text-blue-600 mr-2"></i>
+                      Memuat direktori karyawan dari server...
                     </td>
                   </tr>
-                ))}
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="text-center py-12 text-slate-400">
+                      {search ? "Tidak ada karyawan yang sesuai pencarian." : "Belum ada karyawan terdaftar."}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((k) => (
+                    <tr key={k.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-slate-800">{k.namaLengkap}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{k.idKaryawan}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                          {k.jabatan ?? "Streamer"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-slate-700">{k.email ?? "-"}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{k.nomorTelepon ?? "-"}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            k.statusAktif === "NON_AKTIF"
+                              ? "bg-slate-100 text-slate-500"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          }`}
+                        >
+                          {k.statusAktif ?? "AKTIF"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={() => setSelectedEmp(k)}
+                          className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition"
+                        >
+                          Detail
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
-            {filtered.length === 0 && (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                Tidak ada karyawan yang sesuai filter.
-              </div>
-            )}
           </div>
         </div>
       </div>

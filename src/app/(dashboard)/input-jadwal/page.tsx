@@ -725,10 +725,19 @@ export default function InputJadwalPage() {
               <button
                 type="submit"
                 disabled={loading || !clientForm.clientId}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-8 py-3 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
               >
-                <i className="fa-solid fa-paper-plane" />
-                <span>{loading ? "Menerbitkan..." : "Terbitkan Jadwal Klien Langsung (TERJADWAL)"}</span>
+                {loading ? (
+                  <>
+                    <i className="fa-solid fa-circle-notch fa-spin" />
+                    <span>Menerbitkan ke Server...</span>
+                  </>
+                ) : (
+                  <>
+                    <i className="fa-solid fa-paper-plane" />
+                    <span>Terbitkan Jadwal Klien Langsung (TERJADWAL)</span>
+                  </>
+                )}
               </button>
             </div>
           </form>
@@ -1190,9 +1199,19 @@ export default function InputJadwalPage() {
             <button
               type="submit"
               disabled={loading || !!blacklistWarning || streamerStats?.isOverlimit}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50 text-sm"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50 text-sm flex items-center gap-2 cursor-pointer"
             >
-              {loading ? "Menyimpan..." : "Simpan & Jadwalkan Sesi"}
+              {loading ? (
+                <>
+                  <i className="fa-solid fa-circle-notch fa-spin"></i>
+                  <span>Menyimpan ke Server...</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-calendar-check"></i>
+                  <span>Simpan & Jadwalkan Sesi</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -1246,9 +1265,19 @@ export default function InputJadwalPage() {
             <button
               type="submit"
               disabled={loading || !batch.trim()}
-              className="bg-slate-900 hover:bg-black text-white font-semibold py-2.5 px-6 rounded-xl transition text-sm disabled:opacity-50"
+              className="bg-slate-900 hover:bg-black text-white font-semibold py-2.5 px-6 rounded-xl transition text-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
-              {loading ? "Mengimpor..." : "Proses Impor Massal (Atomik)"}
+              {loading ? (
+                <>
+                  <i className="fa-solid fa-circle-notch fa-spin"></i>
+                  <span>Mengimpor Data...</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-file-import"></i>
+                  <span>Proses Impor Massal (Atomik)</span>
+                </>
+              )}
             </button>
           </div>
         </form>

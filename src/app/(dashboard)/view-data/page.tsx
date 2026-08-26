@@ -31,7 +31,24 @@ export default function ViewDataPage() {
     );
   }
 
-  if (!data) return <p className="text-xs text-slate-500">Memuat master data...</p>;
+  if (!data) {
+    return (
+      <div className="space-y-6 animate-fadeIn">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-100 shadow-sm animate-pulse">
+          <div className="space-y-2">
+            <div className="h-6 bg-slate-200 rounded w-48"></div>
+            <div className="h-4 bg-slate-100 rounded w-72"></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center flex flex-col items-center justify-center gap-3">
+          <i className="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600"></i>
+          <p className="text-base font-bold text-slate-800">Menarik Master Data...</p>
+          <p className="text-xs text-slate-400">Menyelaraskan data karyawan, jadwal, absensi & payroll dari server</p>
+        </div>
+      </div>
+    );
+  }
 
   const tabConfig: Record<string, { label: string; count: number; icon: string }> = {
     karyawan: { label: "Karyawan & Host", count: data.karyawan?.length ?? 0, icon: "fa-users" },
