@@ -231,9 +231,18 @@ export default function StreamerDashboardPage() {
   // Check-out form state
   const [reportedGmv, setReportedGmv] = useState("");
 
-  // Pending GMV
-  const [pendingGmvId, setPendingGmvId] = useState("");
-  const [pendingGmvModalOpen, setPendingGmvModalOpen] = useState(false);
+  // Terbatas Tab state (Matches Ref-Deploy)
+  const [subTabTerbatas, setSubTabTerbatas] = useState<"jeda" | "lapor">("jeda");
+  const [terbatasData, setTerbatasData] = useState<{ jedaTerbatas: any[]; perluLapor: any[] }>({ jedaTerbatas: [], perluLapor: [] });
+  const [filterColTerbatas, setFilterColTerbatas] = useState<"ALL" | "DATE" | "PLATFORM" | "STREAMER">("ALL");
+  const [filterTextTerbatas, setFilterTextTerbatas] = useState("");
+  const [selectedTerbatasJadwal, setSelectedTerbatasJadwal] = useState<any | null>(null);
+  const [formTerbatasStudio, setFormTerbatasStudio] = useState("Studio 1");
+  const [formTerbatasGmv, setFormTerbatasGmv] = useState("");
+  const [formTerbatasCatatan, setFormTerbatasCatatan] = useState("");
+  const [formTerbatasFotoGmv, setFormTerbatasFotoGmv] = useState("");
+  const [formTerbatasFotoKeluar, setFormTerbatasFotoKeluar] = useState("");
+  const [submittingTerbatas, setSubmittingTerbatas] = useState(false);
 
   // Request Tab state
   const [requestStatus, setRequestStatus] = useState<any>(null);
@@ -265,13 +274,14 @@ export default function StreamerDashboardPage() {
     setLoading(true);
     setError("");
     try {
-      const [jRes, sRes, dRes, pRes, tRes, hRes] = await Promise.all([
+      const [jRes, sRes, dRes, pRes, tRes, hRes, tbRes] = await Promise.all([
         fetch("/api/streamer?view=jadwal").then((r) => r.json()),
         fetch("/api/streamer?view=sesi").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=dashboard").then((r) => r.json()).catch(() => ({ status: "error" })),
         fetch("/api/streamer?view=pending-gmv").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
         fetch("/api/payroll?tiering=1").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
         fetch("/api/absensi?view=history").then((r) => r.json()).catch(() => ({ status: "error", data: [] })),
+        fetch("/api/streamer?view=terbatas").then((r) => r.json()).catch(() => ({ status: "error", data: { jedaTerbatas: [], perluLapor: [] } })),
       ]);
 
       if (jRes.status === "success") setJadwal(jRes.data);
@@ -279,7 +289,12 @@ export default function StreamerDashboardPage() {
 
       if (sRes.status === "success") setActiveSession(sRes.data);
       if (dRes.status === "success") setDashboardData(dRes.data);
-      if (pRes.status === "success") setPendingGmvList(pRes.data || []);
+      if (tbRes.status === "success" && tbRes.data) {
+        setTerbatasData(tbRes.data);
+        setPendingGmvList(tbRes.data.perluLapor || []);
+      } else if (pRes.status === "success") {
+        setPendingGmvList(pRes.data || []);
+      }
       if (hRes.status === "success") setAbsensiHistory(hRes.data || []);
       if (tRes.status === "success") {
         setTiering((tRes.data ?? []).map((b: any) => ({
@@ -444,33 +459,95 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  async function handlePendingGmvSubmit() {
-    if (!reportedGmv) {
-      setError("Harap isi total GMV income untuk sesi ini.");
+  function formatRupiahInput(val: string) {
+    const raw = val.replace(/[^0-9]/g, "");
+    if (!raw) return "";
+    return parseInt(raw, 10).toLocaleString("id-ID");
+  }
+
+  function siapkanFormKhusus(item: any, tipeForm: "PULANG_TELAT" | "MASUK_PULANG_TERBATAS") {
+    const isPerluLapor = tipeForm === "PULANG_TELAT";
+    const jadwalObj = isPerluLapor ? (item.jadwal || item) : item;
+    const idAbsen = isPerluLapor ? (item.id || item.idAbsen || "") : "";
+    
+    setSelectedTerbatasJadwal({
+      id: jadwalObj?.id || "",
+      idJadwal: jadwalObj?.idJadwal || "JDW-AUTO",
+      platform: jadwalObj?.platform || "TikTok",
+      clientName: jadwalObj?.client?.namaClient || jadwalObj?.namaClient || "Klien",
+      tanggal: jadwalObj?.tanggal || new Date().toISOString(),
+      jamMulaiLive: jadwalObj?.jamMulaiLive || new Date().toISOString(),
+      jamSelesaiLive: jadwalObj?.jamSelesaiLive || new Date().toISOString(),
+      streamerName: jadwalObj?.streamerKaryawan?.namaLengkap || item?.karyawan?.namaLengkap || session?.user?.name || "Streamer",
+      streamerId: jadwalObj?.streamerKaryawan?.idKaryawan || item?.karyawan?.idKaryawan || (dashboardData?.karyawan as any)?.idKaryawan || "-",
+      idAbsen,
+      tipeForm,
+    });
+    setFormTerbatasStudio(jadwalObj?.nomorStudio || "Studio 1");
+    setFormTerbatasGmv("");
+    setFormTerbatasCatatan("");
+    setFormTerbatasFotoGmv("");
+    setFormTerbatasFotoKeluar("");
+    setError("");
+    setSuccess("");
+
+    setTimeout(() => {
+      const el = document.getElementById("formTerbatasContainer");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  }
+
+  async function handleSubmitTerbatas(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedTerbatasJadwal) return;
+    const cleanGmv = formTerbatasGmv.replace(/[^0-9]/g, "");
+    if (!cleanGmv || parseFloat(cleanGmv) < 0) {
+      setError("Nominal GMV (Rp) Wajib diisi.");
       return;
     }
-    setActionLoading(true);
+    if (!formTerbatasFotoGmv && !formTerbatasFotoKeluar) {
+      setError("Bukti GMV atau Selfie Keluar Wajib diisi.");
+      return;
+    }
+
+    setSubmittingTerbatas(true);
     setError("");
     setSuccess("");
     try {
-      const res = await fetch(`/api/absensi?id=${pendingGmvId}`, {
-        method: "PATCH",
+      const res = await fetch("/api/absensi", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportedGmv: parseFloat(reportedGmv) }),
+        body: JSON.stringify({
+          tipeForm: selectedTerbatasJadwal.tipeForm,
+          idAbsen: selectedTerbatasJadwal.idAbsen || undefined,
+          idJadwal: selectedTerbatasJadwal.idJadwal || selectedTerbatasJadwal.id,
+          nomorStudio: formTerbatasStudio,
+          reportedGmv: parseFloat(cleanGmv),
+          catatan: formTerbatasCatatan || undefined,
+          fotoBuktiGmv: formTerbatasFotoGmv || undefined,
+          fotoBuktiKeluar: formTerbatasFotoKeluar || undefined,
+        }),
       });
       const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("✅ GMV berhasil disimpan!");
-        setPendingGmvModalOpen(false);
-        setReportedGmv("");
+      if (d.status === "success" || d.jadwalId) {
+        setSuccess(
+          selectedTerbatasJadwal.tipeForm === "PULANG_TELAT"
+            ? "✅ Pengiriman Data Berhasil! Keterlambatan telah dilaporkan ke HR dan omset GMV tersimpan."
+            : "✅ Pengiriman Data Berhasil! Sesi Jeda Terbatas Sukses Terdata!"
+        );
+        setSelectedTerbatasJadwal(null);
+        setFormTerbatasGmv("");
+        setFormTerbatasCatatan("");
+        setFormTerbatasFotoGmv("");
+        setFormTerbatasFotoKeluar("");
         loadData();
       } else {
-        setError(d.message ?? "Gagal menyimpan GMV");
+        setError(d.message ?? "Gagal menyimpan data sesi terbatas");
       }
     } catch {
-      setError("Koneksi gagal");
+      setError("Koneksi gagal saat mengirim data");
     } finally {
-      setActionLoading(false);
+      setSubmittingTerbatas(false);
     }
   }
 
@@ -480,16 +557,52 @@ export default function StreamerDashboardPage() {
   const currentRate = matchedTier?.ratePerJam ?? 25000;
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
 
+  const filteredJeda = (terbatasData?.jedaTerbatas || []).filter((j: any) => {
+    if (!filterTextTerbatas.trim()) return true;
+    const q = filterTextTerbatas.toLowerCase();
+    if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
+    if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
+    if (filterColTerbatas === "STREAMER") return (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) || (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q);
+    return (
+      (j.idJadwal || "").toLowerCase().includes(q) ||
+      (j.platform || "").toLowerCase().includes(q) ||
+      (j.client?.namaClient || "").toLowerCase().includes(q) ||
+      (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) ||
+      (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q) ||
+      formatDateSafe(j.tanggal).toLowerCase().includes(q)
+    );
+  });
+
+  const rawLaporList = (terbatasData?.perluLapor && terbatasData.perluLapor.length > 0) ? terbatasData.perluLapor : pendingGmvList;
+  const filteredLapor = rawLaporList.filter((item: any) => {
+    if (!filterTextTerbatas.trim()) return true;
+    const q = filterTextTerbatas.toLowerCase();
+    const j = item.jadwal || item;
+    const k = item.karyawan || j.streamerKaryawan;
+    if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
+    if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
+    if (filterColTerbatas === "STREAMER") return (k?.namaLengkap || "").toLowerCase().includes(q) || (k?.idKaryawan || "").toLowerCase().includes(q);
+    return (
+      (j.idJadwal || "").toLowerCase().includes(q) ||
+      (item.id || "").toLowerCase().includes(q) ||
+      (j.platform || "").toLowerCase().includes(q) ||
+      (j.client?.namaClient || "").toLowerCase().includes(q) ||
+      (k?.namaLengkap || "").toLowerCase().includes(q) ||
+      (k?.idKaryawan || "").toLowerCase().includes(q) ||
+      formatDateSafe(j.tanggal).toLowerCase().includes(q)
+    );
+  });
+
   const visibleTabs = TABS;
 
   return (
     <div className="space-y-6">
       {/* Profile Header */}
-      <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800">
+      <div className="bg-gradient-to-r from-[#4A0A04] via-[#6D1207] to-[#941A0B] text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-blue-600/30 border border-blue-400/40 flex items-center justify-center text-2xl shadow-inner">
-              <i className="fa-solid fa-headset text-blue-300" />
+            <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-2xl shadow-inner">
+              <i className="fa-solid fa-headset text-white" />
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -525,13 +638,13 @@ export default function StreamerDashboardPage() {
           </div>
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Total Jam Live Bulan Ini</span>
-            <div className="text-base font-extrabold text-blue-300">
+            <div className="text-base font-extrabold text-white">
               {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ {matchedTier?.jamMaksimal ?? 80} Jam Target</span>
             </div>
           </div>
           <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
             <span className="text-slate-400 block mb-1">Total Sesi Selesai</span>
-            <div className="text-base font-extrabold text-purple-300">
+            <div className="text-base font-extrabold text-amber-300">
               {dashboardData?.totalSesi ?? 0} <span className="text-xs text-slate-400 font-normal">Sesi</span>
             </div>
           </div>
@@ -565,8 +678,12 @@ export default function StreamerDashboardPage() {
             </div>
           </div>
           <button
-            onClick={() => { setPendingGmvId(p.id); setPendingGmvModalOpen(true); }}
-            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md whitespace-nowrap"
+            onClick={() => {
+              setActiveTab("terbatas");
+              setSubTabTerbatas("lapor");
+              siapkanFormKhusus(p, "PULANG_TELAT");
+            }}
+            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl transition shadow-md whitespace-nowrap active:scale-95"
           >
             Lengkapi GMV Sesi Ini
           </button>
@@ -601,8 +718,8 @@ export default function StreamerDashboardPage() {
                 }}
                 className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
                   isActive
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 scale-[1.02]"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/80"
+                    ? "bg-[#941A0B] text-white shadow-md shadow-[#941A0B]/20 scale-[1.02]"
+                    : "text-[#4D4D4D] hover:text-[#000000] hover:bg-[#F1F1F1]"
                 }`}
               >
                 <i className={`${tab.icon} ${isActive ? "text-white" : "text-slate-400"}`} />
@@ -610,6 +727,11 @@ export default function StreamerDashboardPage() {
                 {tab.id === "checkout" && pendingGmvList.length > 0 && (
                   <span className="bg-amber-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                     {pendingGmvList.length}
+                  </span>
+                )}
+                {tab.id === "terbatas" && (terbatasData?.perluLapor?.length || pendingGmvList.length) > 0 && (
+                  <span className="bg-red-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                    {terbatasData?.perluLapor?.length || pendingGmvList.length}
                   </span>
                 )}
               </button>
@@ -635,7 +757,7 @@ export default function StreamerDashboardPage() {
                   const found = jadwal.find((j) => j.id === val) ?? null;
                   setSelectedJadwalDetail(found);
                 }}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
                 required
               >
                 <option value="">-- Pilih Jadwal Siaran --</option>
@@ -655,7 +777,7 @@ export default function StreamerDashboardPage() {
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-3">
                     <div>
                       <p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p>
-                      <p className="text-sm font-bold text-blue-400">{selectedJadwalDetail.idJadwal}</p>
+                      <p className="text-sm font-bold text-[#FA3737]">{selectedJadwalDetail.idJadwal}</p>
                     </div>
                     <div>
                       <p className="text-[10px] text-slate-400 mb-0.5">Tanggal</p>
@@ -704,7 +826,7 @@ export default function StreamerDashboardPage() {
                       <textarea
                         value={alasanTerlambat}
                         onChange={(e) => setAlasanTerlambat(e.target.value)}
-                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50"
+                        className="w-full border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-[#941A0B] outline-none bg-slate-50"
                         rows={2}
                         placeholder="Pilih jadwal siaran terlebih dahulu..."
                       />
@@ -781,7 +903,7 @@ export default function StreamerDashboardPage() {
               type="button"
               onClick={handleCheckIn}
               disabled={actionLoading || !selectedJadwalId}
-              className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition shadow-md w-full md:w-auto disabled:opacity-50"
+              className="bg-[#941A0B] text-white font-bold py-3 px-8 rounded-xl hover:bg-[#781408] transition shadow-md w-full md:w-auto disabled:opacity-50"
             >
               <i className="fa-solid fa-cloud-arrow-up mr-2" />
               {actionLoading ? "Memproses..." : "Submit Check-In"}
@@ -809,7 +931,7 @@ export default function StreamerDashboardPage() {
                   </div>
                   <div>
                     <p className="text-[10px] text-slate-400 mb-0.5">Durasi Berlangsung</p>
-                    <p className="text-sm font-bold text-blue-400">
+                    <p className="text-sm font-bold text-[#FA3737]">
                       {Math.round((Date.now() - new Date(activeSession.waktu).getTime()) / 60000)} Menit
                     </p>
                   </div>
@@ -828,7 +950,7 @@ export default function StreamerDashboardPage() {
                     value={reportedGmv}
                     onChange={(e) => setReportedGmv(e.target.value)}
                     placeholder="Contoh: 1500000"
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-slate-50 mb-4"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] bg-slate-50 mb-4"
                     required
                   />
                   <div className="bg-red-50 border border-red-200 p-3 rounded-lg flex items-start gap-1.5 leading-tight">
@@ -871,63 +993,423 @@ export default function StreamerDashboardPage() {
         </div>
       )}
 
-      {/* ======== TAB: TERBATAS ======== */}
+      {/* ======== TAB: TERBATAS (AKSI KHUSUS) ======== */}
       {activeTab === "terbatas" && (
-        <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-5 border-b border-slate-200 pb-3 gap-4">
-            <h3 className="font-bold text-lg text-slate-900">
-              <i className="fa-solid fa-bolt text-amber-500 mr-2" />
-              Aksi Khusus
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
+          {/* Header with Sub-tabs */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-4">
+            <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
+              <i className="fa-solid fa-bolt text-amber-500" />
+              <span>Aksi Khusus</span>
             </h3>
+            <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                type="button"
+                onClick={() => {
+                  setSubTabTerbatas("jeda");
+                  setSelectedTerbatasJadwal(null);
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`py-1.5 px-4 text-xs sm:text-sm font-bold transition whitespace-nowrap rounded-lg flex items-center gap-1.5 ${
+                  subTabTerbatas === "jeda"
+                    ? "text-[#941A0B] bg-[#941A0B]/10 border border-[#941A0B]/20 shadow-xs"
+                    : "text-slate-500 hover:text-[#941A0B] hover:bg-slate-50"
+                }`}
+              >
+                <i className="fa-solid fa-clock-rotate-left text-xs" />
+                <span>Jeda Terbatas</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSubTabTerbatas("lapor");
+                  setSelectedTerbatasJadwal(null);
+                  setError("");
+                  setSuccess("");
+                }}
+                className={`py-1.5 px-4 text-xs sm:text-sm font-bold transition whitespace-nowrap rounded-lg flex items-center gap-1.5 ${
+                  subTabTerbatas === "lapor"
+                    ? "text-red-600 bg-red-50 border border-red-200 shadow-xs"
+                    : "text-slate-500 hover:text-red-600 hover:bg-slate-50"
+                }`}
+              >
+                <i className="fa-solid fa-triangle-exclamation text-xs" />
+                <span>Perlu Lapor</span>
+                {rawLaporList.length > 0 && (
+                  <span className="bg-red-600 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full shadow-xs">
+                    {rawLaporList.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
-          {/* Pending GMV list */}
-          <div>
-            <h4 className="text-sm font-bold text-red-700 bg-red-50 border border-red-200 p-3 rounded-lg mb-4">
-              <i className="fa-solid fa-triangle-exclamation mr-2" />
-              Peringatan: Laporan GMV yang Belum Dilengkapi
-            </h4>
+          {/* VIEW: JEDA TERBATAS */}
+          {subTabTerbatas === "jeda" && (
+            <div className="space-y-4">
+              <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-start gap-2">
+                <i className="fa-solid fa-circle-info text-[#941A0B] mt-0.5 text-sm" />
+                <span>
+                  Berikut adalah daftar jadwal jeda singkat (&lt; 30 menit). Silakan pilih jadwal untuk melakukan proses <strong>Check-Out instan</strong>.
+                </span>
+              </div>
 
-            {pendingGmvList.length > 0 ? (
-              <div className="overflow-auto rounded-lg border border-slate-200 mb-4 max-h-[400px]">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0">
+              {/* Filter bar */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={filterColTerbatas}
+                  onChange={(e) => setFilterColTerbatas(e.target.value as any)}
+                  className="w-full sm:w-auto border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-[#941A0B] outline-none font-medium"
+                >
+                  <option value="ALL">-- Tampilkan Semua Data --</option>
+                  <option value="DATE">Tanggal</option>
+                  <option value="PLATFORM">Platform</option>
+                  <option value="STREAMER">Streamer</option>
+                </select>
+                <div className="relative flex-1">
+                  <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs" />
+                  <input
+                    type="text"
+                    value={filterTextTerbatas}
+                    onChange={(e) => setFilterTextTerbatas(e.target.value)}
+                    placeholder="Ketik untuk mencari jadwal jeda..."
+                    className="w-full border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B]"
+                  />
+                  {filterTextTerbatas && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterTextTerbatas("")}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Table Jeda */}
+              <div className="overflow-auto rounded-xl border border-slate-200 max-h-[420px] shadow-xs">
+                <table className="min-w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
                     <tr>
-                      <th className="px-4 py-3">NO</th>
-                      <th className="px-4 py-3">ID JADWAL</th>
+                      <th className="px-3.5 py-3 text-center w-12">NO</th>
+                      <th className="px-4 py-3 text-center">ID JADWAL</th>
+                      <th className="px-4 py-3">STREAMER</th>
                       <th className="px-4 py-3">INFO LIVE</th>
-                      <th className="px-4 py-3 text-center">AKSI</th>
+                      <th className="px-4 py-3 text-center w-36">AKSI</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
-                    {pendingGmvList.map((p, idx) => (
-                      <tr key={p.id}>
-                        <td className="px-4 py-3 text-center">{idx + 1}</td>
-                        <td className="px-4 py-3 font-mono font-bold text-blue-600">{p.jadwal?.idJadwal ?? "–"}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-800">{p.jadwal?.client?.namaClient ?? "Klien"}</div>
-                          <div className="text-xs text-slate-500">{p.jadwal?.platform} • {formatDateSafe(p.jadwal?.tanggal)}</div>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <button
-                            onClick={() => { setPendingGmvId(p.id); setPendingGmvModalOpen(true); }}
-                            className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition"
-                          >
-                            Lengkapi GMV
-                          </button>
+                  <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                    {filteredJeda.length > 0 ? (
+                      filteredJeda.map((j, idx) => (
+                        <tr key={j.id} className="hover:bg-amber-50/60 transition group">
+                          <td className="px-3.5 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                          <td className="px-4 py-3 text-center font-mono font-bold text-[#941A0B] whitespace-nowrap">
+                            {j.idJadwal || "JDW-AUTO"}
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="font-bold text-slate-900">{j.streamerKaryawan?.namaLengkap || session?.user?.name}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{j.streamerKaryawan?.idKaryawan || "-"}</div>
+                          </td>
+                          <td className="px-4 py-3 align-top">
+                            <div className="font-bold text-slate-900">{j.platform || "Platform"} • {j.client?.namaClient || "Klien"}</div>
+                            <div className="text-[11px] text-emerald-600 mt-0.5 flex items-center gap-1">
+                              <i className="fa-regular fa-calendar text-[10px]" />
+                              <span>{formatDateSafe(j.tanggal)}</span>
+                            </div>
+                            <div className="text-[11px] text-amber-600 mt-0.5 flex items-center gap-1 font-mono">
+                              <i className="fa-regular fa-clock text-[10px]" />
+                              <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-center align-middle">
+                            <button
+                              type="button"
+                              onClick={() => siapkanFormKhusus(j, "MASUK_PULANG_TERBATAS")}
+                              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-sm flex items-center gap-1.5 mx-auto active:scale-95 whitespace-nowrap"
+                            >
+                              <i className="fa-solid fa-right-from-bracket text-xs" />
+                              <span>Absen Instan</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-slate-400 text-xs">
+                          <i className="fa-solid fa-calendar-check text-2xl text-slate-300 block mb-2" />
+                          Tidak ada jadwal jeda singkat saat ini.
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <div className="p-6 text-center text-slate-400 text-xs">
-                <i className="fa-solid fa-circle-check text-2xl text-emerald-400 block mb-2" />
-                Tidak ada tanggungan GMV. Bagus!
+            </div>
+          )}
+
+          {/* VIEW: PERLU LAPOR */}
+          {subTabTerbatas === "lapor" && (
+            <div className="space-y-4">
+              <div className="text-xs font-bold text-red-700 bg-red-50 p-3.5 rounded-xl border border-red-200 flex items-center gap-2.5 shadow-xs">
+                <i className="fa-solid fa-triangle-exclamation text-red-600 text-base shrink-0" />
+                <span>
+                  Peringatan: Daftar di bawah adalah Sesi Live yang lupa Anda laporkan dan telah melampaui batas waktu 8 jam.
+                </span>
               </div>
-            )}
-          </div>
+
+              {/* Filter bar */}
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  value={filterColTerbatas}
+                  onChange={(e) => setFilterColTerbatas(e.target.value as any)}
+                  className="w-full sm:w-auto border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-red-500 outline-none font-medium"
+                >
+                  <option value="ALL">-- Tampilkan Semua Data --</option>
+                  <option value="DATE">Tanggal</option>
+                  <option value="PLATFORM">Platform</option>
+                  <option value="STREAMER">Streamer</option>
+                </select>
+                <div className="relative flex-1">
+                  <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs" />
+                  <input
+                    type="text"
+                    value={filterTextTerbatas}
+                    onChange={(e) => setFilterTextTerbatas(e.target.value)}
+                    placeholder="Ketik untuk mencari sesi tertunda..."
+                    className="w-full border border-slate-300 rounded-xl pl-8 pr-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-red-500"
+                  />
+                  {filterTextTerbatas && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterTextTerbatas("")}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Table Lapor */}
+              <div className="overflow-auto rounded-xl border border-slate-200 max-h-[420px] shadow-xs">
+                <table className="min-w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-3.5 py-3 text-center w-12">NO</th>
+                      <th className="px-4 py-3 text-center">ID JADWAL</th>
+                      <th className="px-4 py-3">STREAMER</th>
+                      <th className="px-4 py-3">INFO LIVE</th>
+                      <th className="px-4 py-3 text-center w-36">AKSI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                    {filteredLapor.length > 0 ? (
+                      filteredLapor.map((p, idx) => {
+                        const j = p.jadwal || p;
+                        const k = p.karyawan || j.streamerKaryawan;
+                        return (
+                          <tr key={p.id || idx} className="hover:bg-red-50/60 transition group">
+                            <td className="px-3.5 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
+                            <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                              <div className="font-mono font-bold text-[#941A0B]">{j.idJadwal ?? "–"}</div>
+                              {p.id && <div className="text-[9px] text-slate-400 font-mono truncate max-w-[120px] mx-auto">{p.id}</div>}
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <div className="font-bold text-slate-900">{k?.namaLengkap || session?.user?.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">{k?.idKaryawan || "-"}</div>
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <div className="font-bold text-slate-900">{j.platform || "Platform"} • {j.client?.namaClient || "Klien"}</div>
+                              <div className="text-[11px] text-[#941A0B] mt-0.5 flex items-center gap-1">
+                                <i className="fa-regular fa-calendar text-[10px]" />
+                                <span>{formatDateSafe(j.tanggal)}</span>
+                              </div>
+                              <div className="text-[11px] text-rose-600 mt-0.5 flex items-center gap-1 font-mono">
+                                <i className="fa-regular fa-clock text-[10px]" />
+                                <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-center align-middle">
+                              <button
+                                type="button"
+                                onClick={() => siapkanFormKhusus(p, "PULANG_TELAT")}
+                                className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs shadow-md transition flex items-center gap-1.5 mx-auto active:scale-95 whitespace-nowrap"
+                              >
+                                <i className="fa-solid fa-file-pen text-xs" />
+                                <span>Perlu Lapor</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-10 text-center text-emerald-600 font-bold bg-emerald-50 text-xs">
+                          <i className="fa-solid fa-circle-check text-2xl text-emerald-500 block mb-2" />
+                          Tidak ada tanggungan telat lapor. Bagus!
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* ======== FORM ABSEN KHUSUS (DETAIL JADWAL DIPROSES) ======== */}
+          {selectedTerbatasJadwal && (
+            <div id="formTerbatasContainer" className="border-t-2 border-slate-100 pt-6 animate-fade-in space-y-4">
+              {/* Summary Dark Card */}
+              <div className="bg-[#1e293b] text-white rounded-2xl p-5 shadow-lg w-full border border-slate-700">
+                <div className="flex items-center justify-between border-b border-slate-700 pb-3 mb-3">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <i className="fa-solid fa-circle-info text-[#FA3737]" />
+                    <span>Detail Jadwal Diproses</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTerbatasJadwal(null)}
+                    className="text-slate-400 hover:text-white text-xs bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-600 transition"
+                  >
+                    ✕ Tutup Form
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-y-3 gap-x-4 text-xs">
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p>
+                    <p className="font-bold text-[#FA3737] font-mono break-all">{selectedTerbatasJadwal.idJadwal}</p>
+                    {selectedTerbatasJadwal.idAbsen && (
+                      <p className="text-[9px] text-slate-400 font-mono">{selectedTerbatasJadwal.idAbsen}</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Platform & Klien</p>
+                    <p className="font-bold text-white">{selectedTerbatasJadwal.platform} • {selectedTerbatasJadwal.clientName}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Streamer</p>
+                    <p className="font-bold text-white">{selectedTerbatasJadwal.streamerName}</p>
+                    <p className="text-[9px] text-slate-400 font-mono">{selectedTerbatasJadwal.streamerId}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-400 mb-0.5">Waktu Live</p>
+                    <p className="font-bold text-emerald-400">{formatDateSafe(selectedTerbatasJadwal.tanggal)}</p>
+                    <p className="text-[10px] text-amber-300 font-mono">
+                      {formatTimeSafe(selectedTerbatasJadwal.jamMulaiLive)} - {formatTimeSafe(selectedTerbatasJadwal.jamSelesaiLive)} WIB
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Fields */}
+              <form onSubmit={handleSubmitTerbatas} className="space-y-5 bg-slate-50/70 p-5 rounded-2xl border border-slate-200 shadow-xs">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Left Column: Studio, GMV, Catatan */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Nomor Studio *</label>
+                    <select
+                      value={formTerbatasStudio}
+                      onChange={(e) => setFormTerbatasStudio(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white mb-4 outline-none font-medium"
+                      required
+                    >
+                      <option value="Studio 1">Studio 1</option>
+                      <option value="Studio 2">Studio 2</option>
+                      <option value="Studio 3">Studio 3</option>
+                      <option value="Studio 4">Studio 4</option>
+                      <option value="Studio 5">Studio 5</option>
+                      <option value="Studio 6">Studio 6</option>
+                      <option value="Studio 7">Studio 7</option>
+                      <option value="Studio 8">Studio 8</option>
+                    </select>
+
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Nominal GMV (Rp) *</label>
+                    <div className="relative mb-4">
+                      <span className="absolute left-3.5 top-2.5 text-xs font-bold text-slate-400">Rp</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatRupiahInput(formTerbatasGmv)}
+                        onChange={(e) => setFormTerbatasGmv(e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="0"
+                        className="w-full border border-slate-300 rounded-xl pl-9 pr-3.5 py-2.5 text-xs font-bold text-slate-800 focus:ring-2 focus:ring-amber-500 bg-white outline-none"
+                        required
+                      />
+                    </div>
+
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">Catatan Kendala (Opsional)</label>
+                    <textarea
+                      value={formTerbatasCatatan}
+                      onChange={(e) => setFormTerbatasCatatan(e.target.value)}
+                      placeholder="Tulis catatan kendala sesi jika ada..."
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs focus:ring-2 focus:ring-amber-500 bg-white outline-none"
+                      rows={3}
+                    />
+                  </div>
+
+                  {/* Right Column: Bukti GMV & Selfie Keluar */}
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">Bukti GMV *</label>
+                      <CameraCapture
+                        value={formTerbatasFotoGmv}
+                        onChange={setFormTerbatasFotoGmv}
+                        label="📷 Ambil Bukti GMV / Upload"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">Selfie Keluar (Kamera) *</label>
+                      <CameraCapture
+                        value={formTerbatasFotoKeluar}
+                        onChange={setFormTerbatasFotoKeluar}
+                        label="📷 Ambil Selfie Keluar"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Submit Button */}
+                <div className="border-t border-slate-200 pt-4 flex flex-col sm:flex-row items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedTerbatasJadwal(null)}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition text-center"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingTerbatas}
+                    className={`w-full sm:w-auto text-white font-bold py-2.5 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2 text-xs disabled:opacity-50 active:scale-95 ${
+                      selectedTerbatasJadwal.tipeForm === "PULANG_TELAT"
+                        ? "bg-red-600 hover:bg-red-700"
+                        : "bg-amber-500 hover:bg-amber-600"
+                    }`}
+                  >
+                    {submittingTerbatas ? (
+                      <>
+                        <i className="fa-solid fa-circle-notch fa-spin mr-1.5" />
+                        Memproses...
+                      </>
+                    ) : selectedTerbatasJadwal.tipeForm === "PULANG_TELAT" ? (
+                      <>
+                        <i className="fa-solid fa-triangle-exclamation mr-1.5" />
+                        Kirim Laporan Telat
+                      </>
+                    ) : (
+                      <>
+                        <i className="fa-solid fa-check-double mr-1.5" />
+                        Selesaikan Sesi Jeda
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       )}
 
@@ -963,7 +1445,7 @@ export default function StreamerDashboardPage() {
                       <div className="font-semibold text-slate-800">
                         {formatDateSafe(j.tanggal, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                       </div>
-                      <div className="text-[11px] text-blue-600 font-mono">
+                      <div className="text-[11px] text-[#941A0B] font-mono">
                         {formatTimeSafe(j.jamMulaiLive)}
                         {" - "}
                         {formatTimeSafe(j.jamSelesaiLive)} WIB
@@ -988,7 +1470,7 @@ export default function StreamerDashboardPage() {
                           ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
                           : j.status === "SELESAI"
                           ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-blue-50 text-blue-700 border-blue-200"
+                          : "bg-[#941A0B]/10 text-[#941A0B] border-[#941A0B]/20"
                       }`}>
                         {j.liveState === "LIVE" ? "🔴 ON AIR" : j.status}
                       </span>
@@ -1007,9 +1489,9 @@ export default function StreamerDashboardPage() {
                           target="_blank"
                           rel="noopener noreferrer"
                           title="Tambah Pengingat Google Calendar (Pop-up 30m & 15m)"
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                          className="px-2.5 py-1 bg-[#941A0B]/10 hover:bg-[#941A0B]/15 text-[#941A0B] border border-[#941A0B]/20 rounded-lg text-xs font-semibold transition flex items-center gap-1"
                         >
-                          <i className="fa-solid fa-calendar-plus text-blue-600" />
+                          <i className="fa-solid fa-calendar-plus text-[#941A0B]" />
                           <span className="hidden sm:inline">Sync GCal</span>
                         </a>
 
@@ -1058,7 +1540,7 @@ export default function StreamerDashboardPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
                 <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-                  <i className="fa-solid fa-file-pen text-blue-600" />
+                  <i className="fa-solid fa-file-pen text-[#941A0B]" />
                   Pusat Pengajuan Streamer
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
@@ -1068,15 +1550,15 @@ export default function StreamerDashboardPage() {
 
               {/* Quota Indicators */}
               <div className="flex flex-wrap items-center gap-3">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-2">
-                  <div className="text-[10px] uppercase font-bold text-blue-700">Sisa Kuota Libur</div>
-                  <div className="text-sm font-bold text-blue-900">
+                <div className="bg-[#941A0B]/10 border border-[#941A0B]/20 rounded-xl px-3.5 py-2">
+                  <div className="text-[10px] uppercase font-bold text-[#941A0B]">Sisa Kuota Libur</div>
+                  <div className="text-sm font-bold text-[#000000]">
                     {requestStatus ? `${requestStatus.sisaKuotaLibur} / ${requestStatus.defaultKuotaLibur} Hari` : "Memuat..."}
                   </div>
                 </div>
-                <div className="bg-purple-50 border border-purple-200 rounded-xl px-3.5 py-2">
-                  <div className="text-[10px] uppercase font-bold text-purple-700">Sisa Kuota Sesi</div>
-                  <div className="text-sm font-bold text-purple-900">
+                <div className="bg-[#941A0B]/10 border border-[#941A0B]/20 rounded-xl px-3.5 py-2">
+                  <div className="text-[10px] uppercase font-bold text-[#941A0B]">Sisa Kuota Sesi</div>
+                  <div className="text-sm font-bold text-[#000000]">
                     {requestStatus ? `${requestStatus.sisaKuotaShift} / ${requestStatus.defaultKuotaShift} Kali` : "Memuat..."}
                   </div>
                 </div>
@@ -1108,7 +1590,7 @@ export default function StreamerDashboardPage() {
                 onClick={() => setRequestSubTab("libur")}
                 className={`pb-2.5 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
                   requestSubTab === "libur"
-                    ? "border-blue-600 text-blue-600"
+                    ? "border-[#941A0B] text-[#941A0B]"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -1120,7 +1602,7 @@ export default function StreamerDashboardPage() {
                 onClick={() => setRequestSubTab("sesi")}
                 className={`pb-2.5 px-4 text-xs font-bold transition flex items-center gap-2 border-b-2 ${
                   requestSubTab === "sesi"
-                    ? "border-purple-600 text-purple-600"
+                    ? "border-[#941A0B] text-[#941A0B]"
                     : "border-transparent text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -1148,7 +1630,7 @@ export default function StreamerDashboardPage() {
                           type="date"
                           value={leaveDate}
                           onChange={(e) => setLeaveDate(e.target.value)}
-                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
                           required
                         />
                       </div>
@@ -1161,7 +1643,7 @@ export default function StreamerDashboardPage() {
                           value={leaveReason}
                           onChange={(e) => setLeaveReason(e.target.value)}
                           placeholder="mis. Keperluan keluarga, istirahat..."
-                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
                         />
                       </div>
                     </div>
@@ -1197,7 +1679,7 @@ export default function StreamerDashboardPage() {
                       <button
                         type="submit"
                         disabled={submittingRequest || !leaveDate}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-blue-600/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                        className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-[#941A0B]/20 disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                       >
                         {submittingRequest ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-paper-plane" />}
                         <span>{submittingRequest ? "Mengirim..." : "Kirim Pengajuan Libur"}</span>
@@ -1227,7 +1709,7 @@ export default function StreamerDashboardPage() {
                           type="date"
                           value={shiftDate}
                           onChange={(e) => setShiftDate(e.target.value)}
-                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                          className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
                           required
                         />
                       </div>
@@ -1247,12 +1729,12 @@ export default function StreamerDashboardPage() {
                               onClick={() => setSelectedSesi(s.key as any)}
                               className={`p-2.5 rounded-xl border text-left transition ${
                                 selectedSesi === s.key
-                                  ? "border-purple-600 bg-purple-50/70 text-purple-900 ring-2 ring-purple-500/20"
-                                  : "border-slate-200 hover:border-purple-200 text-slate-700 bg-white"
+                                  ? "border-[#941A0B] bg-[#941A0B]/10 text-[#000000] ring-2 ring-[#941A0B]/20"
+                                  : "border-slate-200 hover:border-[#941A0B]/20 text-slate-700 bg-white"
                               }`}
                             >
                               <div className="flex items-center gap-1.5 text-xs font-bold">
-                                <i className={`fa-solid ${s.icon} text-purple-600`} />
+                                <i className={`fa-solid ${s.icon} text-[#941A0B]`} />
                                 <span>{s.label}</span>
                               </div>
                               <div className="text-[10px] text-slate-500 font-mono mt-0.5">{s.time}</div>
@@ -1271,7 +1753,7 @@ export default function StreamerDashboardPage() {
                         value={shiftNote}
                         onChange={(e) => setShiftNote(e.target.value)}
                         placeholder="mis. Request sesi pagi karena kuliah sore..."
-                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+                        className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
                       />
                     </div>
 
@@ -1279,7 +1761,7 @@ export default function StreamerDashboardPage() {
                       <button
                         type="submit"
                         disabled={submittingRequest || !shiftDate}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-purple-600/20 disabled:opacity-50 flex items-center gap-2"
+                        className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md shadow-[#941A0B]/20 disabled:opacity-50 flex items-center gap-2"
                       >
                         {submittingRequest ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-paper-plane" />}
                         <span>{submittingRequest ? "Mengirim..." : "Kirim Request Sesi Live"}</span>
@@ -1322,7 +1804,7 @@ export default function StreamerDashboardPage() {
                             {formatDateSafe(l.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#941A0B]/10 text-[#941A0B] border border-[#941A0B]/20">
                               🏖️ Libur Streamer
                             </span>
                           </td>
@@ -1346,7 +1828,7 @@ export default function StreamerDashboardPage() {
                             {formatDateSafe(s.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#941A0B]/10 text-[#941A0B] border border-[#941A0B]/20">
                               📹 {s.jenis?.replace("REQUEST_", "") || "Sesi Live"}
                             </span>
                           </td>
@@ -1381,13 +1863,13 @@ export default function StreamerDashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Link
               href="/pengajuan?tab=tukar-shift"
-              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-blue-400 hover:bg-blue-50/40 transition group text-center shadow-sm"
+              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
             >
-              <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
+              <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">
                 <i className="fa-solid fa-right-left" />
               </div>
               <div>
-                <div className="font-bold text-slate-800 text-xs group-hover:text-blue-700">Tukar Shift</div>
+                <div className="font-bold text-slate-800 text-xs group-hover:text-[#941A0B]">Tukar Shift</div>
                 <div className="text-[10px] text-slate-400 mt-0.5">Penggantian jadwal live streaming</div>
               </div>
             </Link>
@@ -1407,13 +1889,13 @@ export default function StreamerDashboardPage() {
 
             <Link
               href="/pengajuan?tab=lembur"
-              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-purple-400 hover:bg-purple-50/40 transition group text-center shadow-sm"
+              className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
             >
-              <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
+              <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">
                 <i className="fa-regular fa-clock" />
               </div>
               <div>
-                <div className="font-bold text-slate-800 text-xs group-hover:text-purple-700">Pengajuan Lembur</div>
+                <div className="font-bold text-slate-800 text-xs group-hover:text-[#941A0B]">Pengajuan Lembur</div>
                 <div className="text-[10px] text-slate-400 mt-0.5">Tambahan jam siaran (1.5x rate)</div>
               </div>
             </Link>
@@ -1448,12 +1930,12 @@ export default function StreamerDashboardPage() {
                 {absensiHistory.map((h) => (
                   <tr key={h.id} className="hover:bg-slate-50/80 transition">
                     <td className="px-4 py-3.5">
-                      <div className="font-mono font-bold text-blue-600 text-[10px]">{h.jadwal?.idJadwal ?? "–"}</div>
+                      <div className="font-mono font-bold text-[#941A0B] text-[10px]">{h.jadwal?.idJadwal ?? "–"}</div>
                       <div className="text-[10px] text-slate-400">{h.jadwal?.client?.namaClient ?? "–"} {h.jadwal?.platform ? `• ${h.jadwal.platform}` : ""}</div>
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        h.tipe === "CHECK_IN" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
+                        h.tipe === "CHECK_IN" ? "bg-emerald-50 text-emerald-700" : "bg-[#941A0B]/10 text-[#941A0B]"
                       }`}>
                         {h.tipe === "CHECK_IN" ? "Check-In" : "Check-Out"}
                       </span>
@@ -1495,7 +1977,7 @@ export default function StreamerDashboardPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
             <div>
               <h3 className="font-bold text-base sm:text-lg text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-chart-pie text-blue-600" />
+                <i className="fa-solid fa-chart-pie text-[#941A0B]" />
                 <span>Laporan & Evaluasi Performa Streamer</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -1503,7 +1985,7 @@ export default function StreamerDashboardPage() {
               </p>
             </div>
             {dashboardData?.periode && (
-              <span className="px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200/70 text-blue-700 font-bold text-xs self-start sm:self-auto">
+              <span className="px-3 py-1.5 rounded-xl bg-[#941A0B]/10 border border-[#941A0B]/20/70 text-[#941A0B] font-bold text-xs self-start sm:self-auto">
                 📅 Periode: {dashboardData.periode}
               </span>
             )}
@@ -1517,15 +1999,15 @@ export default function StreamerDashboardPage() {
                 <div className="text-lg sm:text-xl font-black text-emerald-700">Rp {dashboardData.netPay.toLocaleString("id-ID")}</div>
                 <div className="text-[10px] text-slate-500 mt-1 font-medium">Setelah denda & insentif</div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-2xs">
-                <div className="text-[10px] text-blue-600 font-bold uppercase mb-1">Total GMV Penjualan</div>
-                <div className="text-lg sm:text-xl font-black text-blue-700">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
+              <div className="bg-gradient-to-br from-[#941A0B]/5 to-[#941A0B]/10 border border-[#941A0B]/20 rounded-2xl p-4 shadow-2xs">
+                <div className="text-[10px] text-[#941A0B] font-bold uppercase mb-1">Total GMV Penjualan</div>
+                <div className="text-lg sm:text-xl font-black text-[#941A0B]">Rp {dashboardData.totalGmv.toLocaleString("id-ID")}</div>
                 <div className="text-[10px] text-slate-500 mt-1 font-medium">{dashboardData.totalSesi} Sesi Siaran</div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-violet-50 border border-purple-200 rounded-2xl p-4 shadow-2xs">
-                <div className="text-[10px] text-purple-600 font-bold uppercase mb-1">Total Jam Live</div>
-                <div className="text-lg sm:text-xl font-black text-purple-700">{dashboardData.totalJam} Jam</div>
-                <div className="text-[10px] text-slate-500 mt-1 font-medium">Tier: <span className="font-bold text-purple-600">{dashboardData.activeTier?.nama ?? "–"}</span></div>
+              <div className="bg-gradient-to-br from-[#941A0B]/5 to-[#941A0B]/10 border border-[#941A0B]/20 rounded-2xl p-4 shadow-2xs">
+                <div className="text-[10px] text-[#941A0B] font-bold uppercase mb-1">Total Jam Live</div>
+                <div className="text-lg sm:text-xl font-black text-[#941A0B]">{dashboardData.totalJam} Jam</div>
+                <div className="text-[10px] text-slate-500 mt-1 font-medium">Tier: <span className="font-bold text-[#941A0B]">{dashboardData.activeTier?.nama ?? "–"}</span></div>
               </div>
               <div className="bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl p-4 shadow-2xs">
                 <div className="text-[10px] text-red-600 font-bold uppercase mb-1">Total Denda & Penalti</div>
@@ -1545,7 +2027,7 @@ export default function StreamerDashboardPage() {
                   <i className="fa-solid fa-award text-amber-500 text-sm" />
                   <span className="font-bold text-slate-800 text-xs sm:text-sm">Status Tiering Aktif: {dashboardData.activeTier.nama}</span>
                 </div>
-                <span className="text-xs font-mono font-bold text-blue-600 bg-white px-2.5 py-1 rounded-lg border border-slate-200">
+                <span className="text-xs font-mono font-bold text-[#941A0B] bg-white px-2.5 py-1 rounded-lg border border-slate-200">
                   Rate: Rp {dashboardData.activeTier.ratePerJam.toLocaleString("id-ID")} / Jam
                 </span>
               </div>
@@ -1579,48 +2061,6 @@ export default function StreamerDashboardPage() {
 
           <div className="text-center text-slate-400 text-xs pt-2">
             <p>Untuk rincian slip gaji resmi atau pengajuan izin, silakan akses menu terkait di sistem HRIS.</p>
-          </div>
-        </div>
-      )}
-
-      {/* Pending GMV Modal */}
-      {pendingGmvModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <i className="fa-solid fa-triangle-exclamation text-red-600" />
-                <span>Lengkapi Laporan GMV</span>
-              </h3>
-              <button onClick={() => setPendingGmvModalOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">Total Income / GMV Sesi (Wajib)</label>
-              <input
-                type="number"
-                value={reportedGmv}
-                onChange={(e) => setReportedGmv(e.target.value)}
-                placeholder="Contoh: 1500000"
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setPendingGmvModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handlePendingGmvSubmit}
-                disabled={actionLoading || !reportedGmv}
-                className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition disabled:opacity-50"
-              >
-                {actionLoading ? "Menyimpan..." : "Simpan GMV"}
-              </button>
-            </div>
           </div>
         </div>
       )}

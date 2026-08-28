@@ -141,7 +141,7 @@ export async function POST(req: Request) {
         access_token: accessToken || null,
         id_token: idToken,
         token_type: "Bearer",
-        scope: "openid profile email https://www.googleapis.com/auth/calendar.events",
+        scope: "openid profile email",
         expires_at: payload.exp ? Math.floor(payload.exp) : null,
       },
       update: {

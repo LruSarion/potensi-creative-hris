@@ -3,19 +3,38 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 
 /**
- * Staff/OTS dashboard: helper data + own absensi session + stats.
+ * Staff/OTS dashboard: helper data + own absensi session + stats + Admin supervision mode.
  */
 
-/** Require STAFF/OTS (or admin) and return karyawan id. */
-async function requireStaff(): Promise<string> {
-  const user = await requireRole("STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+/** Require STAFF/OTS (or admin) and resolve target karyawan id if admin search is provided. */
+async function resolveStaffTarget(targetSearchOrId?: string): Promise<{ karyawanId: string; karyawan: any }> {
+  const user = await requireRole("STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION");
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(user.role);
+
+  if (targetSearchOrId && targetSearchOrId.trim() && isAdmin) {
+    const term = targetSearchOrId.trim();
+    const found = await db.karyawan.findFirst({
+      where: {
+        OR: [
+          { id: term },
+          { idKaryawan: { equals: term, mode: "insensitive" } },
+          { namaLengkap: { contains: term, mode: "insensitive" } },
+          { namaPanggilan: { contains: term, mode: "insensitive" } },
+        ],
+      },
+    });
+    if (found) return { karyawanId: found.id, karyawan: found };
+  }
+
   if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
-  return user.karyawanId;
+  const selfKaryawan = await db.karyawan.findUnique({ where: { id: user.karyawanId } });
+  return { karyawanId: user.karyawanId, karyawan: selfKaryawan };
 }
 
 /** Helper data for staff/OTS (reference lists). */
 export async function getHelperStaff() {
-  await requireStaff();
+  const user = await requireRole("STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION");
+  if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
   const [karyawan, clients] = await Promise.all([
     db.karyawan.findMany({
       where: { statusAktif: "AKTIF" },
@@ -27,9 +46,9 @@ export async function getHelperStaff() {
   return { karyawan, clients };
 }
 
-/** Current active session for the staff member (or null). */
-export async function getMySesiAktif() {
-  const karyawanId = await requireStaff();
+/** Current active session for the staff member (or monitored staff if admin). */
+export async function getMySesiAktif(target?: string) {
+  const { karyawanId } = await resolveStaffTarget(target);
   const lastCheckIn = await db.absensi.findFirst({
     where: { karyawanId, tipe: "CHECK_IN" },
     orderBy: { waktu: "desc" },
@@ -43,9 +62,9 @@ export async function getMySesiAktif() {
   return lastCheckIn;
 }
 
-/** Monthly attendance stats for staff member. */
-export async function getStaffStats() {
-  const karyawanId = await requireStaff();
+/** Monthly attendance stats for staff member (or monitored staff if admin). */
+export async function getStaffStats(target?: string) {
+  const { karyawanId, karyawan } = await resolveStaffTarget(target);
 
   const checkIns = await db.absensi.findMany({
     where: { karyawanId, tipe: "CHECK_IN" },
@@ -66,6 +85,16 @@ export async function getStaffStats() {
   const jamKerja = Math.round(hariAktif * 8 * 10) / 10;
 
   return {
+    karyawan: karyawan
+      ? {
+          id: karyawan.id,
+          idKaryawan: karyawan.idKaryawan,
+          namaLengkap: karyawan.namaLengkap,
+          namaPanggilan: karyawan.namaPanggilan,
+          jabatan: karyawan.jabatan,
+          kategori: karyawan.kategori,
+        }
+      : null,
     jamKerja,
     hariAktif,
     sisaCuti: 12,

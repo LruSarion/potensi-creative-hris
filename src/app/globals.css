@@ -1,27 +1,61 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #FFFFFF;
+  --foreground: #000000;
+  --brand-primary: #941A0B;
+  --brand-accent: #FA3737;
+  --brand-text: #000000;
+  --brand-white: #FFFFFF;
+  --brand-gray-light: #F1F1F1;
+  --brand-gray-medium: #919191;
+  --brand-gray-dark: #4D4D4D;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-dm-sans), sans-serif;
+  --color-brand-primary: #941A0B;
+  --color-brand-accent: #FA3737;
+  --color-brand-dark: #000000;
+  --color-brand-white: #FFFFFF;
+  --color-brand-gray-light: #F1F1F1;
+  --color-brand-gray-medium: #919191;
+  --color-brand-gray-dark: #4D4D4D;
+  --font-sans: var(--font-dm-sans), 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: var(--font-mono), monospace;
 }
 
 body {
-  background-color: #f8fafc;
-  color: #0f172a;
+  background-color: #F8FAFC;
+  color: #000000;
   font-family: var(--font-dm-sans), 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Date and Time Input Behavior: Click anywhere to open picker */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  cursor: pointer;
+  position: relative;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  filter: invert(15%) sepia(85%) saturate(4500%) hue-rotate(350deg) brightness(85%) contrast(100%);
+  padding: 4px;
+  border-radius: 4px;
 }
 
 /* Custom Scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 5px;
+  height: 5px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -34,54 +68,58 @@ body {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #941a0b;
 }
 
 /* Base Card Style */
 .hris-card {
-  background-color: #ffffff;
-  border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  padding: 1.25rem;
+  background-color: #FFFFFF;
+  border-radius: 1rem;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  padding: 1.5rem;
 }
 
-/* Badge Status Systems */
+/* Badge Status Systems with Brand Palette */
+.badge-primary {
+  background-color: #941A0B;
+  color: #FFFFFF;
+}
+
+.badge-accent {
+  background-color: #FA3737;
+  color: #FFFFFF;
+}
+
 .badge-success {
-  background-color: #dcfce7;
+  background-color: #DCFCE7;
   color: #047857;
-  border: 1px solid #a7f3d0;
+  border: 1px solid #A7F3D0;
 }
 
 .badge-warning {
-  background-color: #fef9c3;
-  color: #b45309;
-  border: 1px solid #fde047;
+  background-color: #FEF9C3;
+  color: #B45309;
+  border: 1px solid #FDE047;
 }
 
 .badge-danger {
-  background-color: #fee2e2;
-  color: #b91c1c;
-  border: 1px solid #fecaca;
+  background-color: #FEE2E2;
+  color: #941A0B;
+  border: 1px solid #FECACA;
 }
 
 .badge-default {
-  background-color: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
+  background-color: #F1F1F1;
+  color: #4D4D4D;
+  border: 1px solid #E2E8F0;
 }
 
 /* Loading & Animation Utilities */
 @keyframes indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  50% {
-    transform: translateX(0%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(0%); }
+  100% { transform: translateX(100%); }
 }
 
 .animate-indeterminate {
@@ -89,26 +127,10 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.2s ease-out forwards;
+  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
-
-@keyframes scaleUp {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-.animate-scaleUp {
-  animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-

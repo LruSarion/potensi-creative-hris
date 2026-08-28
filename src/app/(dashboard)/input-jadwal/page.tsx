@@ -381,17 +381,15 @@ export default function InputJadwalPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header persis ref-website-lama/input-jadwal.html */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Input Jadwal</h1>
-          <p className="text-slate-500 text-sm">Buat jadwal baru untuk Streamer, jadwal OTS, atau kelola kendali pengajuan.</p>
-        </div>
+    <div className="space-y-6 max-w-7xl mx-auto pb-16 p-4 sm:p-6">
+      {/* Header */}
+      <div className="border-b border-slate-200 pb-4">
+        <h1 className="text-2xl font-extrabold text-black">Kelola Jadwal Siaran</h1>
+        <p className="text-slate-500 text-sm mt-1 font-medium">Buat jadwal baru untuk Streamer, jadwal OTS, atau kelola kendali pengajuan.</p>
       </div>
 
-      {/* Main Tabs Navigation persis ref-website-lama/input-jadwal.html */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-2">
+      {/* Main Tabs Navigation */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-4">
         {[
           { id: "streamer", label: "Jadwal Streamer", icon: "fa-video" },
           { id: "ots", label: "Jadwal OTS", icon: "fa-camera" },
@@ -405,9 +403,9 @@ export default function InputJadwalPage() {
             key={tab.id}
             type="button"
             onClick={() => setMainTab(tab.id as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border ${
               mainTab === tab.id
-                ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20"
+                ? "bg-[#941A0B] text-white border-[#941A0B] shadow-md"
                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
             }`}
           >
@@ -420,14 +418,16 @@ export default function InputJadwalPage() {
       {/* Alerts */}
       {success && (
         <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-2">
-          <span>✅</span>
+          <i className="fa-solid fa-circle-check text-emerald-600" />
           <span>{success}</span>
+          <button onClick={() => setSuccess("")} className="ml-auto text-emerald-600"><i className="fa-solid fa-xmark" /></button>
         </div>
       )}
       {error && (
         <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2">
-          <span>⚠️</span>
+          <i className="fa-solid fa-circle-exclamation text-red-600" />
           <span>{error}</span>
+          <button onClick={() => setError("")} className="ml-auto text-red-600"><i className="fa-solid fa-xmark" /></button>
         </div>
       )}
 
@@ -754,7 +754,7 @@ export default function InputJadwalPage() {
                 type="button"
                 onClick={() => setStreamerSubTab("form")}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                  streamerSubTab === "form" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  streamerSubTab === "form" ? "bg-white text-[#941A0B] shadow-sm" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 <i className="fa-solid fa-file-pen" />
@@ -764,7 +764,7 @@ export default function InputJadwalPage() {
                 type="button"
                 onClick={() => setStreamerSubTab("info")}
                 className={`px-4 py-2 rounded-lg text-xs font-bold transition flex items-center gap-2 ${
-                  streamerSubTab === "info" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                  streamerSubTab === "info" ? "bg-white text-[#941A0B] shadow-sm" : "text-slate-600 hover:text-slate-900"
                 }`}
               >
                 <i className="fa-solid fa-calendar-check" />
@@ -778,7 +778,7 @@ export default function InputJadwalPage() {
                   type="button"
                   onClick={() => setActiveTab("single")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeTab === "single" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    activeTab === "single" ? "bg-white text-[#941A0B] shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Form Satuan
@@ -787,7 +787,7 @@ export default function InputJadwalPage() {
                   type="button"
                   onClick={() => setActiveTab("batch")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeTab === "batch" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    activeTab === "batch" ? "bg-white text-[#941A0B] shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Impor Massal
@@ -796,7 +796,7 @@ export default function InputJadwalPage() {
                   type="button"
                   onClick={() => setActiveTab("calendar")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    activeTab === "calendar" ? "bg-white text-blue-600 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                    activeTab === "calendar" ? "bg-white text-[#941A0B] shadow-sm" : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Kalender
@@ -924,24 +924,17 @@ export default function InputJadwalPage() {
           {streamerSubTab === "form" && activeTab === "single" && (
             <form onSubmit={submit} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* ID Jadwal */}
+            {/* ID Jadwal (Otomatis & Baku) */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="idJadwal" className="text-xs font-semibold text-slate-700 uppercase tracking-wider">ID Jadwal</label>
-                <button
-                  type="button"
-                  onClick={() => generateIdJadwal(form.tanggal)}
-                  className="text-[11px] text-blue-600 hover:underline font-medium"
-                >
-                  Acak Ulang
-                </button>
-              </div>
+              <label htmlFor="idJadwal" className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                ID Jadwal (Otomatis & Baku)
+              </label>
               <input
                 id="idJadwal"
                 type="text"
                 value={form.idJadwal}
-                onChange={(e) => setForm({ ...form, idJadwal: e.target.value })}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono bg-slate-50 text-slate-800 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition"
+                readOnly
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold bg-[#F1F1F1] text-[#4D4D4D] cursor-not-allowed outline-none select-all"
                 required
               />
             </div>
@@ -1199,7 +1192,7 @@ export default function InputJadwalPage() {
             <button
               type="submit"
               disabled={loading || !!blacklistWarning || streamerStats?.isOverlimit}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50 text-sm flex items-center gap-2 cursor-pointer"
+              className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-2.5 px-6 rounded-xl transition shadow-md disabled:opacity-50 text-sm flex items-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -1265,7 +1258,7 @@ export default function InputJadwalPage() {
             <button
               type="submit"
               disabled={loading || !batch.trim()}
-              className="bg-slate-900 hover:bg-black text-white font-semibold py-2.5 px-6 rounded-xl transition text-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+              className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-2.5 px-6 rounded-xl transition text-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -1300,7 +1293,7 @@ export default function InputJadwalPage() {
                   setForm((f) => ({ ...f, tanggal: selectedCalendarDate }));
                   setActiveTab("single");
                 }}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
+                className="bg-[#941A0B] hover:bg-[#7D1509] text-white text-xs font-bold px-3 py-1.5 rounded-lg transition"
               >
                 Buat Jadwal pada {selectedCalendarDate}
               </button>
@@ -1381,7 +1374,7 @@ export default function InputJadwalPage() {
         const paginatedJadwal = filteredJadwal.slice(startIndex, endIndex);
 
         return (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-3">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">Jadwal Sesi Terdaftar</h3>
@@ -1420,7 +1413,7 @@ export default function InputJadwalPage() {
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+                <thead className="bg-[#941A0B] text-white font-extrabold">
                   <tr>
                     <th className="px-4 py-3">ID Jadwal</th>
                     <th className="px-4 py-3">Platform</th>
@@ -1442,7 +1435,7 @@ export default function InputJadwalPage() {
                   ) : (
                     paginatedJadwal.map((j) => (
                       <tr key={j.id} className="hover:bg-slate-50/80 transition">
-                        <td className="px-4 py-3 font-mono font-medium text-blue-600">{j.idJadwal}</td>
+                        <td className="px-4 py-3 font-mono font-bold text-[#941A0B]">{j.idJadwal}</td>
                         <td className="px-4 py-3">
                           <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
                             {j.platform ?? "General"}
@@ -1491,7 +1484,7 @@ export default function InputJadwalPage() {
                                 setAssignStreamerId("");
                                 setAssignModalOpen(true);
                               }}
-                              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-lg transition shadow-sm"
+                              className="px-3 py-1 bg-[#941A0B] hover:bg-[#7D1509] text-white text-[10px] font-bold rounded-lg transition shadow-sm"
                             >
                               Assign Streamer
                             </button>
@@ -1529,7 +1522,7 @@ export default function InputJadwalPage() {
                         onClick={() => setTablePage(pageNum)}
                         className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
                           pageNum === currentTablePage
-                            ? "bg-blue-600 text-white shadow-sm"
+                            ? "bg-[#941A0B] text-white shadow-sm"
                             : "text-slate-600 hover:bg-slate-200/60"
                         }`}
                       >
@@ -1599,7 +1592,7 @@ export default function InputJadwalPage() {
                 type="button"
                 onClick={handleAssignSubmit}
                 disabled={loading || !assignStreamerId}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50"
+                className="bg-[#941A0B] hover:bg-[#7D1509] text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md disabled:opacity-50"
               >
                 {loading ? "Menyimpan..." : "Assign Sesi"}
               </button>

@@ -6,6 +6,7 @@ import {
   getMySesiAktif,
   getMyDashboard,
   getPendingGmv,
+  getTerbatasData,
   getStreamerRequestStatus,
   submitLeaveRequest,
   submitShiftRequest,
@@ -20,6 +21,7 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "sesi") return getMySesiAktif();
   if (view === "dashboard") return getMyDashboard();
   if (view === "pending-gmv") return getPendingGmv();
+  if (view === "terbatas") return getTerbatasData();
   if (view === "request-status") return getStreamerRequestStatus();
   return getMyJadwal();
 });

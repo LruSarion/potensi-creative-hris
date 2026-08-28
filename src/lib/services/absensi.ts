@@ -266,18 +266,179 @@ export async function listAbsensi(params?: { karyawanId?: string }) {
   });
 }
 
-export async function updateGmv(id: string, reportedGmv: number) {
+export async function updateGmv(id: string, payload: number | {
+  reportedGmv: number;
+  nomorStudio?: string | null;
+  catatan?: string | null;
+  buktiDriveId?: string | null;
+}) {
   const user = await requireRole();
-  const absensi = await db.absensi.findUnique({ where: { id } });
+  const absensi = await db.absensi.findUnique({ 
+    where: { id },
+    include: { jadwal: true }
+  });
   if (!absensi) throw AppError.notFound("Data absensi tidak ditemukan");
   
   if (absensi.karyawanId !== user.karyawanId && !["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(user.role)) {
     throw AppError.forbidden("Tidak bisa mengubah data absensi orang lain");
   }
 
-  return db.absensi.update({
-    where: { id },
-    data: { reportedGmv }
+  const reportedGmv = typeof payload === "number" ? payload : payload.reportedGmv;
+  const catatan = typeof payload === "object" ? payload.catatan : undefined;
+  const buktiDriveId = typeof payload === "object" ? payload.buktiDriveId : undefined;
+  const nomorStudio = typeof payload === "object" ? payload.nomorStudio : undefined;
+
+  return db.$transaction(async (tx) => {
+    const updated = await tx.absensi.update({
+      where: { id },
+      data: { 
+        reportedGmv,
+        ...(catatan !== undefined ? { catatan } : {}),
+        ...(buktiDriveId !== undefined ? { buktiDriveId } : {}),
+      }
+    });
+
+    if (absensi.jadwalId) {
+      await tx.jadwal.update({
+        where: { id: absensi.jadwalId },
+        data: {
+          status: "SELESAI",
+          liveState: "REVIEW",
+          ...(nomorStudio ? { nomorStudio } : {})
+        }
+      });
+    }
+
+    return updated;
+  });
+}
+
+/**
+ * Handle limited actions (Aksi Khusus):
+ * 1. PULANG_TELAT: Late report for sessions that missed checkout / missing GMV (>8 hrs)
+ * 2. MASUK_PULANG_TERBATAS: Instant checkout for short-gap schedules (<30 mins)
+ */
+export async function submitAbsenTerbatas(input: {
+  tipeForm: "PULANG_TELAT" | "MASUK_PULANG_TERBATAS";
+  idAbsen?: string | null;
+  idJadwal: string;
+  nomorStudio?: string | null;
+  reportedGmv: number;
+  catatan?: string | null;
+  fotoBuktiGmv?: string | null;
+  fotoBuktiKeluar?: string | null;
+  karyawanId?: string | null;
+}) {
+  const user = await requireRole();
+  const targetKaryawanId = input.karyawanId || user.karyawanId;
+  if (!targetKaryawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+
+  // Find jadwal by id or idJadwal
+  const jadwal = await db.jadwal.findFirst({
+    where: {
+      OR: [
+        { id: input.idJadwal },
+        { idJadwal: input.idJadwal }
+      ]
+    }
+  });
+  if (!jadwal) throw AppError.notFound("Jadwal tidak ditemukan");
+
+  const buktiFoto = input.fotoBuktiGmv || input.fotoBuktiKeluar || null;
+
+  return db.$transaction(async (tx) => {
+    if (input.tipeForm === "PULANG_TELAT") {
+      let targetAbsen = input.idAbsen 
+        ? await tx.absensi.findUnique({ where: { id: input.idAbsen } })
+        : await tx.absensi.findFirst({
+            where: { jadwalId: jadwal.id, karyawanId: targetKaryawanId },
+            orderBy: { waktu: "desc" }
+          });
+
+      if (targetAbsen && targetAbsen.tipe === "CHECK_OUT") {
+        await tx.absensi.update({
+          where: { id: targetAbsen.id },
+          data: {
+            reportedGmv: input.reportedGmv,
+            catatan: input.catatan ?? targetAbsen.catatan,
+            buktiDriveId: buktiFoto ?? targetAbsen.buktiDriveId,
+          }
+        });
+      } else {
+        // If targetAbsen was CHECK_IN or not found, create the CHECK_OUT
+        await tx.absensi.create({
+          data: {
+            tenantId: user.tenantId ?? undefined,
+            karyawanId: targetKaryawanId,
+            jadwalId: jadwal.id,
+            tipe: "CHECK_OUT",
+            kategori: "STREAMER",
+            reportedGmv: input.reportedGmv,
+            catatan: input.catatan ?? "Laporan Sesi Telat",
+            buktiDriveId: buktiFoto,
+          }
+        });
+      }
+    } else {
+      // MASUK_PULANG_TERBATAS (Absen Instan Sesi Jeda)
+      const existingCheckIn = await tx.absensi.findFirst({
+        where: { jadwalId: jadwal.id, karyawanId: targetKaryawanId, tipe: "CHECK_IN" }
+      });
+      if (!existingCheckIn) {
+        await tx.absensi.create({
+          data: {
+            tenantId: user.tenantId ?? undefined,
+            karyawanId: targetKaryawanId,
+            jadwalId: jadwal.id,
+            tipe: "CHECK_IN",
+            kategori: "STREAMER",
+            catatan: "Check-In Instan (Jeda Terbatas)",
+            buktiDriveId: buktiFoto,
+          }
+        });
+      }
+
+      await tx.absensi.create({
+        data: {
+          tenantId: user.tenantId ?? undefined,
+          karyawanId: targetKaryawanId,
+          jadwalId: jadwal.id,
+          tipe: "CHECK_OUT",
+          kategori: "STREAMER",
+          reportedGmv: input.reportedGmv,
+          catatan: input.catatan ?? "Selesai Sesi Jeda Terbatas",
+          buktiDriveId: buktiFoto,
+        }
+      });
+    }
+
+    // Update Schedule
+    await tx.jadwal.update({
+      where: { id: jadwal.id },
+      data: {
+        status: "SELESAI",
+        liveState: "REVIEW",
+        ...(input.nomorStudio ? { nomorStudio: input.nomorStudio } : {})
+      }
+    });
+
+    await tx.sessionStateLog.create({
+      data: {
+        tenantId: user.tenantId ?? undefined,
+        jadwalId: jadwal.id,
+        fromState: jadwal.liveState,
+        toState: "REVIEW",
+        changedById: user.id,
+        note: input.tipeForm === "PULANG_TELAT" 
+          ? "Sesi Selesai melalui Laporan Telat (Terbatas)"
+          : "Sesi Selesai melalui Absen Instan (Jeda Terbatas)",
+      }
+    });
+
+    return { status: "success", jadwalId: jadwal.id };
+  }).then(async (res) => {
+    await recordStreamerExperienceOnSessionComplete(jadwal.id).catch(() => {});
+    return res;
   });
 }
 

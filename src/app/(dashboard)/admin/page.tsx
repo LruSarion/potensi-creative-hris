@@ -325,14 +325,16 @@ export default function MasterDataAdminPage() {
               </div>
               <div className="max-h-72 overflow-y-auto divide-y divide-slate-100">
                 {audit.map((a) => (
-                  <div key={a.id} className="p-3 text-xs hover:bg-slate-50/80 transition flex items-center justify-between">
-                    <div>
-                      <span className="font-bold font-mono text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded text-[10px]">
+                  <div key={a.id} className="p-3 text-xs hover:bg-slate-50/80 transition flex items-center justify-between gap-3 min-w-0 overflow-hidden">
+                    <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                      <span className="font-bold font-mono text-[#941A0B] bg-[#941A0B]/10 px-1.5 py-0.5 rounded text-[10px] shrink-0">
                         {a.aksi}
                       </span>
-                      <span className="ml-2 font-medium text-slate-700">{a.user?.email ?? "System"}</span>
+                      <span className="font-medium text-slate-700 truncate" title={a.user?.email ?? "System"}>
+                        {a.user?.email ?? "System"}
+                      </span>
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono">
+                    <span className="text-[10px] text-slate-400 font-mono shrink-0">
                       {new Date(a.createdAt).toLocaleTimeString("id-ID")}
                     </span>
                   </div>

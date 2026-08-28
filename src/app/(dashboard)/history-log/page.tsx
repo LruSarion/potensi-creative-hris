@@ -165,7 +165,7 @@ export default function HistoryLogPage() {
                       <td className="px-6 py-4 text-slate-600 font-semibold text-xs uppercase tracking-wide">
                         {target}
                       </td>
-                      <td className="px-6 py-4 text-slate-600 text-xs max-w-lg truncate" title={detail}>
+                      <td className="px-6 py-4 text-slate-600 text-xs max-w-xs md:max-w-md lg:max-w-xl truncate block" title={detail}>
                         {detail}
                       </td>
                     </tr>

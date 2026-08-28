@@ -12,8 +12,10 @@ export const GET = apiHandler(async (req: Request) => {
   const id = url.searchParams.get("id");
   if (id) return getJadwal(id);
   const streamerKaryawanId = url.searchParams.get("streamerKaryawanId") ?? undefined;
+  const otsKaryawanId = url.searchParams.get("otsKaryawanId") ?? undefined;
+  const karyawanId = url.searchParams.get("karyawanId") ?? undefined;
   const tanggal = url.searchParams.get("tanggal") ?? undefined;
-  return listJadwal({ streamerKaryawanId, tanggal });
+  return listJadwal({ streamerKaryawanId, otsKaryawanId, karyawanId, tanggal });
 });
 
 export const POST = apiHandler(async (req: Request) => {

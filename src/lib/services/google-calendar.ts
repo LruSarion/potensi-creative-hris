@@ -59,8 +59,8 @@ export async function createGoogleCalendarEventServer(
 }
 
 /**
- * Automatically syncs a schedule item to the assigned streamer's Google Calendar
- * and sends email & in-app notification alerts.
+ * Automatically syncs a schedule item to the assigned streamer's AND OTS staff's Google Calendar
+ * and creates activity logs & calendar invitation links.
  */
 export async function syncJadwalToGoogleCalendar(jadwalId: string) {
   try {
@@ -69,67 +69,82 @@ export async function syncJadwalToGoogleCalendar(jadwalId: string) {
       include: {
         streamerKaryawan: true,
         hostKaryawan: true,
+        otsKaryawan: true,
         client: true,
       },
     });
 
     if (!jadwal) return null;
 
-    const targetKaryawan = jadwal.streamerKaryawan ?? jadwal.hostKaryawan;
-    if (!targetKaryawan) return null;
-
-    const streamerEmail = targetKaryawan.email;
-    const streamerNama = targetKaryawan.namaLengkap;
+    const streamer = jadwal.streamerKaryawan ?? jadwal.hostKaryawan;
+    const ots = jadwal.otsKaryawan;
     const clientNama = jadwal.client?.namaClient ?? "Potensi Creative Client";
     const studioInfo = `${jadwal.cabangStudio ?? "Studio"} (Room ${jadwal.nomorStudio ?? "01"})`;
 
-    const eventOptions: GoogleCalendarEventOptions = {
-      title: `[Live Stream] ${clientNama} - ${streamerNama}`,
-      description: `Jadwal Siaran Live Streaming Agency Potensi Creative.\nKlien: ${clientNama}\nProduk Prioritas: ${jadwal.produkPrioritas ?? "-"}\nPromo Live: ${jadwal.promoLive ?? "-"}\nCatatan: ${jadwal.catatanHost ?? "-"}`,
-      location: studioInfo,
-      startTime: jadwal.jamMulaiLive,
-      endTime: jadwal.jamSelesaiLive,
-      reminderMinutes: [30, 15],
-    };
+    const targets = [];
+    if (streamer) targets.push({ role: "STREAMER", karyawan: streamer });
+    if (ots) targets.push({ role: "OTS", karyawan: ots });
 
-    const gcalUrl = generateGoogleCalendarUrl(eventOptions);
+    if (targets.length === 0) return null;
 
-    // Try to find if user has a Google Account OAuth token
-    if (streamerEmail) {
-      const dbUser = await db.user.findUnique({
-        where: { email: streamerEmail.toLowerCase() },
-        include: { accounts: true },
-      });
+    const results = [];
 
-      const googleAccount = dbUser?.accounts?.find((a) => a.provider === "google");
-      if (googleAccount?.access_token) {
-        try {
-          await createGoogleCalendarEventServer(googleAccount.access_token, eventOptions);
-          console.log(`[Google Calendar Sync] Event otomatis ditambahkan ke Google Calendar: ${streamerEmail}`);
-        } catch (err) {
-          console.warn(`[Google Calendar Sync] Direct OAuth insert failed, fallback to Notification Link:`, err);
+    for (const target of targets) {
+      const targetEmail = target.karyawan.email;
+      const targetNama = target.karyawan.namaLengkap;
+
+      const eventOptions: GoogleCalendarEventOptions = {
+        title: `[Live Stream] ${clientNama} - ${target.role === "STREAMER" ? "Host" : "Operator"}: ${targetNama}`,
+        description: `Jadwal Siaran Live Streaming Agency Potensi Creative.\nKlien: ${clientNama}\nRole: ${target.role}\nStudio: ${studioInfo}\nProduk Prioritas: ${jadwal.produkPrioritas ?? "-"}\nPromo Live: ${jadwal.promoLive ?? "-"}\nCatatan: ${jadwal.catatanHost ?? "-"}`,
+        location: studioInfo,
+        startTime: jadwal.jamMulaiLive,
+        endTime: jadwal.jamSelesaiLive,
+        reminderMinutes: [30, 15],
+      };
+
+      const gcalUrl = generateGoogleCalendarUrl(eventOptions);
+
+      // Attempt background OAuth calendar insertion if access token is available
+      if (targetEmail) {
+        const dbUser = await db.user.findUnique({
+          where: { email: targetEmail.toLowerCase() },
+          include: { accounts: true },
+        });
+
+        const googleAccount = dbUser?.accounts?.find((a) => a.provider === "google");
+        if (googleAccount?.access_token) {
+          try {
+            await createGoogleCalendarEventServer(googleAccount.access_token, eventOptions);
+            console.log(`[Google Calendar Sync] Event otomatis ditambahkan ke Google Calendar: ${targetEmail}`);
+          } catch (err) {
+            console.warn(`[Google Calendar Sync] Direct OAuth insert fallback to Notification Link:`, err);
+          }
         }
       }
-    }
 
-    // Always log In-App Notification and log activity
-    await db.logAktivitas.create({
-      data: {
-        tenantId: jadwal.tenantId,
-        aksi: "JADWAL_SYNC_GCAL",
-        detail: `Auto Sync Google Calendar untuk ${streamerNama} (${clientNama} - ${studioInfo}). Link: ${gcalUrl}`,
-      },
-    });
+      // Log In-App Notification and audit trail
+      await db.logAktivitas.create({
+        data: {
+          tenantId: jadwal.tenantId,
+          aksi: "JADWAL_SYNC_GCAL",
+          detail: `Auto Sync Google Calendar untuk ${target.role} ${targetNama} (${clientNama} - ${studioInfo}). Link: ${gcalUrl}`,
+        },
+      });
+
+      results.push({
+        targetNama,
+        targetEmail,
+        gcalUrl,
+      });
+    }
 
     return {
       success: true,
-      gcalUrl,
-      streamerNama,
-      streamerEmail,
+      syncCount: results.length,
+      items: results,
     };
   } catch (error) {
     console.error("Gagal melakukan otomatisasi sync Google Calendar:", error);
     return null;
   }
 }
-

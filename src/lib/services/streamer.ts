@@ -215,10 +215,100 @@ export async function getPendingGmv() {
     orderBy: { waktu: "desc" },
     include: {
       jadwal: {
-        include: { client: true }
+        include: { client: true, streamerKaryawan: true, hostKaryawan: true }
+      },
+      karyawan: true
+    }
+  });
+}
+
+/** Get full Terbatas data: Jeda Terbatas (< 30 mins / instant) and Perlu Lapor (>8 hrs / missing GMV) */
+export async function getTerbatasData() {
+  const karyawanId = await requireStreamer();
+  const now = new Date();
+  const eightHoursAgo = new Date(now.getTime() - 8 * 60 * 60 * 1000);
+  const startOfYesterday = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+
+  // 1. Perlu Lapor:
+  // - CHECK_OUT with null reportedGmv
+  // - Open CHECK_IN older than 8 hours with no checkout
+  const [missingGmvCheckouts, expiredCheckIns] = await Promise.all([
+    db.absensi.findMany({
+      where: {
+        karyawanId,
+        tipe: "CHECK_OUT",
+        reportedGmv: null,
+        jadwalId: { not: null }
+      },
+      orderBy: { waktu: "desc" },
+      include: {
+        jadwal: {
+          include: { client: true, streamerKaryawan: true, hostKaryawan: true }
+        },
+        karyawan: true
+      }
+    }),
+    db.absensi.findMany({
+      where: {
+        karyawanId,
+        tipe: "CHECK_IN",
+        waktu: { lte: eightHoursAgo },
+        jadwal: {
+          absensi: {
+            none: {
+              tipe: "CHECK_OUT",
+              karyawanId
+            }
+          }
+        }
+      },
+      orderBy: { waktu: "desc" },
+      include: {
+        jadwal: {
+          include: { client: true, streamerKaryawan: true, hostKaryawan: true }
+        },
+        karyawan: true
+      }
+    })
+  ]);
+
+  // Combine unique perluLapor by jadwalId
+  const perluLaporMap = new Map<string, any>();
+  missingGmvCheckouts.forEach((item) => {
+    if (item.jadwal) perluLaporMap.set(item.jadwal.id, item);
+  });
+  expiredCheckIns.forEach((item) => {
+    if (item.jadwal && !perluLaporMap.has(item.jadwal.id)) {
+      perluLaporMap.set(item.jadwal.id, item);
+    }
+  });
+
+  const perluLapor = Array.from(perluLaporMap.values());
+
+  // 2. Jeda Terbatas:
+  // Schedules for this streamer today / recently scheduled that can be instantly completed
+  const jedaTerbatas = await db.jadwal.findMany({
+    where: {
+      streamerKaryawanId: karyawanId,
+      tanggal: { gte: startOfYesterday },
+      status: { not: "SELESAI" },
+      liveState: { not: "CLOSED" },
+    },
+    orderBy: { jamMulaiLive: "asc" },
+    include: {
+      client: true,
+      streamerKaryawan: true,
+      hostKaryawan: true,
+      absensi: {
+        where: { karyawanId }
       }
     }
   });
+
+  return {
+    perluLapor,
+    jedaTerbatas,
+  };
 }
 
 /** Get form controls & leave/shift request status for current streamer */

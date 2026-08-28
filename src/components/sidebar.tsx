@@ -1,261 +1,168 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Suspense, useState, useEffect } from "react";
+import { Suspense } from "react";
 import type { Role } from "@/generated/prisma/enums";
 
-type NavSubItem = {
+export type NavItem = {
   href: string;
   label: string;
   icon: string;
   roles: Role[];
-  tabKey?: string;
 };
 
-type NavGroup = {
-  id: string;
-  label: string;
-  icon: string;
-  items: NavSubItem[];
-};
-
-const NAV_GROUPS: NavGroup[] = [
+export const MENU_ITEMS: NavItem[] = [
   {
-    id: "dashboards",
+    href: "/dashboard",
     label: "Dashboard",
-    icon: "fa-solid fa-gauge-high",
-    items: [
-      { href: "/dashboard", label: "Dashboard Ringkasan", icon: "fa-solid fa-border-all", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER"] },
-      { href: "/streamer-dashboard", label: "Streamer Dashboard", icon: "fa-solid fa-video", roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-      { href: "/staff-dashboard", label: "Staff Dashboard", icon: "fa-solid fa-id-badge", roles: ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
-    ],
+    icon: "fa-solid fa-table-cells-large",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER", "STREAMER", "STAFF", "OTS", "CLIENT"],
   },
   {
-    id: "pengajuan",
-    label: "Pusat Pengajuan",
-    icon: "fa-solid fa-paper-plane",
-    items: [
-      { href: "/pengajuan?tab=lembur", label: "Pengajuan Lembur", icon: "fa-regular fa-clock", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "lembur" },
-      { href: "/pengajuan?tab=izin", label: "Pengajuan Cuti / Izin", icon: "fa-solid fa-calendar-xmark", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"], tabKey: "izin" },
-      { href: "/pengajuan?tab=tukar-shift", label: "Tukar Shift Streamer", icon: "fa-solid fa-right-left", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"], tabKey: "tukar-shift" },
-      { href: "/pengajuan?tab=suara", label: "Suara Karyawan & Aspirasi", icon: "fa-regular fa-comment-dots", roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE"], tabKey: "suara" },
-    ],
+    href: "/streamer-dashboard",
+    label: "Streamer Dashboard",
+    icon: "fa-solid fa-video",
+    roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"],
   },
   {
-    id: "operasional",
-    label: "Operasional & SDM",
-    icon: "fa-solid fa-people-roof",
-    items: [
-      { href: "/approval", label: "Pusat Approval", icon: "fa-regular fa-square-check", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
-      { href: "/penilaian-sdm", label: "Penilaian SDM (KPI)", icon: "fa-regular fa-star", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"] },
-      { href: "/input-jadwal", label: "Kelola Jadwal Siaran", icon: "fa-regular fa-calendar-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
-      { href: "/input-karyawan", label: "Kelola Data Karyawan", icon: "fa-solid fa-user-plus", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-      { href: "/client", label: "Klien & Partner Brand", icon: "fa-solid fa-handshake", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
-      { href: "/view-data", label: "View Master Database", icon: "fa-solid fa-database", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-    ],
+    href: "/staff-dashboard",
+    label: "Staff Dashboard",
+    icon: "fa-solid fa-id-badge",
+    roles: ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"],
   },
   {
-    id: "lms_learning",
-    label: "Pelatihan LMS",
-    icon: "fa-solid fa-graduation-cap",
-    items: [
-      { href: "/portal/streamer/lms", label: "Modul & Ujian Streamer", icon: "fa-solid fa-book-open-reader", roles: ["STREAMER", "STAFF", "OTS", "TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-      { href: "/portal/trainer/learning-test", label: "Kelola Materi & Ujian", icon: "fa-solid fa-pen-to-square", roles: ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-      { href: "/portal/trainer/hasil-jawaban", label: "Hasil Ujian & Quiz", icon: "fa-solid fa-square-poll-vertical", roles: ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-    ],
+    href: "/pengajuan-lembur",
+    label: "Pengajuan Lembur",
+    icon: "fa-regular fa-clock",
+    roles: ["STAFF", "OTS", "TRAINER", "FINANCE", "FINANCE_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   },
   {
-    id: "finance",
-    label: "Finance & Gaji",
-    icon: "fa-solid fa-wallet",
-    items: [
-      { href: "/payroll", label: "Payroll & Gaji Streamer", icon: "fa-solid fa-money-bill-wave", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] },
-      { href: "/finance-insentif", label: "Rekap Insentif & Denda", icon: "fa-solid fa-receipt", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"] },
-      { href: "/analytics-gmv", label: "Analytics & Laporan GMV", icon: "fa-solid fa-chart-line", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "CLIENT"] },
-    ],
+    href: "/pengajuan-izin",
+    label: "Pengajuan Cuti/Izin",
+    icon: "fa-regular fa-calendar-xmark",
+    roles: ["STREAMER", "STAFF", "OTS", "TRAINER", "FINANCE", "FINANCE_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   },
   {
-    id: "fitur_lanjutan",
-    label: "Fitur Lanjutan",
-    icon: "fa-solid fa-sliders",
-    items: [
-      { href: "/streamer-directory", label: "Direktori Streamer", icon: "fa-solid fa-address-book", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT"] },
-      { href: "/qc-violations", label: "Pelanggaran QC & SOP", icon: "fa-solid fa-shield-halved", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"] },
-      { href: "/sop-management", label: "Manajemen Dokumen SOP", icon: "fa-solid fa-clipboard-list", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"] },
-      { href: "/pipeline", label: "Session Pipeline", icon: "fa-solid fa-diagram-project", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"] },
-      { href: "/migration", label: "Impor Data Excel", icon: "fa-solid fa-file-import", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE"] },
-      { href: "/admin", label: "Pengaturan Sistem (Master)", icon: "fa-solid fa-gear", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
-      { href: "/history-log", label: "History Activity Log", icon: "fa-solid fa-clock-rotate-left", roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"] },
-    ],
+    href: "/tukar-shift",
+    label: "Tukar Shift",
+    icon: "fa-solid fa-right-left",
+    roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
+  },
+  {
+    href: "/suara-karyawan",
+    label: "Suara Karyawan",
+    icon: "fa-regular fa-comment-dots",
+    roles: ["STREAMER", "STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "FINANCE_MANAGER", "QC_REVIEWER"],
+  },
+  {
+    href: "/approval",
+    label: "Approval",
+    icon: "fa-regular fa-square-check",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"],
+  },
+  {
+    href: "/penilaian-sdm",
+    label: "Penilaian SDM",
+    icon: "fa-regular fa-star",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"],
+  },
+  {
+    href: "/payroll",
+    label: "Payroll",
+    icon: "fa-solid fa-money-bill-wave",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"],
+  },
+  {
+    href: "/input-karyawan",
+    label: "Input Karyawan",
+    icon: "fa-solid fa-user-plus",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
+  },
+  {
+    href: "/input-jadwal",
+    label: "Input Jadwal",
+    icon: "fa-regular fa-calendar-plus",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"],
+  },
+  {
+    href: "/view-data",
+    label: "View Data",
+    icon: "fa-solid fa-database",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
+  },
+  {
+    href: "/client",
+    label: "Client",
+    icon: "fa-solid fa-handshake",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"],
+  },
+  {
+    href: "/master-data",
+    label: "Master Data",
+    icon: "fa-solid fa-gear",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
+  },
+  {
+    href: "/history-log",
+    label: "History Log",
+    icon: "fa-solid fa-clock-rotate-left",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   },
 ];
 
-function checkIsActive(item: NavSubItem, pathname: string, activeTabQuery: string | null) {
-  if (item.href.startsWith("/pengajuan")) {
-    if (pathname === "/pengajuan" || pathname.startsWith("/pengajuan/")) {
-      if (item.tabKey) {
-        return activeTabQuery === item.tabKey || (!activeTabQuery && item.tabKey === "lembur");
-      }
-      return !activeTabQuery;
-    }
-    return false;
-  }
-  if (item.href === "/dashboard") {
+function isItemActive(href: string, pathname: string): boolean {
+  if (href === "/dashboard") {
     return pathname === "/dashboard";
   }
-  return pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"));
+  return pathname === href || pathname.startsWith(href + "/");
 }
 
 function SidebarNavContent({
   onCloseMobile,
+  isCollapsed,
 }: {
   onCloseMobile?: () => void;
+  isCollapsed?: boolean;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user?.role ?? "SUPER_ADMIN") as Role;
 
-  const activeTabQuery = searchParams.get("tab");
-
-  // Track accordion open states per group
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    // Auto expand group that contains current active path
-    const initialOpen: Record<string, boolean> = {};
-    NAV_GROUPS.forEach((group) => {
-      const visibleItems = group.items.filter((item) => item.roles.includes(role));
-      if (visibleItems.length > 1) {
-        const hasActiveChild = visibleItems.some((item) => checkIsActive(item, pathname, activeTabQuery));
-        if (hasActiveChild) {
-          initialOpen[group.id] = true;
-        }
-      }
-    });
-    setOpenGroups((prev) => ({ ...initialOpen, ...prev }));
-  }, [pathname, role, activeTabQuery]);
-
-  function toggleGroup(groupId: string) {
-    setOpenGroups((prev) => ({
-      ...prev,
-      [groupId]: !prev[groupId],
-    }));
-  }
+  const visibleItems = MENU_ITEMS.filter((item) => item.roles.includes(role));
 
   return (
-    <div className="flex-1 overflow-y-auto sidebar-scroll py-3 px-3 space-y-1.5 custom-scrollbar">
-      {NAV_GROUPS.map((group) => {
-        // Filter items matching user's role
-        const visibleItems = group.items.filter((item) => item.roles.includes(role));
-        if (visibleItems.length === 0) return null;
-
-        // =========================================================================
-        // CASE 1: HANYA 1 ITEM -> JANGAN DI-GROUP (Render sebagai direct top-level link)
-        // =========================================================================
-        if (visibleItems.length === 1) {
-          const item = visibleItems[0];
-          const isActive = checkIsActive(item, pathname, activeTabQuery);
-
-          return (
-            <div key={group.id} className="py-0.5">
-              <Link
-                href={item.href}
-                onClick={onCloseMobile}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all duration-150 group cursor-pointer ${
-                  isActive
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20 font-bold"
-                    : "text-slate-700 hover:bg-slate-100 hover:text-blue-600"
-                }`}
-              >
-                <i
-                  className={`${item.icon || group.icon} w-5 text-center text-sm transition-transform duration-150 group-hover:scale-110 ${
-                    isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"
-                  }`}
-                />
-                <span className="truncate">{item.label}</span>
-              </Link>
-            </div>
-          );
-        }
-
-        // =========================================================================
-        // CASE 2: LEBIH DARI 1 ITEM -> RENDER ACCORDION GROUP DENGAN ANIMASI SMOOTH
-        // =========================================================================
-        const isOpen = openGroups[group.id] ?? true;
-        const isGroupActive = visibleItems.some((item) => checkIsActive(item, pathname, activeTabQuery));
-
+    <div className={`flex-1 overflow-y-auto py-3 space-y-1 custom-scrollbar ${isCollapsed ? "px-2" : "px-3"}`}>
+      {visibleItems.map((item) => {
+        const active = isItemActive(item.href, pathname);
         return (
-          <div key={group.id} className="space-y-1 pt-1">
-            {/* Group Header Button */}
-            <button
-              type="button"
-              onClick={() => toggleGroup(group.id)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer group ${
-                isGroupActive
-                  ? "bg-blue-50 text-blue-900 border border-blue-100/80 shadow-2xs"
-                  : "text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <i
-                  className={`${group.icon} text-sm transition-colors ${
-                    isGroupActive ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
-                  }`}
-                />
-                <span className="uppercase tracking-wider text-[10.5px] font-black">{group.label}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-semibold ${
-                    isGroupActive ? "bg-blue-200/60 text-blue-800" : "bg-slate-200/60 text-slate-500"
-                  }`}
-                >
-                  {visibleItems.length}
-                </span>
-                <i
-                  className={`fa-solid fa-chevron-down text-[10px] transition-transform duration-200 ${
-                    isOpen ? "rotate-180 text-blue-600" : "text-slate-400"
-                  }`}
-                />
-              </div>
-            </button>
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={onCloseMobile}
+            title={isCollapsed ? item.label : undefined}
+            className={`group relative flex items-center rounded-xl transition-all duration-150 ${
+              isCollapsed
+                ? "justify-center w-10 h-10 mx-auto"
+                : "gap-3 px-3.5 py-2.5 text-xs sm:text-sm font-semibold"
+            } ${
+              active
+                ? "bg-[#941A0B] text-white shadow-md shadow-[#941A0B]/20"
+                : "text-[#4D4D4D] hover:bg-[#F1F1F1] hover:text-[#000000]"
+            }`}
+          >
+            <i className={`${item.icon} text-base shrink-0 ${active ? "text-white" : "text-[#919191] group-hover:text-[#000000]"}`} />
+            
+            {!isCollapsed && <span className="truncate">{item.label}</span>}
 
-            {/* Sub-items Drawer with CSS Grid Smooth Collapse */}
-            <div
-              className={`grid transition-all duration-200 ease-in-out ${
-                isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none"
-              }`}
-            >
-              <div className="overflow-hidden space-y-1 pl-2 border-l-2 border-slate-100 ml-3.5 pt-0.5">
-                {visibleItems.map((item) => {
-                  const isActive = checkIsActive(item, pathname, activeTabQuery);
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={onCloseMobile}
-                      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150 group cursor-pointer ${
-                        isActive
-                          ? "bg-blue-600 text-white shadow-xs font-bold"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-blue-600"
-                      }`}
-                    >
-                      <i
-                        className={`${item.icon} w-4 text-center text-xs transition-colors ${
-                          isActive ? "text-white" : "text-slate-400 group-hover:text-blue-600"
-                        }`}
-                      />
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+            {/* Hover Tooltip when collapsed */}
+            {isCollapsed && (
+              <span className="fixed left-20 z-50 pointer-events-none hidden group-hover:inline-block px-2.5 py-1 text-xs font-bold text-white bg-slate-900 rounded-lg shadow-lg whitespace-nowrap animate-fadeIn">
+                {item.label}
+              </span>
+            )}
+          </Link>
         );
       })}
     </div>
@@ -263,59 +170,69 @@ function SidebarNavContent({
 }
 
 export default function Sidebar({
-  mobileOpen = false,
+  isOpen,
+  mobileOpen,
+  onClose,
   onCloseMobile,
+  isCollapsed = false,
+  onToggleCollapse,
 }: {
+  isOpen?: boolean;
   mobileOpen?: boolean;
+  onClose?: () => void;
   onCloseMobile?: () => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }) {
+  const isMenuOpen = isOpen ?? mobileOpen ?? false;
+  const handleClose = onClose ?? onCloseMobile;
+
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
-      {mobileOpen && (
+      {/* Mobile Backdrop */}
+      {isMenuOpen && (
         <div
-          onClick={onCloseMobile}
-          className="fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-xs lg:hidden transition-opacity duration-300"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden animate-fade-in"
+          onClick={handleClose}
         />
       )}
 
-      {/* Sidebar Component */}
+      {/* Main Sidebar Aside */}
       <aside
-        id="sidebar"
-        className={`fixed lg:static inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex flex-col z-50 transform transition-transform duration-300 ease-in-out h-full select-none ${
-          mobileOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full lg:translate-x-0"
+        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-[#E2E8F0] flex flex-col transition-all duration-200 ease-in-out lg:static lg:z-auto shrink-0 ${
+          isCollapsed ? "lg:w-[68px]" : "lg:w-60"
+        } ${
+          isMenuOpen ? "translate-x-0 w-60" : "-translate-x-full lg:translate-x-0"
         }`}
       >
         {/* Brand Header */}
-        <div className="h-16 flex items-center px-5 border-b border-slate-100 flex-shrink-0 justify-between">
+        <div className={`h-16 flex items-center border-b border-[#E2E8F0] bg-white transition-all duration-200 ${
+          isCollapsed ? "justify-center px-2" : "justify-between px-4"
+        }`}>
           <Link href="/dashboard" className="flex items-center gap-3 group">
-            <div className="bg-blue-600 text-white font-bold p-1.5 rounded-xl w-9 h-9 flex items-center justify-center text-base shadow-sm group-hover:bg-blue-700 transition">
+            <div className="w-8 h-8 rounded-lg bg-[#941A0B] flex items-center justify-center font-black text-white shadow-md shadow-[#941A0B]/30 text-sm shrink-0">
               P
             </div>
-            <div>
-              <span className="font-black text-base text-slate-900 tracking-tight block leading-tight">
+            {!isCollapsed && (
+              <span className="font-bold text-[#000000] text-sm tracking-tight block leading-tight truncate">
                 Potensi Creative
               </span>
-              <span className="text-[10px] text-slate-400 font-medium tracking-wider uppercase block">
-                HRIS Portal
-              </span>
-            </div>
+            )}
           </Link>
 
-          {onCloseMobile && (
-            <button
-              className="lg:hidden text-slate-400 hover:text-red-500 transition p-2 cursor-pointer"
-              onClick={onCloseMobile}
-              aria-label="Tutup Sidebar"
-            >
-              <i className="fa-solid fa-xmark text-lg"></i>
-            </button>
-          )}
+          {/* Close button on mobile */}
+          <button
+            type="button"
+            onClick={handleClose}
+            className="lg:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#94A3B8] hover:bg-[#F1F5F9] hover:text-[#0F172A]"
+          >
+            <i className="fa-solid fa-xmark text-sm" />
+          </button>
         </div>
 
-        {/* Navigation Links */}
-        <Suspense fallback={<div className="p-4 text-xs text-slate-400">Memuat menu...</div>}>
-          <SidebarNavContent onCloseMobile={onCloseMobile} />
+        {/* Navigation Menus (No Logout at bottom) */}
+        <Suspense fallback={<div className="p-4 text-xs text-[#94A3B8]">Memuat menu...</div>}>
+          <SidebarNavContent onCloseMobile={handleClose} isCollapsed={isCollapsed} />
         </Suspense>
       </aside>
     </>

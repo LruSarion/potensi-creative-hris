@@ -1,5 +1,5 @@
 import { apiHandler } from "@/lib/api-handler";
-import { checkIn, checkOut, listAbsensi, getSesiAktif } from "@/lib/services/absensi";
+import { checkIn, checkOut, listAbsensi, getSesiAktif, submitAbsenTerbatas, updateGmv } from "@/lib/services/absensi";
 
 export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
@@ -11,6 +11,9 @@ export const GET = apiHandler(async (req: Request) => {
 
 export const POST = apiHandler(async (req: Request) => {
   const body = await req.json();
+  if (body.tipeForm === "PULANG_TELAT" || body.tipeForm === "MASUK_PULANG_TERBATAS") {
+    return submitAbsenTerbatas(body);
+  }
   if (body.tipe === "CHECK_OUT") return checkOut(body);
   return checkIn(body);
 });
@@ -20,5 +23,6 @@ export const PATCH = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   if (!id) throw new Error("ID Absensi required");
-  return import("@/lib/services/absensi").then((m) => m.updateGmv(id, body.reportedGmv));
+  return updateGmv(id, body);
 });
+

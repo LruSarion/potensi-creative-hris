@@ -54,6 +54,7 @@ ref-website-lama/
 
 # generated output
 /graphify-out/
+/scratch/
 *.md
 !README.md
 !AGENTS.md

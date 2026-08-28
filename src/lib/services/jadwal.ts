@@ -40,15 +40,30 @@ export const jadwalSchema = z.object({
 
 export type JadwalInput = z.infer<typeof jadwalSchema>;
 
-export async function listJadwal(params?: { streamerKaryawanId?: string; tanggal?: string }) {
+export async function listJadwal(params?: {
+  streamerKaryawanId?: string;
+  otsKaryawanId?: string;
+  karyawanId?: string;
+  tanggal?: string;
+}) {
   const user = await requirePermission("jadwal:read");
   return db.jadwal.findMany({
     where: {
       ...tenantWhere(user),
       ...(params?.streamerKaryawanId ? { streamerKaryawanId: params.streamerKaryawanId } : {}),
+      ...(params?.otsKaryawanId ? { otsKaryawanId: params.otsKaryawanId } : {}),
+      ...(params?.karyawanId
+        ? {
+            OR: [
+              { otsKaryawanId: params.karyawanId },
+              { streamerKaryawanId: params.karyawanId },
+              { hostKaryawanId: params.karyawanId },
+            ],
+          }
+        : {}),
       ...(params?.tanggal ? { tanggal: new Date(params.tanggal) } : {}),
     },
-    orderBy: { tanggal: "asc" },
+    orderBy: { tanggal: "desc" },
     include: { streamerKaryawan: true, hostKaryawan: true, otsKaryawan: true, client: true },
   });
 }

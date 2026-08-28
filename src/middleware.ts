@@ -4,7 +4,15 @@ import { authConfig } from "@/auth.config";
 import { PORTALS } from "@/lib/portals";
 
 // Public routes that don't require auth.
-const PUBLIC_ROUTES = ["/login"];
+const PUBLIC_ROUTES = [
+  "/",
+  "/login",
+  "/privacy",
+  "/privacy-policy",
+  "/terms",
+  "/terms-of-service",
+  "/about",
+];
 
 // Portal route prefixes -> allowed roles, derived from the central registry.
 const PORTAL_ROUTES: Record<string, string[]> = Object.fromEntries(
@@ -41,8 +49,8 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth?.user;
   const role = req.auth?.user?.role as string | undefined;
 
-  // Allow public routes.
-  if (PUBLIC_ROUTES.some((r) => pathname.startsWith(r))) {
+  // Allow public routes (exact match for "/" or prefix for specific subpaths).
+  if (pathname === "/" || PUBLIC_ROUTES.some((r) => r !== "/" && pathname.startsWith(r))) {
     return NextResponse.next();
   }
 

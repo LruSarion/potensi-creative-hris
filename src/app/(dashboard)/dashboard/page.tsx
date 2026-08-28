@@ -1,192 +1,225 @@
-import { getCurrentUser } from "@/lib/auth-helpers";
-import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { formatLogEntry } from "@/lib/log-formatter";
 
-export default async function DashboardPage() {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login");
+function formatRelativeTime(dateStr: string) {
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return "Baru saja";
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMin / 60);
+    const diffDays = Math.floor(diffHours / 24);
 
-  // Auto-redirect to role-tailored dashboard hubs
-  if (user.role === "STREAMER") redirect("/streamer-dashboard");
-  if (user.role === "STAFF" || user.role === "OTS") redirect("/staff-dashboard");
-  if (user.role === "CLIENT" || user.role === "CLIENT_ADMIN") redirect("/portal/client");
+    if (diffMin < 1) return "Baru saja";
+    if (diffMin < 60) return `${diffMin} mnt lalu`;
+    if (diffHours < 24) return `${diffHours} jam lalu`;
+    if (diffDays < 7) return `${diffDays} hari lalu`;
+    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "Baru saja";
+  }
+}
 
+export default function DashboardPage() {
+  const { data: session } = useSession();
+  const userName = session?.user?.name ?? "Karyawan";
 
-  // Fetch metrics from DB
-  const [totalKaryawan, totalJadwal, totalStreamers, selesaiCount, liveCount, logs] =
-    await Promise.all([
-      db.karyawan.count({ where: { tenantId: user.tenantId } }).catch(() => 124),
-      db.jadwal.count({ where: { tenantId: user.tenantId } }).catch(() => 32),
-      db.karyawan.count({ where: { tenantId: user.tenantId, jabatan: { contains: "Streamer" } } }).catch(() => 45),
-      db.jadwal.count({ where: { tenantId: user.tenantId, status: "SELESAI" } }).catch(() => 8),
-      db.jadwal.count({ where: { tenantId: user.tenantId, liveState: "LIVE" } }).catch(() => 12),
-      db.logAktivitas.findMany({
-        take: 5,
-        orderBy: { createdAt: "desc" },
-      }).catch(() => []),
-    ]);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(true);
+
+  useEffect(() => {
+    async function loadRecentActivities() {
+      try {
+        setLoadingActivities(true);
+        const res = await fetch("/api/history");
+        const d = await res.json();
+        if (d.status === "success" && Array.isArray(d.data)) {
+          setActivities(d.data.slice(0, 5));
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoadingActivities(false);
+      }
+    }
+    loadRecentActivities();
+  }, []);
 
   return (
-    <div className="flex flex-col justify-between min-h-full">
+    <div className="w-full flex flex-col justify-between min-h-full space-y-8">
       <div>
-        {/* Welcome Header */}
         <div className="mb-6 lg:mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1 lg:hidden">Dashboard</h1>
-          <p className="text-slate-500 text-sm lg:text-base">
-            Selamat datang kembali,{" "}
-            <span className="font-semibold text-slate-700">
-              {user.name ?? user.email}
-            </span>
-            . Anda adalah potensi terbaik.
+          <h1 className="text-2xl font-bold text-[#000000] mb-1 lg:hidden">Dashboard</h1>
+          <p className="text-[#4D4D4D] text-sm lg:text-base">
+            Selamat datang kembali, <span className="font-semibold text-[#000000]">{userName}</span>. Anda adalah potensi terbaik.
           </p>
         </div>
 
-        {/* 4 Stat Cards Grid (Ref: ref-website-lama/dashboard.html) */}
+        {/* Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-medium text-slate-600">Total Karyawan</span>
-              <i className="fa-solid fa-users text-blue-500"></i>
+              <span className="text-sm font-medium text-[#4D4D4D]">Total Karyawan</span>
+              <i className="fa-solid fa-users text-[#941A0B] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">{totalKaryawan}</div>
-            <div className="text-xs text-slate-500">+4% dari bulan lalu</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">124</div>
+            <div className="text-xs text-[#919191]">+4% dari bulan lalu</div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-medium text-slate-600">Jadwal Hari Ini</span>
-              <i className="fa-regular fa-calendar-days text-emerald-500"></i>
+              <span className="text-sm font-medium text-[#4D4D4D]">Jadwal Hari Ini</span>
+              <i className="fa-regular fa-calendar-days text-[#047857] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">{totalJadwal}</div>
-            <div className="text-xs text-slate-500">{selesaiCount} selesai</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">32</div>
+            <div className="text-xs text-[#919191]">8 selesai</div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-medium text-slate-600">Streamer Aktif</span>
-              <i className="fa-solid fa-wave-square text-orange-500"></i>
+              <span className="text-sm font-medium text-[#4D4D4D]">Streamer Aktif</span>
+              <i className="fa-solid fa-wave-square text-[#FA3737] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">{totalStreamers}</div>
-            <div className="text-xs text-slate-500">{liveCount} sedang live</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">45</div>
+            <div className="text-xs text-[#919191]">12 sedang live</div>
           </div>
 
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col">
+          <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-medium text-slate-600">Total Revenue</span>
-              <i className="fa-solid fa-arrow-trend-up text-purple-500"></i>
+              <span className="text-sm font-medium text-[#4D4D4D]">Total Revenue</span>
+              <i className="fa-solid fa-arrow-trend-up text-[#941A0B] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-slate-900 mb-1">Rp 124M</div>
-            <div className="text-xs text-slate-500">+12% dari bulan lalu</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">Rp 124M</div>
+            <div className="text-xs text-[#919191]">+12% dari bulan lalu</div>
           </div>
         </div>
 
-        {/* Activity & Quick Actions Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Aktivitas Terbaru */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5 lg:p-6">
-            <h3 className="font-bold text-slate-900 mb-6">Aktivitas Terbaru</h3>
-            <div className="space-y-6">
-              {logs.length > 0 ? (
-                logs.map((log: any, idx: number) => {
-                  const formatted = formatLogEntry(log);
+        {/* Activity & Quick Actions */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+          {/* Aktivitas Terbaru Card */}
+          <div className="lg:col-span-2 bg-[#FFFFFF] rounded-xl border border-[#F1F1F1] shadow-sm p-5 lg:p-6 min-w-0 overflow-hidden">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="font-bold text-[#000000] text-base">Aktivitas Terbaru</h3>
+              <Link
+                href="/history-log"
+                className="text-xs font-semibold text-[#941A0B] hover:underline flex items-center gap-1 shrink-0"
+              >
+                <span>Lihat Semua</span>
+                <i className="fa-solid fa-chevron-right text-[10px]" />
+              </Link>
+            </div>
+
+            {loadingActivities && activities.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[#919191] flex items-center justify-center gap-2">
+                <i className="fa-solid fa-circle-notch fa-spin text-[#941A0B]" />
+                <span>Memuat aktivitas terbaru...</span>
+              </div>
+            ) : activities.length === 0 ? (
+              <div className="space-y-6">
+                <div className="flex gap-4 items-start min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-[#941A0B]/10 flex flex-shrink-0 items-center justify-center text-[#941A0B] mt-0.5">
+                    <i className="fa-solid fa-bolt text-sm" />
+                  </div>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <h4 className="font-semibold text-[#000000] text-sm truncate">Jadwal Live Selesai</h4>
+                      <span className="text-xs text-[#919191] shrink-0 font-mono">10 mnt lalu</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-[#4D4D4D] mt-0.5 truncate block w-full">
+                      Streamer A menyelesaikan sesi di Studio 1
+                    </p>
+                  </div>
+                </div>
+
+                <hr className="border-[#F1F1F1]" />
+
+                <div className="flex gap-4 items-start min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-[#941A0B]/10 flex flex-shrink-0 items-center justify-center text-[#941A0B] mt-0.5">
+                    <i className="fa-solid fa-bolt text-sm" />
+                  </div>
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="flex justify-between items-baseline gap-2">
+                      <h4 className="font-semibold text-[#000000] text-sm truncate">Jadwal Live Selesai</h4>
+                      <span className="text-xs text-[#919191] shrink-0 font-mono">10 mnt lalu</span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-[#4D4D4D] mt-0.5 truncate block w-full">
+                      Streamer B menyelesaikan sesi di Studio 2
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {activities.map((item, idx) => {
+                  const formatted = formatLogEntry(item);
+                  const timeAgo = formatRelativeTime(item.createdAt);
+
                   return (
-                    <div key={log.id}>
-                      <div className="flex gap-4">
-                        <div className={`w-10 h-10 rounded-full flex flex-shrink-0 items-center justify-center mt-1 ${formatted.iconBg}`}>
-                          <i className={formatted.icon}></i>
+                    <div key={item.id ?? idx}>
+                      <div className="flex gap-4 items-start min-w-0 overflow-hidden">
+                        <div className="w-10 h-10 rounded-full bg-[#941A0B]/10 flex flex-shrink-0 items-center justify-center text-[#941A0B] mt-0.5">
+                          <i className={`${formatted.icon ?? "fa-solid fa-bolt"} text-sm`} />
                         </div>
-                        <div className="flex-1">
-                          <div className="flex justify-between items-start">
-                            <h4 className="font-medium text-slate-900 text-sm">
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <div className="flex justify-between items-baseline gap-2">
+                            <h4
+                              className="font-semibold text-[#000000] text-xs sm:text-sm truncate"
+                              title={formatted.title}
+                            >
                               {formatted.title}
                             </h4>
-                            <span className="text-xs text-slate-400">
-                              {new Date(log.createdAt).toLocaleTimeString("id-ID", {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
+                            <span className="text-[11px] sm:text-xs text-[#919191] shrink-0 font-mono whitespace-nowrap">
+                              {timeAgo}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-500 mt-0.5 leading-relaxed">
+                          <p
+                            className="text-xs sm:text-sm text-[#4D4D4D] mt-0.5 truncate block w-full"
+                            title={formatted.description}
+                          >
                             {formatted.description}
                           </p>
                         </div>
                       </div>
-                      {idx < logs.length - 1 && <hr className="border-slate-100 my-4" />}
+                      {idx < activities.length - 1 && <hr className="border-[#F1F1F1] mt-5" />}
                     </div>
                   );
-                })
-              ) : (
-                <>
-                  <div className="flex gap-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 flex flex-shrink-0 items-center justify-center text-blue-600 mt-1">
-                      <i className="fa-solid fa-bolt"></i>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                        <h4 className="font-medium text-slate-900 text-sm">Jadwal Live Selesai</h4>
-                        <span className="text-xs text-slate-400">10 mnt lalu</span>
-                      </div>
-                      <p className="text-sm text-slate-500 mt-0.5">Streamer A menyelesaikan sesi di Studio 1</p>
-                    </div>
-                  </div>
-                  <hr className="border-slate-100" />
-                  <div className="flex gap-4">
-                    <div className="w-10 h-10 rounded-full bg-blue-50 flex flex-shrink-0 items-center justify-center text-blue-600 mt-1">
-                      <i className="fa-solid fa-bolt"></i>
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-start">
-                        <h4 className="font-medium text-slate-900 text-sm">Jadwal Live Selesai</h4>
-                        <span className="text-xs text-slate-400">10 mnt lalu</span>
-                      </div>
-                      <p className="text-sm text-slate-500 mt-0.5">Streamer B menyelesaikan sesi di Studio 2</p>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+                })}
+              </div>
+            )}
           </div>
 
-
-          {/* Quick Actions */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 lg:p-6">
-            <h3 className="font-bold text-slate-900 mb-6">Quick Actions</h3>
+          {/* Quick Actions Card */}
+          <div className="bg-[#FFFFFF] rounded-xl border border-[#F1F1F1] shadow-sm p-5 lg:p-6 min-w-0">
+            <h3 className="font-bold text-[#000000] mb-6 text-base">Quick Actions</h3>
             <div className="space-y-3">
               <Link
                 href="/input-karyawan"
-                className="w-full flex flex-col items-start p-4 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50/50 transition text-left group"
+                className="w-full flex flex-col items-start p-4 border border-[#F1F1F1] bg-white rounded-lg hover:border-[#941A0B] hover:bg-[#941A0B]/5 transition text-left group"
               >
-                <span className="font-medium text-slate-900 text-sm group-hover:text-blue-700">
-                  Tambah Karyawan
-                </span>
-                <span className="text-xs text-slate-500 mt-1">
-                  Input data karyawan baru ke sistem
-                </span>
+                <span className="font-medium text-[#000000] text-sm group-hover:text-[#941A0B]">Tambah Karyawan</span>
+                <span className="text-xs text-[#4D4D4D] mt-1">Input data karyawan baru ke sistem</span>
               </Link>
-
               <Link
                 href="/input-jadwal"
-                className="w-full flex flex-col items-start p-4 border border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50/50 transition text-left group"
+                className="w-full flex flex-col items-start p-4 border border-[#F1F1F1] bg-white rounded-lg hover:border-[#941A0B] hover:bg-[#941A0B]/5 transition text-left group"
               >
-                <span className="font-medium text-slate-900 text-sm group-hover:text-blue-700">
-                  Buat Jadwal
-                </span>
-                <span className="text-xs text-slate-500 mt-1">
-                  Atur jadwal live streaming baru
-                </span>
+                <span className="font-medium text-[#000000] text-sm group-hover:text-[#941A0B]">Buat Jadwal</span>
+                <span className="text-xs text-[#4D4D4D] mt-1">Atur jadwal live streaming baru</span>
               </Link>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Footer */}
       <div className="mt-12 text-center pb-4">
-        <p className="text-xs text-slate-400">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
+        <p className="text-xs text-[#919191]">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
       </div>
     </div>
   );
 }
+
