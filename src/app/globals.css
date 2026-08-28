@@ -134,3 +134,50 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
 .animate-fadeIn {
   animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Flatpickr Theme Customization for Pantone Maroon (#941A0B) */
+@import "flatpickr/dist/flatpickr.min.css";
+
+.flatpickr-calendar {
+  border-radius: 1rem !important;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+  border: 1px solid #e2e8f0 !important;
+  font-family: inherit !important;
+}
+
+.flatpickr-day.selected,
+.flatpickr-day.startRange,
+.flatpickr-day.endRange,
+.flatpickr-day.selected.inRange,
+.flatpickr-day.startRange.inRange,
+.flatpickr-day.endRange.inRange,
+.flatpickr-day.selected:focus,
+.flatpickr-day.startRange:focus,
+.flatpickr-day.endRange:focus,
+.flatpickr-day.selected:hover,
+.flatpickr-day.startRange:hover,
+.flatpickr-day.endRange:hover {
+  background: #941A0B !important;
+  border-color: #941A0B !important;
+  color: #ffffff !important;
+}
+
+.flatpickr-day.inRange {
+  background: #FEE2E2 !important;
+  border-color: #FECACA !important;
+  color: #941A0B !important;
+}
+
+.flatpickr-months .flatpickr-month {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+  font-weight: 700 !important;
+}
+
+.flatpickr-calendar .flatpickr-time {
+  border-top: 1px solid #f1f5f9 !important;
+}
+

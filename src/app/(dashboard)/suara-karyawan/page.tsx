@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 export default function SuaraKaryawanPage() {
   const { data: session } = useSession();
+  const { showAlert } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"buat" | "riwayat">("buat");
@@ -38,11 +40,23 @@ export default function SuaraKaryawanPage() {
       if (Array.isArray(data)) {
         setHistory(data);
       }
-    } catch (err) {
-      console.error("Gagal memuat suara karyawan:", err);
+    } catch {
+      // ignore
     } finally {
       setLoadingHistory(false);
     }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showAlert("⚠️ Ukuran berkas maksimal 5MB.");
+      return;
+    }
+    compressImage(file, (b64) => {
+      setFormSuara((prev) => ({ ...prev, buktiB64: b64 }));
+    });
   }
 
   function compressImage(file: File, callback: (b64: string) => void) {
@@ -77,7 +91,7 @@ export default function SuaraKaryawanPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formSuara.deskripsi) {
-      alert("⚠️ Deskripsi laporan wajib diisi.");
+      showAlert("⚠️ Deskripsi laporan wajib diisi.");
       return;
     }
 
@@ -96,7 +110,7 @@ export default function SuaraKaryawanPage() {
       });
 
       if (res.ok) {
-        alert("✅ Laporan suara karyawan berhasil dikirim ke manajemen!");
+        showAlert("✅ Laporan suara karyawan berhasil dikirim ke manajemen!");
         setFormSuara({
           kategori: "KELUHAN",
           deskripsi: "",
@@ -108,10 +122,10 @@ export default function SuaraKaryawanPage() {
         setActiveTab("riwayat");
       } else {
         const d = await res.json();
-        alert("❌ Gagal: " + (d.error || d.message || "Gagal mengirim laporan"));
+        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengirim laporan"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSubmitting(false);
     }

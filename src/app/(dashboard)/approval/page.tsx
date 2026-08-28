@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 type MainTab = "marketplace" | "lembur" | "izin" | "shift";
 type MarketplaceSubTab = "jadwal" | "approved" | "online" | "cleaning" | "riwayat";
@@ -37,6 +38,7 @@ interface ApprovalItem {
 
 export default function ApprovalPage() {
   const { data: session } = useSession();
+  const { showAlert, showConfirm } = useAlert();
   const userRole = (session?.user?.role || "").toUpperCase();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"].includes(userRole);
 
@@ -179,7 +181,8 @@ export default function ApprovalPage() {
   // Single Action (Approve / Reject)
   async function handleSingleAction(item: ApprovalItem, approve: boolean) {
     const actionName = approve ? "MENYETUJUI" : "MENOLAK";
-    if (!confirm(`Yakin ingin ${actionName} pengajuan ini?`)) return;
+    const confirmed = await showConfirm(`Yakin ingin ${actionName} pengajuan ini?`);
+    if (!confirmed) return;
 
     try {
       const res = await fetch(
@@ -187,20 +190,20 @@ export default function ApprovalPage() {
         { method: "PATCH" }
       );
       if (res.ok) {
-        alert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+        showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
         loadData();
       } else {
-        alert("❌ Gagal memproses pengajuan.");
+        showAlert("❌ Gagal memproses pengajuan.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
   // Bulk Approve Jadwal (Pengajuan tab)
   async function handleBulkApproveJadwal() {
     if (selectedIds.length === 0) {
-      alert("⚠️ Pilih minimal 1 jadwal yang akan disetujui.");
+      showAlert("⚠️ Pilih minimal 1 jadwal yang akan disetujui.");
       return;
     }
 
@@ -217,21 +220,21 @@ export default function ApprovalPage() {
         body: JSON.stringify({ items: payload }),
       });
       if (res.ok) {
-        alert(`✅ Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
+        showAlert(`✅ Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
         setSelectedIds([]);
         loadData();
       } else {
-        alert("❌ Gagal menyetujui jadwal terpilih.");
+        showAlert("❌ Gagal menyetujui jadwal terpilih.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
   // Publish to Marketplace (Approved tab)
   async function handlePublishSelected() {
     if (selectedIds.length === 0) {
-      alert("⚠️ Pilih jadwal yang akan diterbitkan ke Marketplace.");
+      showAlert("⚠️ Pilih jadwal yang akan diterbitkan ke Marketplace.");
       return;
     }
     try {
@@ -241,19 +244,19 @@ export default function ApprovalPage() {
         body: JSON.stringify({ ids: selectedIds }),
       });
       if (res.ok) {
-        alert(`✅ Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
+        showAlert(`✅ Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
         setSelectedIds([]);
         loadData();
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
   // Send to Cleaning (Online tab)
   async function handleSendToCleaningSelected() {
     if (selectedIds.length === 0) {
-      alert("⚠️ Pilih sesi yang akan dikirim ke Cleaning.");
+      showAlert("⚠️ Pilih sesi yang akan dikirim ke Cleaning.");
       return;
     }
     try {
@@ -263,19 +266,19 @@ export default function ApprovalPage() {
         body: JSON.stringify({ ids: selectedIds }),
       });
       if (res.ok) {
-        alert(`✅ Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
+        showAlert(`✅ Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
         setSelectedIds([]);
         loadData();
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
   // Pull back to Approved (Cleaning tab)
   async function handlePullToApprovedSelected() {
     if (selectedIds.length === 0) {
-      alert("⚠️ Pilih jadwal yang akan ditarik ke Approved.");
+      showAlert("⚠️ Pilih jadwal yang akan ditarik ke Approved.");
       return;
     }
     try {
@@ -285,12 +288,12 @@ export default function ApprovalPage() {
         body: JSON.stringify({ ids: selectedIds }),
       });
       if (res.ok) {
-        alert(`✅ Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
+        showAlert(`✅ Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
         setSelectedIds([]);
         loadData();
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
@@ -327,14 +330,14 @@ export default function ApprovalPage() {
         }),
       });
       if (res.ok) {
-        alert("✅ Data pengajuan klien berhasil diperbarui!");
+        showAlert("✅ Data pengajuan klien berhasil diperbarui!");
         setEditingItem(null);
         loadData();
       } else {
-        alert("❌ Gagal memperbarui data pengajuan.");
+        showAlert("❌ Gagal memperbarui data pengajuan.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 

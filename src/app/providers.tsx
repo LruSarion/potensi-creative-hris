@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { SessionProvider } from "next-auth/react";
 import { LoadingProvider } from "@/components/loading-provider";
+import { CustomAlertProvider } from "@/components/ui/custom-alert";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -30,7 +31,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <SessionProvider>
-      <LoadingProvider>{children}</LoadingProvider>
+      <LoadingProvider>
+        <CustomAlertProvider>{children}</CustomAlertProvider>
+      </LoadingProvider>
     </SessionProvider>
   );
 }

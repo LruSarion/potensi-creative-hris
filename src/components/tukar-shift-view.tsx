@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 type MainTab = "streamer" | "ots" | "khusus";
 type SubTab = "formulir" | "approval";
@@ -25,6 +26,7 @@ interface SwapRow {
 
 export function TukarShiftView() {
   const { data: session } = useSession();
+  const { showAlert, showConfirm } = useAlert();
 
   const userRole = (session?.user?.role || "").toUpperCase();
   const isSuperAdmin = userRole === "SUPER_ADMIN";
@@ -140,7 +142,7 @@ export function TukarShiftView() {
   // File handling helpers
   function compressImage(file: File, callback: (b64: string) => void) {
     if (file.size > 8 * 1024 * 1024) {
-      alert("⚠️ Ukuran file melebihi 8 MB. Silakan pilih gambar yang lebih kecil.");
+      showAlert("⚠️ Ukuran file melebihi 8 MB. Silakan pilih gambar yang lebih kecil.");
       return;
     }
     const reader = new FileReader();
@@ -193,7 +195,7 @@ export function TukarShiftView() {
         videoRef.current.srcObject = stream;
       }
     } catch {
-      alert("⚠️ Tidak dapat mengakses kamera pada perangkat ini.");
+      showAlert("⚠️ Tidak dapat mengakses kamera pada perangkat ini.");
       setCameraActiveFor(null);
     }
   }
@@ -225,11 +227,11 @@ export function TukarShiftView() {
   // Conflict Check (Cek Bentrok)
   async function cekBentrok() {
     if (!strJadwal) {
-      alert("⚠️ Pilih Jadwal Anda terlebih dahulu.");
+      showAlert("⚠️ Pilih Jadwal Anda terlebih dahulu.");
       return;
     }
     if (!strPengganti) {
-      alert("⚠️ Pilih Host Pengganti terlebih dahulu.");
+      showAlert("⚠️ Pilih Host Pengganti terlebih dahulu.");
       return;
     }
 
@@ -291,7 +293,7 @@ export function TukarShiftView() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}\nAlasan: ${strAlasan}`);
+        showAlert(`✅ Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}\nAlasan: ${strAlasan}`);
         setStrJadwal("");
         setStrPengganti("");
         setStrAlasan("");
@@ -299,10 +301,10 @@ export function TukarShiftView() {
         setStrCekStatus({ tested: false, loading: false, ok: false, message: "" });
         loadSwaps();
       } else {
-        alert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
+        showAlert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert("⚠️ Terjadi kesalahan jaringan.");
     } finally {
       setStrSubmitting(false);
     }
@@ -335,17 +337,17 @@ export function TukarShiftView() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}\nAlasan: ${otsAlasan}`);
+        showAlert(`✅ Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}\nAlasan: ${otsAlasan}`);
         setOtsJadwal("");
         setOtsPengganti("");
         setOtsAlasan("");
         setOtsLampiranB64("");
         loadSwaps();
       } else {
-        alert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
+        showAlert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert("⚠️ Terjadi kesalahan jaringan.");
     } finally {
       setOtsSubmitting(false);
     }
@@ -354,11 +356,12 @@ export function TukarShiftView() {
   // Submit Khusus (Super Admin Override)
   async function handleSubmitKhusus() {
     if (!khsJadwal || !khsPengganti || !khsAlasan || !khsLampiranB64) {
-      alert("⚠️ Lengkapi semua field dan lampiran.");
+      showAlert("⚠️ Lengkapi semua field dan lampiran.");
       return;
     }
 
-    if (!confirm("⚠️ Tindakan ini LANGSUNG TERSIMPAN dan mengubah jadwal tanpa persetujuan.\nYakin melanjutkan?")) {
+    const confirmed = await showConfirm("⚠️ Tindakan ini LANGSUNG TERSIMPAN dan mengubah jadwal tanpa persetujuan.\nYakin melanjutkan?");
+    if (!confirmed) {
       return;
     }
 
@@ -383,7 +386,7 @@ export function TukarShiftView() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert("✅ Jadwal berhasil diperbarui secara instan oleh Super Admin!");
+        showAlert("✅ Jadwal berhasil diperbarui secara instan oleh Super Admin!");
         setKhsJadwal("");
         setKhsPengganti("");
         setKhsAlasan("");
@@ -391,10 +394,10 @@ export function TukarShiftView() {
         loadSwaps();
         loadFormData();
       } else {
-        alert("❌ Gagal: " + (data.error || data.message || "Terjadi kesalahan"));
+        showAlert("❌ Gagal: " + (data.error || data.message || "Terjadi kesalahan"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert("⚠️ Terjadi kesalahan jaringan.");
     } finally {
       setKhsSubmitting(false);
     }
@@ -403,7 +406,8 @@ export function TukarShiftView() {
   // Approval actions (Setuju / Tolak)
   async function handleAksiApproval(id: string, setuju: boolean) {
     const actionText = setuju ? "MENYETUJUI" : "MENOLAK";
-    if (!confirm(`Yakin ingin ${actionText} pengajuan tukar shift ini?`)) return;
+    const confirmed = await showConfirm(`Yakin ingin ${actionText} pengajuan tukar shift ini?`);
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/tukar-shift?id=${id}&approve=${setuju}`, {
@@ -411,13 +415,13 @@ export function TukarShiftView() {
       });
       const data = await res.json();
       if (res.ok) {
-        alert(`✅ Pengajuan berhasil di-${setuju ? "setujui" : "tolak"}!`);
+        showAlert(`✅ Pengajuan berhasil di-${setuju ? "setujui" : "tolak"}!`);
         loadSwaps();
       } else {
-        alert("❌ Gagal: " + (data.error || data.message || "Gagal memproses"));
+        showAlert("❌ Gagal: " + (data.error || data.message || "Gagal memproses"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert("⚠️ Terjadi kesalahan jaringan.");
     }
   }
 

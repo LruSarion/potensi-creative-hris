@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 export default function PengajuanIzinPage() {
   const { data: session } = useSession();
+  const { showAlert, showConfirm } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"ajukan" | "riwayat">("ajukan");
@@ -38,51 +40,32 @@ export default function PengajuanIzinPage() {
       if (Array.isArray(data)) {
         setHistory(data);
       }
-    } catch (err) {
-      console.error("Gagal memuat data izin:", err);
+    } catch {
+      // ignore
     } finally {
       setLoadingHistory(false);
     }
   }
 
-  function compressImage(file: File, callback: (b64: string) => void) {
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showAlert("⚠️ Ukuran berkas maksimal 5MB.");
+      return;
+    }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target?.result as string;
-      img.onload = () => {
-        const MAX = 1000;
-        let w = img.width;
-        let h = img.height;
-        if (w >= h && w > MAX) {
-          h = Math.round((h * MAX) / w);
-          w = MAX;
-        } else if (h > w && h > MAX) {
-          w = Math.round((w * MAX) / h);
-          h = MAX;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          callback(canvas.toDataURL("image/jpeg", 0.75));
-        }
-      };
+    reader.onload = () => {
+      setFormIzin((prev) => ({ ...prev, buktiB64: reader.result as string }));
     };
     reader.readAsDataURL(file);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!formIzin.alasan) {
-      alert("⚠️ Alasan pengajuan izin wajib diisi.");
-      return;
-    }
-
-    if (formIzin.jenis === "SAKIT" && !formIzin.buktiB64) {
-      alert("⚠️ Izin sakit wajib menyertakan lampiran bukti (surat dokter / resep).");
+    if (!formIzin.alasan.trim()) {
+      showAlert("⚠️ Mohon isi alasan pengajuan cuti/izin.");
       return;
     }
 
@@ -101,7 +84,7 @@ export default function PengajuanIzinPage() {
       });
 
       if (res.ok) {
-        alert("✅ Pengajuan cuti / izin berhasil dikirim!");
+        showAlert("✅ Pengajuan cuti / izin berhasil dikirim!");
         setFormIzin({
           jenis: "CUTI TAHUNAN",
           tanggalMulai: new Date().toISOString().split("T")[0],
@@ -113,27 +96,28 @@ export default function PengajuanIzinPage() {
         setActiveTab("riwayat");
       } else {
         const d = await res.json();
-        alert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan izin"));
+        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan izin"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleApprove(id: string, approve: boolean) {
-    if (!confirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} pengajuan cuti/izin ini?`)) return;
+    const confirmed = await showConfirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} pengajuan cuti/izin ini?`);
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/izin?id=${id}&approve=${approve}`, { method: "PATCH" });
       if (res.ok) {
-        alert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+        showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
         loadHistory();
       } else {
-        alert("❌ Gagal memproses approval izin.");
+        showAlert("❌ Gagal memproses approval izin.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 
@@ -219,10 +203,7 @@ export default function PengajuanIzinPage() {
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) compressImage(file, (b64) => setFormIzin((f) => ({ ...f, buktiB64: b64 })));
-                      }}
+                      onChange={handleFileChange}
                     />
                   </label>
                   {formIzin.buktiB64 && (

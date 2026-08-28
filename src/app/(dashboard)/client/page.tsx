@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 interface ClientData {
   id: string;
@@ -127,6 +128,7 @@ export default function ClientPage() {
   // Tab 3: Rubah Data Client State
   const [searchEditId, setSearchEditId] = useState("");
   const [selectedEditClientId, setSelectedEditClientId] = useState("");
+  const { showAlert } = useAlert();
   const [selectedEditClient, setSelectedEditClient] = useState<ClientData | null>(null);
   const [editClientForm, setEditClientForm] = useState<FormClientItem>(createDefaultClientForm(1, true));
   const [savingEditClient, setSavingEditClient] = useState(false);
@@ -224,7 +226,7 @@ export default function ClientPage() {
   // Multi-Form Handlers for Client Registration
   function handleAddClientForm() {
     if (clientForms.length >= 5) {
-      alert("⚠️ Maksimal 5 data client dalam satu kali proses pendaftaran.");
+      showAlert("⚠️ Maksimal 5 data client dalam satu kali proses pendaftaran.");
       return;
     }
     const updated = clientForms.map((f) => ({ ...f, isExpanded: false }));
@@ -234,7 +236,7 @@ export default function ClientPage() {
 
   function handleRemoveClientForm(id: number) {
     if (clientForms.length <= 1) {
-      alert("⚠️ Minimal harus ada 1 formulir registrasi.");
+      showAlert("⚠️ Minimal harus ada 1 formulir registrasi.");
       return;
     }
     setClientForms(clientForms.filter((f) => f.id !== id));
@@ -248,11 +250,11 @@ export default function ClientPage() {
     e.preventDefault();
     for (const f of clientForms) {
       if (!f.namaMerk.trim()) {
-        alert(`⚠️ Mohon isi Nama Merk pada Formulir #${f.id}`);
+        showAlert(`⚠️ Mohon isi Nama Merk pada Formulir #${f.id}`);
         return;
       }
       if (!f.nomorTeleponSuffix.trim()) {
-        alert(`⚠️ Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
+        showAlert(`⚠️ Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
         return;
       }
     }
@@ -274,12 +276,12 @@ export default function ClientPage() {
         });
       }
 
-      alert(`✅ Berhasil menyimpan ${clientForms.length} data client baru ke sistem!`);
+      showAlert(`✅ Berhasil menyimpan ${clientForms.length} data client baru ke sistem!`);
       setClientForms([createDefaultClientForm(1, true)]);
       loadClients();
       setActiveTab("daftar");
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi saat menyimpan data client.");
+      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan data client.");
     } finally {
       setSubmittingClients(false);
     }
@@ -369,7 +371,7 @@ export default function ClientPage() {
         isExpanded: true,
       });
     } else {
-      alert("⚠️ Data client tidak ditemukan. Pastikan memilih dari daftar saran.");
+      showAlert("⚠️ Data client tidak ditemukan. Pastikan memilih dari daftar saran.");
     }
   }
 
@@ -378,7 +380,7 @@ export default function ClientPage() {
     if (!selectedEditClient) return;
 
     if (!editClientForm.namaMerk.trim()) {
-      alert("⚠️ Mohon isi Nama Merk / Brand client.");
+      showAlert("⚠️ Mohon isi Nama Merk / Brand client.");
       return;
     }
 
@@ -401,7 +403,7 @@ export default function ClientPage() {
 
       const d = await res.json();
       if (res.ok && (d.status === "success" || d.data || d.id)) {
-        alert("✅ Perubahan data client berhasil disimpan!");
+        showAlert("✅ Perubahan data client berhasil disimpan!");
         await loadClients();
         const updated = {
           ...selectedEditClient,
@@ -409,10 +411,10 @@ export default function ClientPage() {
         };
         setSelectedEditClient(updated);
       } else {
-        alert(`❌ Gagal menyimpan: ${d.message || "Terjadi kesalahan."}`);
+        showAlert(`❌ Gagal menyimpan: ${d.message || "Terjadi kesalahan."}`);
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi saat menyimpan perubahan.");
+      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan perubahan.");
     } finally {
       setSavingEditClient(false);
     }
@@ -421,7 +423,7 @@ export default function ClientPage() {
   // Multi-Form Handlers for Products
   function handleAddProdukForm() {
     if (produkForms.length >= 10) {
-      alert("⚠️ Maksimal 10 produk dalam satu kali penginputan.");
+      showAlert("⚠️ Maksimal 10 produk dalam satu kali penginputan.");
       return;
     }
     const updated = produkForms.map((f) => ({ ...f, isExpanded: false }));
@@ -466,7 +468,7 @@ export default function ClientPage() {
   async function handleSubmitProdukMaster(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPlatformClientId) {
-      alert("⚠️ Pilih Platform Klien di bagian atas terlebih dahulu.");
+      showAlert("⚠️ Pilih Platform Klien di bagian atas terlebih dahulu.");
       return;
     }
 
@@ -485,12 +487,12 @@ export default function ClientPage() {
         }).catch(() => {});
       }
 
-      alert(`✅ Berhasil menyimpan ${produkForms.length} produk baru!`);
+      showAlert(`✅ Berhasil menyimpan ${produkForms.length} produk baru!`);
       setProdukForms([createDefaultProdukForm(1, true)]);
       handleSelectPlatform(selectedPlatformClientId);
       setSubTabProduk("list");
     } catch {
-      alert("⚠️ Terjadi kesalahan saat menyimpan produk.");
+      showAlert("⚠️ Terjadi kesalahan saat menyimpan produk.");
     } finally {
       setSubmittingProduk(false);
     }
@@ -539,7 +541,7 @@ export default function ClientPage() {
       setSearchEditProduk(`${target.no || "1"} | ${target.sku || target.sellerSku || "-"} | ${target.namaProduk}`);
       setEditProdukRows([{ field: "NAMA_PRODUK", value: target.namaProduk || "" }]);
     } else {
-      alert("⚠️ Produk tidak ditemukan di katalog. Pastikan memilih produk dari daftar saran.");
+      showAlert("⚠️ Produk tidak ditemukan di katalog. Pastikan memilih produk dari daftar saran.");
     }
   }
 
@@ -1881,7 +1883,7 @@ export default function ClientPage() {
                       <form
                         onSubmit={(e) => {
                           e.preventDefault();
-                          alert("✅ Perubahan data produk berhasil diterapkan!");
+                          showAlert("✅ Perubahan data produk berhasil diterapkan!");
                           setSelectedEditProduk(null);
                           setSearchEditProduk("");
                         }}

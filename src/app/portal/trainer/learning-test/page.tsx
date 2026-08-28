@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 type Question = {
   id: string;
@@ -44,6 +45,7 @@ type Course = {
 const DEFAULT_OPTIONS = ["", "", "", ""];
 
 export default function LearningTestPage() {
+  const { showConfirm } = useAlert();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
@@ -149,7 +151,8 @@ export default function LearningTestPage() {
   }
 
   async function deleteLesson(id: string) {
-    if (!confirm("Hapus materi video beserta semua pertanyaan terkait?")) return;
+    const confirmed = await showConfirm("Hapus materi video beserta semua pertanyaan terkait?");
+    if (!confirmed) return;
     setError("");
     try {
       const r = await fetch("/api/lms", {
@@ -439,7 +442,8 @@ export default function LearningTestPage() {
                         </button>
                         <button
                           onClick={async () => {
-                            if (!confirm("Hapus pertanyaan ini?")) return;
+                            const confirmed = await showConfirm("Hapus pertanyaan ini?");
+                            if (!confirmed) return;
                             try {
                               const r = await fetch("/api/lms", {
                                 method: "POST",

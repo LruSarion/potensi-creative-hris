@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useAlert } from "@/components/ui/custom-alert";
 
 export type Notification = {
   id: string;
@@ -67,6 +68,7 @@ function getIconAndColor(type?: string, title?: string) {
 
 export default function NotificationBell() {
   const pathname = usePathname();
+  const { showConfirm } = useAlert();
   const [items, setItems] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -176,7 +178,8 @@ export default function NotificationBell() {
   }
 
   async function clearAll() {
-    if (!confirm("Hapus semua notifikasi dari kotak masuk Anda?")) return;
+    const confirmed = await showConfirm("Hapus semua notifikasi dari kotak masuk Anda?");
+    if (!confirmed) return;
     setItems([]);
     try {
       await fetch("/api/integration", {

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 type NotifType = { key: string; label: string; icon: string };
 
 export default function TelegramConnect() {
+  const { showConfirm } = useAlert();
   const [connected, setConnected] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,7 +83,8 @@ export default function TelegramConnect() {
   }
 
   async function handleDisconnect() {
-    if (!confirm("Putuskan koneksi Telegram?")) return;
+    const confirmed = await showConfirm("Putuskan koneksi Telegram?");
+    if (!confirmed) return;
     setError("");
     try {
       const r = await fetch("/api/telegram/connect", {

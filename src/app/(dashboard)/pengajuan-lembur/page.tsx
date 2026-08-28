@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 export default function PengajuanLemburPage() {
   const { data: session } = useSession();
+  const { showAlert, showConfirm } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"ajukan" | "mulai" | "selesai" | "riwayat">("ajukan");
@@ -108,7 +110,7 @@ export default function PengajuanLemburPage() {
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
-      alert("⚠️ Gagal mengakses kamera perangkat.");
+      showAlert("⚠️ Gagal mengakses kamera perangkat.");
       setCameraActiveFor(null);
     }
   }
@@ -139,7 +141,7 @@ export default function PengajuanLemburPage() {
   async function handleAjukan(e: React.FormEvent) {
     e.preventDefault();
     if (!formAjukan.kegiatan) {
-      alert("⚠️ Kegiatan / alasan lembur wajib diisi.");
+      showAlert("⚠️ Kegiatan / alasan lembur wajib diisi.");
       return;
     }
 
@@ -160,7 +162,7 @@ export default function PengajuanLemburPage() {
       });
 
       if (res.ok) {
-        alert("✅ Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
+        showAlert("✅ Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
         setFormAjukan({
           tanggal: new Date().toISOString().split("T")[0],
           spv: "Raihan",
@@ -172,10 +174,10 @@ export default function PengajuanLemburPage() {
         setActiveTab("riwayat");
       } else {
         const d = await res.json();
-        alert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan lembur"));
+        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan lembur"));
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSubmittingAjukan(false);
     }
@@ -184,7 +186,7 @@ export default function PengajuanLemburPage() {
   async function handleMulai(e: React.FormEvent) {
     e.preventDefault();
     if (!formMulai.idLembur || !formMulai.fotoB64) {
-      alert("⚠️ ID Lembur dan Foto Masuk wajib diisi.");
+      showAlert("⚠️ ID Lembur dan Foto Masuk wajib diisi.");
       return;
     }
 
@@ -199,14 +201,14 @@ export default function PengajuanLemburPage() {
       });
 
       if (res.ok) {
-        alert("✅ Absen mulai lembur berhasil dicatat!");
+        showAlert("✅ Absen mulai lembur berhasil dicatat!");
         loadHistory();
         setActiveTab("selesai");
       } else {
-        alert("❌ Gagal mencatat absen masuk lembur.");
+        showAlert("❌ Gagal mencatat absen masuk lembur.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSubmittingMulai(false);
     }
@@ -215,7 +217,7 @@ export default function PengajuanLemburPage() {
   async function handleSelesai(e: React.FormEvent) {
     e.preventDefault();
     if (!formSelesai.idLembur || !formSelesai.fotoB64 || !formSelesai.catatan) {
-      alert("⚠️ ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
+      showAlert("⚠️ ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
       return;
     }
 
@@ -231,31 +233,32 @@ export default function PengajuanLemburPage() {
       });
 
       if (res.ok) {
-        alert("✅ Absen selesai lembur dan laporan akhir berhasil dikirim!");
+        showAlert("✅ Absen selesai lembur dan laporan akhir berhasil dikirim!");
         loadHistory();
         setActiveTab("riwayat");
       } else {
-        alert("❌ Gagal mencatat absen selesai lembur.");
+        showAlert("❌ Gagal mencatat absen selesai lembur.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSubmittingSelesai(false);
     }
   }
 
   async function handleApprove(id: string, approve: boolean) {
-    if (!confirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} lembur ini?`)) return;
+    const confirmed = await showConfirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} lembur ini?`);
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/lembur?id=${id}&approve=${approve}`, { method: "PATCH" });
       if (res.ok) {
-        alert(`✅ Lembur berhasil ${approve ? "disetujui" : "ditolak"}!`);
+        showAlert(`✅ Lembur berhasil ${approve ? "disetujui" : "ditolak"}!`);
         loadHistory();
       } else {
-        alert("❌ Gagal memperbarui status lembur.");
+        showAlert("❌ Gagal memperbarui status lembur.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
   }
 

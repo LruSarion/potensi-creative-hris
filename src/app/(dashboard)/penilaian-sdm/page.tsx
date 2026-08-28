@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 
 interface KPIRow {
   rowIndex: number;
@@ -35,6 +36,7 @@ interface KPIRow {
 
 export default function PenilaianSDMPage() {
   const { data: session } = useSession();
+  const { showAlert } = useAlert();
   const userRole = (session?.user?.role || "").toUpperCase();
   const isRater = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"].includes(userRole);
 
@@ -270,14 +272,14 @@ export default function PenilaianSDMPage() {
       });
 
       if (res.ok) {
-        alert(`✅ Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
+        showAlert(`✅ Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
         setPendingChanges({});
         fetchMatrixData();
       } else {
-        alert("❌ Gagal menyimpan data KPI ke server.");
+        showAlert("❌ Gagal menyimpan data KPI ke server.");
       }
     } catch {
-      alert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
       setSavingBatch(false);
     }
