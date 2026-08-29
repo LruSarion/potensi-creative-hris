@@ -96,6 +96,122 @@ function createDefaultForm(id: number, isExpanded = true): FormKaryawan {
   };
 }
 
+function populateEditForm(emp: any): FormKaryawan {
+  const cleanSuffix = (phone?: string | null) => {
+    if (!phone) return "";
+    return String(phone).replace(/^62/, "").replace(/^0+/, "");
+  };
+
+  const toDateStr = (d?: string | Date | null) => {
+    if (!d) return "";
+    try {
+      const dt = new Date(d);
+      return isNaN(dt.getTime()) ? "" : dt.toISOString().split("T")[0];
+    } catch {
+      return "";
+    }
+  };
+
+  const normGender = (g?: string | null) => {
+    if (!g) return "Perempuan";
+    const u = String(g).toUpperCase();
+    if (u.includes("LAKI")) return "Laki-laki";
+    return "Perempuan";
+  };
+
+  const normStatus = (s?: string | null) => {
+    if (!s) return "Aktif";
+    const u = String(s).toUpperCase();
+    if (u.includes("NON")) return "Non-Aktif";
+    if (u.includes("CUTI")) return "Cuti";
+    if (u.includes("IZIN")) return "Izin";
+    return "Aktif";
+  };
+
+  const normTipe = (t?: string | null) => {
+    if (!t) return "Shift";
+    const u = String(t).toUpperCase();
+    if (u.includes("OFFICE")) return "Office Hours";
+    if (u.includes("LIVE") || u.includes("FLEXIBLE")) return "Flexible Hours";
+    return "Shift";
+  };
+
+  return {
+    id: 1,
+    namaLengkap: emp.namaLengkap || "",
+    namaPanggilan: emp.namaPanggilan || "",
+    gender: normGender(emp.gender),
+    tempatLahir: emp.tempatLahir || "",
+    tanggalLahir: toDateStr(emp.tanggalLahir),
+    agama: emp.agama || "Islam",
+    nomorTeleponSuffix: cleanSuffix(emp.nomorTelepon),
+    emergencyContactSuffix: cleanSuffix(emp.emergencyContact),
+    email: emp.email || "",
+    statusPerkawinan: emp.statusPerkawinan || "Belum Kawin",
+    riwayatPenyakit: emp.riwayatPenyakit || "-",
+    jabatan: emp.jabatan || "",
+    kategori: emp.kategori || "Host",
+    tipeJadwal: normTipe(emp.tipeJadwal),
+    startDate: toDateStr(emp.startDate) || new Date().toISOString().split("T")[0],
+    endDate: toDateStr(emp.endDate),
+    statusAktif: normStatus(emp.statusAktif),
+    nik: emp.nik || "",
+    npwp: emp.npwp || "",
+    statusPtkp: emp.statusPtkp || "TK/0",
+    alamatKtp: emp.alamatKtp || "",
+    alamatDomisili: emp.alamatDomisili || "",
+    namaBank: emp.namaBank || "BCA",
+    nomorRekening: emp.nomorRekening || "",
+    namaPemilikRek: emp.namaPemilikRek || emp.namaLengkap || "",
+    scanKtp: emp.scanKtpDriveId || null,
+    scanKk: emp.scanKkDriveId || null,
+    scanNpwp: emp.scanNpwpDriveId || null,
+    isExpanded: true,
+  };
+}
+
+function getEmployeeFieldValue(emp: any, fieldKey: string): string {
+  if (!emp) return "";
+  const cleanPhone = (v?: string | null) => (v ? String(v).replace(/^62/, "").replace(/^0+/, "") : "");
+  const toDateStr = (d?: any) => {
+    if (!d) return "";
+    try {
+      return new Date(d).toISOString().split("T")[0];
+    } catch {
+      return "";
+    }
+  };
+
+  switch (fieldKey) {
+    case "NAMA_LENGKAP": return emp.namaLengkap || "";
+    case "NAMA_PANGGILAN": return emp.namaPanggilan || "";
+    case "GENDER": return emp.gender === "LAKI_LAKI" ? "Laki-laki" : "Perempuan";
+    case "TEMPAT_LAHIR": return emp.tempatLahir || "";
+    case "TANGGAL_LAHIR": return toDateStr(emp.tanggalLahir);
+    case "AGAMA": return emp.agama || "Islam";
+    case "STATUS_PERKAWINAN": return emp.statusPerkawinan || "Belum Kawin";
+    case "RIWAYAT_PENYAKIT": return emp.riwayatPenyakit || "-";
+    case "NOMOR_TELEPON": return cleanPhone(emp.nomorTelepon);
+    case "EMERGENCY_CONTACT": return cleanPhone(emp.emergencyContact);
+    case "EMAIL": return emp.email || "";
+    case "JABATAN": return emp.jabatan || "";
+    case "KATEGORI": return emp.kategori || "Host";
+    case "TIPE_JADWAL": return emp.tipeJadwal === "OFFICE_HOURS" ? "Office Hours" : emp.tipeJadwal === "LIVE" ? "Flexible Hours" : "Shift";
+    case "START_DATE": return toDateStr(emp.startDate);
+    case "END_DATE": return toDateStr(emp.endDate);
+    case "STATUS_AKTIF": return emp.statusAktif === "NON_AKTIF" ? "Non-Aktif" : emp.statusAktif === "CUTI" ? "Cuti" : emp.statusAktif === "IZIN" ? "Izin" : "Aktif";
+    case "NIK": return emp.nik || "";
+    case "NPWP": return emp.npwp || "";
+    case "STATUS_PTKP": return emp.statusPtkp || "TK/0";
+    case "ALAMAT_KTP": return emp.alamatKtp || "";
+    case "ALAMAT_DOMISILI": return emp.alamatDomisili || "";
+    case "NAMA_BANK": return emp.namaBank || "BCA";
+    case "NOMOR_REKENING": return emp.nomorRekening || "";
+    case "NAMA_PEMILIK_REKENING": return emp.namaPemilikRek || emp.namaLengkap || "";
+    default: return "";
+  }
+}
+
 export default function InputKaryawanPage() {
   const { showAlert, showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState<"input" | "edit" | "direktori">("input");
@@ -108,6 +224,8 @@ export default function InputKaryawanPage() {
   const [employeeList, setEmployeeList] = useState<any[]>([]);
   const [searchEditId, setSearchEditId] = useState("");
   const [targetEmployee, setTargetEmployee] = useState<any | null>(null);
+  const [editSubTab, setEditSubTab] = useState<"full" | "quick">("full");
+  const [fullEditForm, setFullEditForm] = useState<FormKaryawan>(createDefaultForm(1, true));
   const [editRows, setEditRows] = useState<EditRow[]>([{ field: "", value: "" }]);
   const [savingEdit, setSavingEdit] = useState(false);
 
@@ -185,44 +303,66 @@ export default function InputKaryawanPage() {
 
   async function handleSubmitMultiForm(e: React.FormEvent) {
     e.preventDefault();
+
+    // Client-side validations
     for (const f of forms) {
-      if (!f.namaLengkap.trim()) { showAlert(`⚠️ Nama Lengkap pada Formulir #${f.id} wajib diisi.`); return; }
-      if (!f.email.trim()) { showAlert(`⚠️ Email pada Formulir #${f.id} wajib diisi.`); return; }
-      if (!f.jabatan) { showAlert(`⚠️ Jabatan pada Formulir #${f.id} wajib dipilih.`); return; }
-      if (!f.nik.trim()) { showAlert(`⚠️ NIK KTP pada Formulir #${f.id} wajib diisi.`); return; }
+      if (!f.namaLengkap.trim() || f.namaLengkap.trim().length < 2) {
+        showAlert(`⚠️ Mohon isi Nama Lengkap (minimal 2 karakter) pada Formulir #${f.id}`);
+        return;
+      }
+      if (!f.nomorTeleponSuffix.trim() || f.nomorTeleponSuffix.trim().length < 8) {
+        showAlert(`⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit) pada Formulir #${f.id}`);
+        return;
+      }
+      if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
+        showAlert(`⚠️ Format email tidak valid pada Formulir #${f.id} (Contoh: nama@domain.com)`);
+        return;
+      }
+      if (f.nik.trim() && f.nik.replace(/\D/g, "").length !== 16) {
+        showAlert(`⚠️ NIK KTP harus terdiri dari 16 digit angka pada Formulir #${f.id}`);
+        return;
+      }
+      if (!f.jabatan) {
+        showAlert(`⚠️ Mohon pilih Jabatan pada Formulir #${f.id}`);
+        return;
+      }
+      if (!f.startDate) {
+        showAlert(`⚠️ Mohon tentukan Start Date (Tanggal Mulai) pada Formulir #${f.id}`);
+        return;
+      }
     }
 
     setSubmitting(true);
     try {
       const items = forms.map((f) => ({
-        namaLengkap: f.namaLengkap,
-        namaPanggilan: f.namaPanggilan,
+        namaLengkap: f.namaLengkap.trim(),
+        namaPanggilan: f.namaPanggilan.trim() || undefined,
         gender: f.gender,
-        tempatLahir: f.tempatLahir,
-        tanggalLahir: f.tanggalLahir,
-        agama: f.agama,
-        nomorTelepon: `62${f.nomorTeleponSuffix}`,
-        emergencyContact: `62${f.emergencyContactSuffix}`,
-        email: f.email,
-        statusPerkawinan: f.statusPerkawinan,
-        riwayatPenyakit: f.riwayatPenyakit,
+        tempatLahir: f.tempatLahir.trim() || undefined,
+        tanggalLahir: f.tanggalLahir || undefined,
+        agama: f.agama || undefined,
+        nomorTelepon: f.nomorTeleponSuffix ? `62${f.nomorTeleponSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
+        emergencyContact: f.emergencyContactSuffix ? `62${f.emergencyContactSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
+        email: f.email.trim(),
+        statusPerkawinan: f.statusPerkawinan || undefined,
+        riwayatPenyakit: f.riwayatPenyakit.trim() || undefined,
         jabatan: f.jabatan,
         kategori: f.kategori,
         tipeJadwal: f.tipeJadwal,
-        startDate: f.startDate,
-        endDate: f.endDate,
+        startDate: f.startDate || undefined,
+        endDate: f.endDate || undefined,
         statusAktif: f.statusAktif,
-        nik: f.nik,
-        npwp: f.npwp,
-        statusPtkp: f.statusPtkp,
-        alamatKtp: f.alamatKtp,
-        alamatDomisili: f.alamatDomisili,
-        namaBank: f.namaBank,
-        nomorRekening: f.nomorRekening,
-        namaPemilikRek: f.namaPemilikRek,
-        scanKtpDriveId: f.scanKtp,
-        scanKkDriveId: f.scanKk,
-        scanNpwpDriveId: f.scanNpwp,
+        nik: f.nik.trim() || undefined,
+        npwp: f.npwp.trim() || undefined,
+        statusPtkp: f.statusPtkp || undefined,
+        alamatKtp: f.alamatKtp.trim() || undefined,
+        alamatDomisili: f.alamatDomisili.trim() || undefined,
+        namaBank: f.namaBank || undefined,
+        nomorRekening: f.nomorRekening.trim() || undefined,
+        namaPemilikRek: f.namaPemilikRek.trim() || undefined,
+        scanKtpDriveId: f.scanKtp || undefined,
+        scanKkDriveId: f.scanKk || undefined,
+        scanNpwpDriveId: f.scanNpwp || undefined,
       }));
 
       const res = await fetch("/api/employees?action=bulk", {
@@ -231,13 +371,13 @@ export default function InputKaryawanPage() {
         body: JSON.stringify({ items }),
       });
 
-      if (res.ok) {
+      const d = await res.json();
+      if (res.ok && (d.status === "success" || Array.isArray(d.data) || Array.isArray(d))) {
         showAlert(`✅ Berhasil menyimpan ${forms.length} data karyawan baru ke sistem!`);
         setForms([createDefaultForm(1, true)]);
         loadAllEmployees();
       } else {
-        const err = await res.json();
-        showAlert(`❌ Gagal menyimpan data: ${err.message || "Terjadi kesalahan"}`);
+        showAlert(`❌ Gagal menyimpan data: ${d.message || "Terjadi kesalahan pada server"}`);
       }
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
@@ -253,48 +393,186 @@ export default function InputKaryawanPage() {
       const raw = searchEditId.trim();
       const q = raw.toLowerCase();
 
-      // 1. Check if raw contains [ID:...] tag or direct ID
+      // 1. Check direct ID or [ID:...] tag
       const idTagMatch = raw.match(/\[ID:([^\]]+)\]/i);
-      const extractedId = idTagMatch ? idTagMatch[1].trim() : raw;
-      target = employeeList.find((e) => e.id === extractedId || (e.id && e.id.toLowerCase() === q) || (e.idKaryawan && e.idKaryawan.toLowerCase() === q)) || null;
+      const extractedId = idTagMatch ? idTagMatch[1].trim().toLowerCase() : "";
 
-      // 2. Multi-token comprehensive matching
-      if (!target) {
-        const parts = q.split(/[-–|()]/).map((p) => p.trim()).filter(Boolean);
-        const firstPart = parts[0] || q;
+      // 2. Check if starts with ID (e.g. "PCS001 - ...", "PCS001 | ...")
+      const idPrefixMatch = raw.match(/^([A-Za-z0-9_-]+)\s*[-–|:]/);
+      const prefixId = idPrefixMatch ? idPrefixMatch[1].trim().toLowerCase() : "";
 
-        target = employeeList.find((e) => {
+      // Step 1: Exact ID or idKaryawan match
+      target =
+        employeeList.find((e) => {
           const eId = (e.id || "").toLowerCase();
-          const eIdKaryawan = (e.idKaryawan || "").toLowerCase();
-          const eName = (e.namaLengkap || "").toLowerCase();
-          const eJabatan = (e.jabatan || "").toLowerCase();
-          const eFull = `${eIdKaryawan} ${eName} ${eJabatan}`.toLowerCase();
-
+          const eIdK = (e.idKaryawan || "").toLowerCase();
           return (
+            (extractedId && (eId === extractedId || eIdK === extractedId)) ||
+            (prefixId && (eId === prefixId || eIdK === prefixId)) ||
             eId === q ||
-            eIdKaryawan === q ||
-            eIdKaryawan === firstPart ||
-            eIdKaryawan.includes(firstPart) ||
-            firstPart.includes(eIdKaryawan) ||
-            eName === q ||
-            eName.includes(q) ||
-            eName.includes(firstPart) ||
-            firstPart.includes(eName) ||
-            eFull.includes(firstPart) ||
-            q.includes(eName) ||
-            q.includes(eIdKaryawan) ||
-            (eJabatan && q.includes(eJabatan))
+            eIdK === q
           );
         }) || null;
+
+      // Step 2: Exact Name match
+      if (!target) {
+        target =
+          employeeList.find((e) => {
+            const eName = (e.namaLengkap || "").toLowerCase();
+            return eName === q;
+          }) || null;
+      }
+
+      // Step 3: Tokenized Name / ID match
+      if (!target) {
+        const parts = raw.split(/[-–|()]/).map((p) => p.trim().toLowerCase()).filter(Boolean);
+        target =
+          employeeList.find((e) => {
+            const eIdK = (e.idKaryawan || "").toLowerCase();
+            const eName = (e.namaLengkap || "").toLowerCase();
+            return (
+              parts.some((p) => p && eIdK === p) ||
+              parts.some((p) => p && eName === p) ||
+              (parts.length > 1 && eName.includes(parts[1]))
+            );
+          }) || null;
+      }
+
+      // Step 4: Substring matching on Name or ID (never match solely on Jabatan)
+      if (!target) {
+        target =
+          employeeList.find((e) => {
+            const eIdK = (e.idKaryawan || "").toLowerCase();
+            const eName = (e.namaLengkap || "").toLowerCase();
+            return (
+              (eIdK && q.includes(eIdK)) ||
+              (eName && q.includes(eName)) ||
+              (eName && eName.includes(q)) ||
+              (eIdK && eIdK.includes(q))
+            );
+          }) || null;
       }
     }
 
     if (target) {
       setTargetEmployee(target);
       setSearchEditId(`${target.idKaryawan} - ${target.namaLengkap}`);
+      setFullEditForm(populateEditForm(target));
       setEditRows([{ field: "NAMA_LENGKAP", value: target.namaLengkap || "" }]);
+
+      fetch(`/api/employees?id=${target.id}`)
+        .then((r) => r.json())
+        .then((fresh) => {
+          const empData = fresh?.data || fresh;
+          if (empData && (empData.id || empData.idKaryawan)) {
+            setTargetEmployee(empData);
+            setFullEditForm(populateEditForm(empData));
+          }
+        })
+        .catch(() => {});
     } else {
       showAlert("⚠️ Karyawan dengan ID atau Nama tersebut tidak ditemukan.");
+    }
+  }
+
+  function updateFullEditField(field: keyof FormKaryawan, value: any) {
+    setFullEditForm((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function handleFileUploadFullEdit(
+    fieldName: "scanKtp" | "scanKk" | "scanNpwp",
+    file: File | null
+  ) {
+    if (!file) {
+      updateFullEditField(fieldName, null);
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showAlert("⚠️ Ukuran file maksimal 5MB.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      updateFullEditField(fieldName, e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSubmitFullEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!targetEmployee) return;
+
+    if (!fullEditForm.namaLengkap.trim() || fullEditForm.namaLengkap.trim().length < 2) {
+      showAlert("⚠️ Mohon isi Nama Lengkap Karyawan (minimal 2 karakter).");
+      return;
+    }
+    if (!fullEditForm.nomorTeleponSuffix.trim() || fullEditForm.nomorTeleponSuffix.trim().length < 8) {
+      showAlert("⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit).");
+      return;
+    }
+    if (fullEditForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fullEditForm.email.trim())) {
+      showAlert("⚠️ Format email tidak valid.");
+      return;
+    }
+    if (fullEditForm.nik.trim() && !/^\d{16}$/.test(fullEditForm.nik.trim())) {
+      showAlert("⚠️ NIK KTP wajib 16 digit angka.");
+      return;
+    }
+
+    const cleanPhone = (s: string) => (s ? `62${s.replace(/^62/, "").replace(/^0+/, "")}` : null);
+
+    const payload = {
+      namaLengkap: fullEditForm.namaLengkap.trim(),
+      namaPanggilan: fullEditForm.namaPanggilan.trim() || null,
+      gender: fullEditForm.gender,
+      tempatLahir: fullEditForm.tempatLahir.trim() || null,
+      tanggalLahir: fullEditForm.tanggalLahir || null,
+      agama: fullEditForm.agama,
+      nomorTelepon: cleanPhone(fullEditForm.nomorTeleponSuffix),
+      emergencyContact: cleanPhone(fullEditForm.emergencyContactSuffix),
+      email: fullEditForm.email.trim() || null,
+      statusPerkawinan: fullEditForm.statusPerkawinan,
+      riwayatPenyakit: fullEditForm.riwayatPenyakit.trim() || "-",
+      jabatan: fullEditForm.jabatan || "Staff",
+      kategori: fullEditForm.kategori || "Host",
+      tipeJadwal: fullEditForm.tipeJadwal,
+      startDate: fullEditForm.startDate || null,
+      endDate: fullEditForm.endDate || null,
+      statusAktif: fullEditForm.statusAktif,
+      nik: fullEditForm.nik.trim() || null,
+      npwp: fullEditForm.npwp.trim() || null,
+      statusPtkp: fullEditForm.statusPtkp,
+      alamatKtp: fullEditForm.alamatKtp.trim() || null,
+      alamatDomisili: fullEditForm.alamatDomisili.trim() || null,
+      namaBank: fullEditForm.namaBank,
+      nomorRekening: fullEditForm.nomorRekening.trim() || null,
+      namaPemilikRek: fullEditForm.namaPemilikRek.trim() || null,
+      scanKtpDriveId: fullEditForm.scanKtp,
+      scanKkDriveId: fullEditForm.scanKk,
+      scanNpwpDriveId: fullEditForm.scanNpwp,
+    };
+
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/employees?id=${targetEmployee.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        showAlert(`✅ Data karyawan ${fullEditForm.namaLengkap} berhasil diperbarui secara lengkap!`);
+        await loadAllEmployees();
+        const updatedTarget = { ...targetEmployee, ...payload };
+        setTargetEmployee(updatedTarget);
+        setFullEditForm(populateEditForm(updatedTarget));
+      } else {
+        const err = await res.json();
+        showAlert(`❌ Gagal memperbarui data: ${err.message || "Terjadi kesalahan"}`);
+      }
+    } catch {
+      showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
+    } finally {
+      setSavingEdit(false);
     }
   }
 
@@ -307,8 +585,9 @@ export default function InputKaryawanPage() {
     setEditRows(editRows.filter((_, i) => i !== idx));
   }
 
-  function handleUpdateEditRow(idx: number, field: string, value: string) {
+  function handleUpdateEditRow(idx: number, field: string, customValue?: string) {
     const updated = [...editRows];
+    const value = customValue !== undefined ? customValue : getEmployeeFieldValue(targetEmployee, field);
     updated[idx] = { field, value };
     setEditRows(updated);
   }
@@ -510,11 +789,24 @@ export default function InputKaryawanPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <label className={labelCls}>Nama Lengkap *</label>
-                        <input type="text" value={item.namaLengkap} onChange={(e) => updateFormField(item.id, "namaLengkap", e.target.value)} className={inputCls} required />
+                        <input
+                          type="text"
+                          value={item.namaLengkap}
+                          onChange={(e) => updateFormField(item.id, "namaLengkap", e.target.value)}
+                          placeholder="Contoh: Siti Nurhaliza"
+                          className={inputCls}
+                          required
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Nama Panggilan</label>
-                        <input type="text" value={item.namaPanggilan} onChange={(e) => updateFormField(item.id, "namaPanggilan", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.namaPanggilan}
+                          onChange={(e) => updateFormField(item.id, "namaPanggilan", e.target.value)}
+                          placeholder="Contoh: Siti"
+                          className={inputCls}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Gender *</label>
@@ -525,7 +817,13 @@ export default function InputKaryawanPage() {
                       </div>
                       <div>
                         <label className={labelCls}>Tempat Lahir</label>
-                        <input type="text" value={item.tempatLahir} onChange={(e) => updateFormField(item.id, "tempatLahir", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.tempatLahir}
+                          onChange={(e) => updateFormField(item.id, "tempatLahir", e.target.value)}
+                          placeholder="Contoh: Jakarta"
+                          className={inputCls}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Tanggal Lahir</label>
@@ -551,11 +849,10 @@ export default function InputKaryawanPage() {
                             type="tel"
                             value={item.nomorTeleponSuffix}
                             onChange={(e) => {
-                              // hanya angka
                               const val = e.target.value.replace(/[^0-9]/g, "");
                               updateFormField(item.id, "nomorTeleponSuffix", val);
                             }}
-                            placeholder="81234567890"
+                            placeholder="Contoh: 81234567890"
                             className="flex-1 border border-slate-300 rounded-r-xl px-3.5 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#941A0B] outline-none"
                             required
                           />
@@ -576,7 +873,7 @@ export default function InputKaryawanPage() {
                               const val = e.target.value.replace(/[^0-9]/g, "");
                               updateFormField(item.id, "emergencyContactSuffix", val);
                             }}
-                            placeholder="81234567890"
+                            placeholder="Contoh: 81987654321"
                             className="flex-1 border border-slate-300 rounded-r-xl px-3.5 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#941A0B] outline-none"
                           />
                         </div>
@@ -584,7 +881,14 @@ export default function InputKaryawanPage() {
 
                       <div>
                         <label className={labelCls}>Email *</label>
-                        <input type="email" value={item.email} onChange={(e) => updateFormField(item.id, "email", e.target.value)} className={inputCls} required />
+                        <input
+                          type="email"
+                          value={item.email}
+                          onChange={(e) => updateFormField(item.id, "email", e.target.value)}
+                          placeholder="Contoh: siti.nurhaliza@gmail.com"
+                          className={inputCls}
+                          required
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Status Perkawinan</label>
@@ -594,7 +898,13 @@ export default function InputKaryawanPage() {
                       </div>
                       <div className="sm:col-span-2">
                         <label className={labelCls}>Riwayat Penyakit</label>
-                        <input type="text" value={item.riwayatPenyakit} onChange={(e) => updateFormField(item.id, "riwayatPenyakit", e.target.value)} placeholder="Isi '-' jika tidak ada" className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.riwayatPenyakit}
+                          onChange={(e) => updateFormField(item.id, "riwayatPenyakit", e.target.value)}
+                          placeholder="Contoh: Asma, Alergi, atau '-' jika tidak ada"
+                          className={inputCls}
+                        />
                       </div>
                     </div>
                   </div>
@@ -651,11 +961,25 @@ export default function InputKaryawanPage() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
                         <label className={labelCls}>NIK KTP *</label>
-                        <input type="text" value={item.nik} onChange={(e) => updateFormField(item.id, "nik", e.target.value)} maxLength={16} className={inputCls} required />
+                        <input
+                          type="text"
+                          value={item.nik}
+                          onChange={(e) => updateFormField(item.id, "nik", e.target.value)}
+                          maxLength={16}
+                          placeholder="Contoh: 3201234567890001 (16 digit)"
+                          className={inputCls}
+                          required
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>NPWP</label>
-                        <input type="text" value={item.npwp} onChange={(e) => updateFormField(item.id, "npwp", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.npwp}
+                          onChange={(e) => updateFormField(item.id, "npwp", e.target.value)}
+                          placeholder="Contoh: 01.234.567.8-901.000"
+                          className={inputCls}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Status PTKP</label>
@@ -665,11 +989,23 @@ export default function InputKaryawanPage() {
                       </div>
                       <div className="sm:col-span-3">
                         <label className={labelCls}>Alamat KTP</label>
-                        <input type="text" value={item.alamatKtp} onChange={(e) => updateFormField(item.id, "alamatKtp", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.alamatKtp}
+                          onChange={(e) => updateFormField(item.id, "alamatKtp", e.target.value)}
+                          placeholder="Contoh: Jl. Merdeka No. 10, RT 01/RW 02, Gambir, Jakarta Pusat"
+                          className={inputCls}
+                        />
                       </div>
                       <div className="sm:col-span-3">
                         <label className={labelCls}>Alamat Domisili</label>
-                        <input type="text" value={item.alamatDomisili} onChange={(e) => updateFormField(item.id, "alamatDomisili", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.alamatDomisili}
+                          onChange={(e) => updateFormField(item.id, "alamatDomisili", e.target.value)}
+                          placeholder="Contoh: Sesuai KTP / Jl. Kebon Jeruk No. 5, Jakarta Barat"
+                          className={inputCls}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Nama Bank</label>
@@ -679,11 +1015,23 @@ export default function InputKaryawanPage() {
                       </div>
                       <div>
                         <label className={labelCls}>Nomor Rekening</label>
-                        <input type="text" value={item.nomorRekening} onChange={(e) => updateFormField(item.id, "nomorRekening", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.nomorRekening}
+                          onChange={(e) => updateFormField(item.id, "nomorRekening", e.target.value)}
+                          placeholder="Contoh: 1234567890"
+                          className={inputCls}
+                        />
                       </div>
                       <div>
                         <label className={labelCls}>Nama Pemilik Rekening</label>
-                        <input type="text" value={item.namaPemilikRek} onChange={(e) => updateFormField(item.id, "namaPemilikRek", e.target.value)} className={inputCls} />
+                        <input
+                          type="text"
+                          value={item.namaPemilikRek}
+                          onChange={(e) => updateFormField(item.id, "namaPemilikRek", e.target.value)}
+                          placeholder="Contoh: SITI NURHALIZA"
+                          className={inputCls}
+                        />
                       </div>
                     </div>
                   </div>
@@ -770,7 +1118,7 @@ export default function InputKaryawanPage() {
                         handleSelectTargetEmployee();
                       }
                     }}
-                    placeholder="Masukkan Nama atau ID Karyawan..."
+                    placeholder="Contoh: PCS001 atau Siti Nurhaliza..."
                     className={inputCls}
                   />
                   {searchEditId && (
@@ -846,43 +1194,568 @@ export default function InputKaryawanPage() {
             </div>
           </div>
 
-          {/* Target Employee Banner */}
+          {/* Target Employee Banner & Full Profile Summary */}
           {targetEmployee && (
-            <div className="bg-slate-900 text-white p-5 rounded-2xl border border-slate-700 shadow-sm">
-              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 border-b border-slate-700 pb-2">
-                Target Karyawan Terpilih
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                <div>
-                  <span className="block text-[11px] text-slate-400 mb-0.5">ID Karyawan</span>
-                  <div className="font-mono font-bold text-base text-[#FA3737]">{targetEmployee.idKaryawan}</div>
+            <div className="bg-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-slate-700 shadow-sm relative overflow-hidden space-y-5">
+              <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+                <i className="fa-solid fa-id-card text-9xl text-white" />
+              </div>
+
+              {/* Header Profile */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-700 pb-4 relative z-10">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-[#941A0B] text-white flex items-center justify-center font-extrabold text-lg shadow-md border border-red-400/20 shrink-0">
+                    {targetEmployee.namaLengkap?.charAt(0)?.toUpperCase() || "K"}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-extrabold text-lg text-white">{targetEmployee.namaLengkap}</h2>
+                      {targetEmployee.namaPanggilan && (
+                        <span className="text-xs bg-slate-800 text-amber-300 font-semibold px-2.5 py-0.5 rounded-full border border-slate-700">
+                          &ldquo;{targetEmployee.namaPanggilan}&rdquo;
+                        </span>
+                      )}
+                      <span className="font-mono text-xs font-bold text-amber-300 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-800/40">
+                        {targetEmployee.idKaryawan}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                      <span>{targetEmployee.jabatan || "Staff"}</span>
+                      <span>•</span>
+                      <span className="text-slate-300 font-semibold">{targetEmployee.kategori || "Host"}</span>
+                      <span>•</span>
+                      <span className="text-slate-300">{targetEmployee.tipeJadwal || "Shift"}</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <span className="block text-[11px] text-slate-400 mb-0.5">Nama Lengkap</span>
-                  <div className="font-bold text-base">{targetEmployee.namaLengkap}</div>
-                </div>
-                <div>
-                  <span className="block text-[11px] text-slate-400 mb-0.5">Jabatan</span>
-                  <div className="font-bold text-base text-slate-200">{targetEmployee.jabatan || "–"}</div>
-                </div>
-                <div className="flex items-center">
+
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <span
+                    className={`text-xs font-bold px-3 py-1 rounded-xl border ${
+                      targetEmployee.statusAktif === "NON_AKTIF"
+                        ? "bg-red-950/60 text-red-400 border-red-800/50"
+                        : "bg-emerald-950/60 text-emerald-400 border-emerald-800/50"
+                    }`}
+                  >
+                    ● {targetEmployee.statusAktif || "Aktif"}
+                  </span>
                   <button
                     type="button"
-                    onClick={() => { setPinTarget(targetEmployee); setShowPinModal(true); }}
-                    className="text-xs font-bold text-white bg-[#941A0B] hover:bg-[#7D1509] px-4 py-2 rounded-xl flex items-center gap-2 transition"
+                    onClick={() => {
+                      setPinTarget(targetEmployee);
+                      setShowPinModal(true);
+                    }}
+                    className="text-xs font-bold text-white bg-slate-800 hover:bg-slate-700 px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition border border-slate-600 shadow-sm"
                   >
-                    <i className="fa-solid fa-key" />
-                    <span>Ganti PIN Login</span>
+                    <i className="fa-solid fa-key text-amber-400" />
+                    <span>Ganti PIN</span>
                   </button>
                 </div>
+              </div>
+
+              {/* Comprehensive Details Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 relative z-10 text-xs">
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Nomor WhatsApp</span>
+                  <div className="font-bold text-emerald-400 font-mono">
+                    {targetEmployee.nomorTelepon ? (
+                      <a
+                        href={`https://wa.me/${targetEmployee.nomorTelepon.replace(/[^0-9]/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline flex items-center gap-1"
+                      >
+                        <i className="fa-brands fa-whatsapp" />
+                        <span>+{targetEmployee.nomorTelepon}</span>
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Email</span>
+                  <div className="font-semibold text-slate-200 truncate" title={targetEmployee.email || "-"}>
+                    {targetEmployee.email || "-"}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Gender / Lahir</span>
+                  <div className="font-semibold text-slate-200">
+                    {targetEmployee.gender === "LAKI_LAKI" ? "Laki-laki" : "Perempuan"}
+                    {targetEmployee.tempatLahir ? ` • ${targetEmployee.tempatLahir}` : ""}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Tanggal Lahir</span>
+                  <div className="font-semibold text-slate-200">
+                    {targetEmployee.tanggalLahir ? new Date(targetEmployee.tanggalLahir).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-"}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">NIK KTP</span>
+                  <div className="font-mono text-slate-200 font-medium">{targetEmployee.nik || "-"}</div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">NPWP / PTKP</span>
+                  <div className="font-mono text-slate-200 font-medium">
+                    {targetEmployee.npwp || "-"} {targetEmployee.statusPtkp ? `(${targetEmployee.statusPtkp})` : ""}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Rekening Bank</span>
+                  <div className="font-semibold text-slate-200">
+                    {targetEmployee.namaBank || "BCA"}: <span className="font-mono text-amber-300 font-bold">{targetEmployee.nomorRekening || "-"}</span>
+                    {targetEmployee.namaPemilikRek && <div className="text-[10px] text-slate-400">a.n {targetEmployee.namaPemilikRek}</div>}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Emergency Contact</span>
+                  <div className="font-mono text-slate-200">{targetEmployee.emergencyContact ? `+${targetEmployee.emergencyContact}` : "-"}</div>
+                </div>
+
+                <div className="col-span-2 sm:col-span-3 md:col-span-4 bg-slate-800/80 p-3 rounded-xl border border-slate-700/80">
+                  <span className="block text-[11px] text-slate-400 mb-0.5">Alamat KTP &amp; Domisili</span>
+                  <div className="text-xs text-slate-200 font-medium">
+                    <b>KTP:</b> {targetEmployee.alamatKtp || "-"} <span className="mx-2 text-slate-500">•</span> <b>Domisili:</b> {targetEmployee.alamatDomisili || "-"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Mode Switcher Tabs */}
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setEditSubTab("full")}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                    editSubTab === "full"
+                      ? "bg-[#941A0B] text-white border-[#941A0B]"
+                      : "bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+                  }`}
+                >
+                  <i className="fa-solid fa-list-check" />
+                  <span>Formulir Lengkap (Semua Data)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSubTab("quick")}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
+                    editSubTab === "quick"
+                      ? "bg-[#941A0B] text-white border-[#941A0B]"
+                      : "bg-slate-800 text-slate-300 border-slate-700 hover:text-white"
+                  }`}
+                >
+                  <i className="fa-solid fa-table-columns" />
+                  <span>Per Baris Kolom (Quick Edit)</span>
+                </button>
               </div>
             </div>
           )}
 
-          {/* Dynamic Column Updater */}
-          {targetEmployee && (
+          {/* ========================================================================= */}
+          {/* MODE 1: FORMULIR LENGKAP PERUBAHAN DATA KARYAWAN                          */}
+          {/* ========================================================================= */}
+          {targetEmployee && editSubTab === "full" && (
+            <form onSubmit={handleSubmitFullEdit} className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Formulir Lengkap Perubahan Data</h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Semua kolom telah terisi otomatis sesuai database. Silakan ubah data yang diperlukan lalu klik simpan.
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold text-[#941A0B] bg-red-50 px-3 py-1 rounded-lg border border-red-100 self-start sm:self-auto">
+                  {targetEmployee.idKaryawan}
+                </span>
+              </div>
+
+              {/* SECTION 1: DATA PRIBADI */}
+              <div>
+                <h4 className="text-xs font-extrabold text-[#941A0B] uppercase tracking-widest mb-4 pb-1 border-b border-[#941A0B]/20">
+                  1. Data Pribadi
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelCls}>Nama Lengkap *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.namaLengkap}
+                      onChange={(e) => updateFullEditField("namaLengkap", e.target.value)}
+                      placeholder="Contoh: Siti Nurhaliza"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nama Panggilan</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.namaPanggilan}
+                      onChange={(e) => updateFullEditField("namaPanggilan", e.target.value)}
+                      placeholder="Contoh: Siti"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Gender *</label>
+                    <select
+                      value={fullEditForm.gender}
+                      onChange={(e) => updateFullEditField("gender", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      <option value="Laki-laki">Laki-laki</option>
+                      <option value="Perempuan">Perempuan</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Tempat Lahir</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.tempatLahir}
+                      onChange={(e) => updateFullEditField("tempatLahir", e.target.value)}
+                      placeholder="Contoh: Jakarta"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Tanggal Lahir</label>
+                    <input
+                      type="date"
+                      value={fullEditForm.tanggalLahir}
+                      onChange={(e) => updateFullEditField("tanggalLahir", e.target.value)}
+                      className={`${inputCls} cursor-pointer`}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Agama</label>
+                    <select
+                      value={fullEditForm.agama}
+                      onChange={(e) => updateFullEditField("agama", e.target.value)}
+                      className={selectCls}
+                    >
+                      {["Islam", "Kristen", "Katolik", "Hindu", "Buddha", "Konghucu", "Kepercayaan"].map((a) => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Nomor WA */}
+                  <div>
+                    <label className={labelCls}>Nomor WA *</label>
+                    <div className="flex">
+                      <span className="flex items-center px-3 bg-[#F1F1F1] border border-r-0 border-slate-300 rounded-l-xl text-sm font-extrabold text-[#941A0B] select-none">
+                        +62
+                      </span>
+                      <input
+                        type="tel"
+                        value={fullEditForm.nomorTeleponSuffix}
+                        onChange={(e) => updateFullEditField("nomorTeleponSuffix", e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="Contoh: 81234567890"
+                        className="flex-1 border border-slate-300 rounded-r-xl px-3.5 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#941A0B] outline-none"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Emergency Contact */}
+                  <div>
+                    <label className={labelCls}>Emergency Contact</label>
+                    <div className="flex">
+                      <span className="flex items-center px-3 bg-[#F1F1F1] border border-r-0 border-slate-300 rounded-l-xl text-sm font-extrabold text-[#941A0B] select-none">
+                        +62
+                      </span>
+                      <input
+                        type="tel"
+                        value={fullEditForm.emergencyContactSuffix}
+                        onChange={(e) => updateFullEditField("emergencyContactSuffix", e.target.value.replace(/[^0-9]/g, ""))}
+                        placeholder="Contoh: 81987654321"
+                        className="flex-1 border border-slate-300 rounded-r-xl px-3.5 py-2.5 text-sm font-medium focus:ring-2 focus:ring-[#941A0B] outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className={labelCls}>Email *</label>
+                    <input
+                      type="email"
+                      value={fullEditForm.email}
+                      onChange={(e) => updateFullEditField("email", e.target.value)}
+                      placeholder="Contoh: siti.nurhaliza@gmail.com"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Status Perkawinan</label>
+                    <select
+                      value={fullEditForm.statusPerkawinan}
+                      onChange={(e) => updateFullEditField("statusPerkawinan", e.target.value)}
+                      className={selectCls}
+                    >
+                      {["Belum Kawin", "Kawin Tercatat", "Cerai Hidup", "Cerai Mati"].map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={labelCls}>Riwayat Penyakit</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.riwayatPenyakit}
+                      onChange={(e) => updateFullEditField("riwayatPenyakit", e.target.value)}
+                      placeholder="Contoh: Asma, Alergi, atau '-' jika tidak ada"
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 2: DATA PEKERJAAN */}
+              <div>
+                <h4 className="text-xs font-extrabold text-[#941A0B] uppercase tracking-widest mb-4 pb-1 border-b border-[#941A0B]/20">
+                  2. Data Pekerjaan
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelCls}>Jabatan *</label>
+                    <select
+                      value={fullEditForm.jabatan}
+                      onChange={(e) => updateFullEditField("jabatan", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      <option value="">-- Pilih Jabatan --</option>
+                      {JABATAN_LIST.map((j) => (
+                        <option key={j} value={j}>{j}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Kategori *</label>
+                    <select
+                      value={fullEditForm.kategori}
+                      onChange={(e) => updateFullEditField("kategori", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      {["Host", "OTS", "Management", "Staff"].map((k) => (
+                        <option key={k} value={k}>{k}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Tipe Jadwal *</label>
+                    <select
+                      value={fullEditForm.tipeJadwal}
+                      onChange={(e) => updateFullEditField("tipeJadwal", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      {["Office Hours", "Shift", "Flexible Hours"].map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Start Date *</label>
+                    <input
+                      type="date"
+                      value={fullEditForm.startDate}
+                      onChange={(e) => updateFullEditField("startDate", e.target.value)}
+                      className={`${inputCls} cursor-pointer`}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>End Date</label>
+                    <input
+                      type="date"
+                      value={fullEditForm.endDate}
+                      onChange={(e) => updateFullEditField("endDate", e.target.value)}
+                      className={`${inputCls} cursor-pointer`}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Status Aktif *</label>
+                    <select
+                      value={fullEditForm.statusAktif}
+                      onChange={(e) => updateFullEditField("statusAktif", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      {["Aktif", "Izin", "Cuti", "Non-Aktif"].map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 3: LEGAL, ALAMAT & BANK */}
+              <div>
+                <h4 className="text-xs font-extrabold text-[#941A0B] uppercase tracking-widest mb-4 pb-1 border-b border-[#941A0B]/20">
+                  3. Legal, Alamat &amp; Bank
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className={labelCls}>NIK KTP *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.nik}
+                      onChange={(e) => updateFullEditField("nik", e.target.value)}
+                      maxLength={16}
+                      placeholder="Contoh: 3201234567890001 (16 digit)"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>NPWP</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.npwp}
+                      onChange={(e) => updateFullEditField("npwp", e.target.value)}
+                      placeholder="Contoh: 01.234.567.8-901.000"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Status PTKP</label>
+                    <select
+                      value={fullEditForm.statusPtkp}
+                      onChange={(e) => updateFullEditField("statusPtkp", e.target.value)}
+                      className={selectCls}
+                    >
+                      {["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"].map((p) => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className={labelCls}>Alamat Sesuai KTP *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.alamatKtp}
+                      onChange={(e) => updateFullEditField("alamatKtp", e.target.value)}
+                      placeholder="Contoh: Jl. Merdeka No. 10, RT 01/RW 02, Gambir, Jakarta Pusat"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label className={labelCls}>Alamat Domisili Saat Ini *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.alamatDomisili}
+                      onChange={(e) => updateFullEditField("alamatDomisili", e.target.value)}
+                      placeholder="Contoh: Sesuai KTP / Jl. Kebon Jeruk No. 5, Jakarta Barat"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nama Bank *</label>
+                    <select
+                      value={fullEditForm.namaBank}
+                      onChange={(e) => updateFullEditField("namaBank", e.target.value)}
+                      className={selectCls}
+                      required
+                    >
+                      {BANK_LIST.map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nomor Rekening *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.nomorRekening}
+                      onChange={(e) => updateFullEditField("nomorRekening", e.target.value)}
+                      placeholder="Contoh: 1234567890"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nama Pemilik Rekening *</label>
+                    <input
+                      type="text"
+                      value={fullEditForm.namaPemilikRek}
+                      onChange={(e) => updateFullEditField("namaPemilikRek", e.target.value)}
+                      placeholder="Contoh: SITI NURHALIZA"
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 4: DOKUMEN UPLOAD */}
+              <div>
+                <h4 className="text-xs font-extrabold text-[#941A0B] uppercase tracking-widest mb-4 pb-1 border-b border-[#941A0B]/20">
+                  4. Dokumen Upload
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {(["scanKtp", "scanKk", "scanNpwp"] as const).map((fieldName, fi) => {
+                    const labels = ["Scan KTP (Maks 5MB)", "Scan KK (Maks 5MB)", "Scan NPWP (Maks 5MB)"];
+                    const previewVal = fullEditForm[fieldName];
+                    return (
+                      <div key={fieldName}>
+                        <label className={labelCls}>{labels[fi]}</label>
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) => handleFileUploadFullEdit(fieldName, e.target.files?.[0] || null)}
+                          className="w-full border border-slate-300 rounded-xl p-1.5 text-sm file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-red-50 file:text-[#941A0B] hover:file:bg-red-100"
+                        />
+                        {previewVal && (
+                          <div className="mt-2 relative w-fit">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={previewVal} alt={fieldName} className="h-20 rounded-lg object-cover border border-slate-200" />
+                            <button
+                              type="button"
+                              onClick={() => updateFullEditField(fieldName, null)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px]"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="flex justify-end pt-4 border-t border-slate-100">
+                <button
+                  type="submit"
+                  disabled={savingEdit}
+                  className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3.5 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                >
+                  <i className={`fa-solid ${savingEdit ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
+                  <span>{savingEdit ? "Menyimpan Data..." : "Simpan Perubahan Data Karyawan"}</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* ========================================================================= */}
+          {/* MODE 2: PERUBAHAN KOLOM TERTENTU (QUICK COLUMN UPDATER)                   */}
+          {/* ========================================================================= */}
+          {targetEmployee && editSubTab === "quick" && (
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-              <h2 className="text-sm font-extrabold text-black mb-4 border-b border-slate-100 pb-2">Perbarui Kolom Data</h2>
+              <h2 className="text-sm font-extrabold text-black mb-4 border-b border-slate-100 pb-2">Perbarui Kolom Data Tertentu</h2>
               <form onSubmit={handleSubmitEdit} className="space-y-4">
                 <div className="space-y-3">
                   {editRows.map((row, idx) => (
@@ -890,7 +1763,7 @@ export default function InputKaryawanPage() {
                       <div className="w-full sm:w-1/3">
                         <select
                           value={row.field}
-                          onChange={(e) => handleUpdateEditRow(idx, e.target.value, "")}
+                          onChange={(e) => handleUpdateEditRow(idx, e.target.value)}
                           className={`${selectCls} text-sm`}
                           required
                         >

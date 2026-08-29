@@ -12,6 +12,7 @@ interface ClientData {
   ketentuan?: {
     platform?: string;
     kategori?: string;
+    email?: string;
     marketplace1?: string;
     marketplace2?: string;
     marketplace3?: string;
@@ -133,6 +134,11 @@ export default function ClientPage() {
   const [editClientForm, setEditClientForm] = useState<FormClientItem>(createDefaultClientForm(1, true));
   const [savingEditClient, setSavingEditClient] = useState(false);
 
+  // Detail Client Modal State
+  const [detailModalClient, setDetailModalClient] = useState<ClientData | null>(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [detailTab, setDetailTab] = useState<"info" | "produk">("info");
+
   // Tab 4: Manajemen Produk State
   const [subTabProduk, setSubTabProduk] = useState<"list" | "input" | "edit">("list");
   const [selectedPlatformClientId, setSelectedPlatformClientId] = useState("");
@@ -223,6 +229,14 @@ export default function ClientPage() {
     }
   }
 
+  function handleOpenProdukForClient(clientId: string, subTab: "list" | "input" = "list") {
+    setSelectedPlatformClientId(clientId);
+    handleSelectPlatform(clientId);
+    setActiveTab("produk");
+    setSubTabProduk(subTab);
+    setShowDetailModal(false);
+  }
+
   // Multi-Form Handlers for Client Registration
   function handleAddClientForm() {
     if (clientForms.length >= 5) {
@@ -249,37 +263,65 @@ export default function ClientPage() {
   async function handleSubmitClients(e: React.FormEvent) {
     e.preventDefault();
     for (const f of clientForms) {
-      if (!f.namaMerk.trim()) {
-        showAlert(`⚠️ Mohon isi Nama Merk pada Formulir #${f.id}`);
+      if (!f.namaMerk.trim() || f.namaMerk.trim().length < 2) {
+        showAlert(`⚠️ Mohon isi Nama Merk / Brand (minimal 2 karakter) pada Formulir #${f.id}`);
         return;
       }
-      if (!f.nomorTeleponSuffix.trim()) {
-        showAlert(`⚠️ Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
+      if (!f.nomorTeleponSuffix.trim() || f.nomorTeleponSuffix.trim().length < 8) {
+        showAlert(`⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit) pada Formulir #${f.id}`);
+        return;
+      }
+      if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
+        showAlert(`⚠️ Format email bisnis tidak valid pada Formulir #${f.id} (Contoh: contact@brand.com)`);
+        return;
+      }
+      if (f.kategori === "Lainnya" && !f.manualKategori.trim()) {
+        showAlert(`⚠️ Mohon tuliskan nama Kategori manual pada Formulir #${f.id}`);
+        return;
+      }
+      if (f.marketplace1 === "Lainnya" && !f.manualMp1.trim()) {
+        showAlert(`⚠️ Mohon tuliskan nama Marketplace 1 manual pada Formulir #${f.id}`);
         return;
       }
     }
 
     setSubmittingClients(true);
     try {
+      let sukses = 0;
       for (const f of clientForms) {
         const payload = {
-          namaClient: f.namaMerk,
-          platform: f.marketplace1 === "Lainnya" ? f.manualMp1 : f.marketplace1 || "Shopee",
-          pic: f.penanggungJawab || "-",
-          kontak: `62${f.nomorTeleponSuffix.replace(/^0+/, "")}`,
+          namaClient: f.namaMerk.trim(),
+          namaMerk: f.namaMerk.trim(),
+          namaPerusahaan: f.namaPerusahaan.trim() || f.namaMerk.trim(),
+          platform: f.marketplace1 === "Lainnya" ? f.manualMp1.trim() : f.marketplace1 || "Shopee",
+          marketplace1: f.marketplace1 === "Lainnya" ? f.manualMp1.trim() : f.marketplace1 || "Shopee",
+          marketplace2: f.marketplace2 === "Lainnya" ? f.manualMp2.trim() : f.marketplace2 || "",
+          marketplace3: f.marketplace3 === "Lainnya" ? f.manualMp3.trim() : f.marketplace3 || "",
+          pic: f.penanggungJawab.trim() || "-",
+          penanggungJawab: f.penanggungJawab.trim() || "-",
+          kategori: f.kategori === "Lainnya" ? f.manualKategori.trim() : f.kategori || "Beauty",
+          kontak: f.nomorTeleponSuffix ? `62${f.nomorTeleponSuffix.replace(/^62/, "").replace(/^0+/, "")}` : "",
+          email: f.email.trim() || "",
+          alamat: f.alamat.trim() || "",
+          catatan: f.catatan.trim() || "",
         };
 
-        await fetch("/api/clients", {
+        const res = await fetch("/api/clients", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (res.ok) sukses++;
       }
 
-      showAlert(`✅ Berhasil menyimpan ${clientForms.length} data client baru ke sistem!`);
-      setClientForms([createDefaultClientForm(1, true)]);
-      loadClients();
-      setActiveTab("daftar");
+      if (sukses > 0) {
+        showAlert(`✅ Berhasil menyimpan ${sukses} data client baru ke sistem!`);
+        setClientForms([createDefaultClientForm(1, true)]);
+        await loadClients();
+        setActiveTab("daftar");
+      } else {
+        showAlert("❌ Gagal menyimpan data client. Periksa isian form.");
+      }
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan data client.");
     } finally {
@@ -301,14 +343,15 @@ export default function ClientPage() {
       // 2. Tokenized search
       if (!target) {
         const parts = q.split("|").map((p) => p.trim()).filter(Boolean);
-        const brandPart = (parts[0] || q).toLowerCase();
-        const picPart = (parts[1] || "").toLowerCase();
-        const kontakPart = (parts[2] || "").toLowerCase();
+        const rawBrandPart = parts[0] || q;
+        const cleanBrandPart = rawBrandPart.replace(/\s*\([^)]*\)/g, "").trim().toLowerCase();
 
         // Pass A: Exact match on brand name
         target =
           clients.find(
-            (c) => (c.namaClient || "").toLowerCase() === brandPart || (c.namaClient || "").toLowerCase() === q
+            (c) =>
+              (c.namaClient || "").toLowerCase() === cleanBrandPart ||
+              (c.namaClient || "").toLowerCase() === q
           ) || null;
 
         // Pass B: Substring containment on brand name
@@ -316,29 +359,22 @@ export default function ClientPage() {
           target =
             clients.find((c) => {
               const cName = (c.namaClient || "").toLowerCase();
-              return cName.includes(brandPart) || brandPart.includes(cName);
+              return cName.includes(cleanBrandPart) || cleanBrandPart.includes(cName);
             }) || null;
         }
 
         // Pass C: Specific PIC or Contact match
-        if (!target && (picPart || kontakPart)) {
+        if (!target && parts.length > 1) {
+          const picPart = (parts[1] || "").toLowerCase();
+          const kontakPart = (parts[2] || "").replace(/\D/g, "");
           target =
             clients.find((c) => {
               const cPic = (c.pic || "").toLowerCase();
               const cKontak = (c.kontak || "").replace(/\D/g, "");
-              const kClean = kontakPart.replace(/\D/g, "");
-              return (picPart && cPic && (cPic.includes(picPart) || picPart.includes(cPic))) ||
-                     (kClean && cKontak && (cKontak.includes(kClean) || kClean.includes(cKontak)));
-            }) || null;
-        }
-
-        // Pass D: General query containment
-        if (!target) {
-          target =
-            clients.find((c) => {
-              const cName = (c.namaClient || "").toLowerCase();
-              const cPic = (c.pic || "").toLowerCase();
-              return (cName && q.includes(cName)) || (cPic && q.includes(cPic));
+              return (
+                (picPart && cPic && cPic.includes(picPart)) ||
+                (kontakPart && cKontak && cKontak.includes(kontakPart))
+              );
             }) || null;
         }
       }
@@ -359,9 +395,9 @@ export default function ClientPage() {
         kategori: k0?.kategori || "Beauty",
         manualKategori: "",
         nomorTeleponSuffix: kontakSuffix,
-        email: k0?.alamat?.includes("@") ? k0.alamat : "",
+        email: k0?.email || (k0?.alamat?.includes("@") ? k0.alamat : ""),
         alamat: k0?.alamat || "",
-        marketplace1: target.platform || "Shopee",
+        marketplace1: k0?.marketplace1 || target.platform || "Shopee",
         manualMp1: "",
         marketplace2: k0?.marketplace2 || "",
         manualMp2: "",
@@ -388,11 +424,21 @@ export default function ClientPage() {
     try {
       const payload = {
         namaClient: editClientForm.namaMerk.trim(),
-        platform: editClientForm.marketplace1 === "Lainnya" ? editClientForm.manualMp1 : editClientForm.marketplace1 || "Shopee",
+        namaMerk: editClientForm.namaMerk.trim(),
+        namaPerusahaan: editClientForm.namaPerusahaan.trim() || editClientForm.namaMerk.trim(),
+        platform: editClientForm.marketplace1 === "Lainnya" ? editClientForm.manualMp1.trim() : editClientForm.marketplace1 || "Shopee",
+        marketplace1: editClientForm.marketplace1 === "Lainnya" ? editClientForm.manualMp1.trim() : editClientForm.marketplace1 || "Shopee",
+        marketplace2: editClientForm.marketplace2 === "Lainnya" ? editClientForm.manualMp2.trim() : editClientForm.marketplace2 || "",
+        marketplace3: editClientForm.marketplace3 === "Lainnya" ? editClientForm.manualMp3.trim() : editClientForm.marketplace3 || "",
         pic: editClientForm.penanggungJawab.trim() || "-",
+        penanggungJawab: editClientForm.penanggungJawab.trim() || "-",
+        kategori: editClientForm.kategori === "Lainnya" ? editClientForm.manualKategori.trim() : editClientForm.kategori || "Beauty",
         kontak: editClientForm.nomorTeleponSuffix
           ? `62${editClientForm.nomorTeleponSuffix.replace(/^62/, "").replace(/^0+/, "")}`
           : selectedEditClient.kontak || "-",
+        email: editClientForm.email.trim() || "",
+        alamat: editClientForm.alamat.trim() || "",
+        catatan: editClientForm.catatan.trim() || "",
       };
 
       const res = await fetch(`/api/clients?id=${selectedEditClient.id}`, {
@@ -405,7 +451,7 @@ export default function ClientPage() {
       if (res.ok && (d.status === "success" || d.data || d.id)) {
         showAlert("✅ Perubahan data client berhasil disimpan!");
         await loadClients();
-        const updated = {
+        const updated = d.data || {
           ...selectedEditClient,
           ...payload,
         };
@@ -468,29 +514,62 @@ export default function ClientPage() {
   async function handleSubmitProdukMaster(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPlatformClientId) {
-      showAlert("⚠️ Pilih Platform Klien di bagian atas terlebih dahulu.");
+      showAlert("⚠️ Pilih Platform Klien di bagian atas terlebih dahulu sebelum menambahkan produk.");
       return;
+    }
+
+    for (const p of produkForms) {
+      if (!p.namaProduk.trim() || p.namaProduk.trim().length < 2) {
+        showAlert(`⚠️ Mohon isi Nama Produk Lengkap (minimal 2 karakter) pada Baris #${p.id}`);
+        return;
+      }
+      if (!p.sellerSku.trim()) {
+        showAlert(`⚠️ Mohon isi Seller SKU pada Baris #${p.id} (Contoh: SKU-GLOW-01)`);
+        return;
+      }
+      if (!p.brand.trim()) {
+        showAlert(`⚠️ Mohon isi Brand / Merk pada Baris #${p.id}`);
+        return;
+      }
+      if (p.linkProduk.trim() && !/^(https?:\/\/|\/)/i.test(p.linkProduk.trim())) {
+        showAlert(`⚠️ Link produk pada Baris #${p.id} harus diawali https:// atau http://`);
+        return;
+      }
     }
 
     setSubmittingProduk(true);
     try {
+      let successCount = 0;
       for (const p of produkForms) {
         if (!p.namaProduk.trim()) continue;
-        await fetch("/api/produk", {
+        const res = await fetch("/api/produk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             clientId: selectedPlatformClientId,
-            namaProduk: p.namaProduk,
-            kategori: p.brand || "General",
+            namaProduk: p.namaProduk.trim(),
+            idProduk: p.idProduk.trim() || undefined,
+            sellerSku: p.sellerSku.trim() || undefined,
+            sku: p.sellerSku.trim() || undefined,
+            brand: p.brand.trim() || undefined,
+            varian: p.varianList,
+            varianList: p.varianList,
+            link: p.linkProduk.trim() || undefined,
+            linkProduk: p.linkProduk.trim() || undefined,
+            catatan: p.catatan.trim() || undefined,
           }),
-        }).catch(() => {});
+        });
+        if (res.ok) successCount++;
       }
 
-      showAlert(`✅ Berhasil menyimpan ${produkForms.length} produk baru!`);
-      setProdukForms([createDefaultProdukForm(1, true)]);
-      handleSelectPlatform(selectedPlatformClientId);
-      setSubTabProduk("list");
+      if (successCount > 0) {
+        showAlert(`✅ Berhasil menyimpan ${successCount} produk baru!`);
+        setProdukForms([createDefaultProdukForm(1, true)]);
+        await handleSelectPlatform(selectedPlatformClientId);
+        setSubTabProduk("list");
+      } else {
+        showAlert("❌ Gagal menyimpan produk. Periksa kembali isian.");
+      }
     } catch {
       showAlert("⚠️ Terjadi kesalahan saat menyimpan produk.");
     } finally {
@@ -545,16 +624,83 @@ export default function ClientPage() {
     }
   }
 
+  async function handleSaveEditProduk(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedEditProduk?.id) {
+      showAlert("⚠️ Silakan pilih produk terlebih dahulu.");
+      return;
+    }
+
+    setSavingEditProduk(true);
+    try {
+      const payload: Record<string, any> = {};
+      for (const r of editProdukRows) {
+        if (!r.field) continue;
+        const keyMap: Record<string, string> = {
+          NO: "no",
+          ID_PRODUK: "idProduk",
+          SELLER_SKU: "sellerSku",
+          BRAND: "brand",
+          NAMA_PRODUK: "namaProduk",
+          VARIANT: "varian",
+          LINK_PRODUK: "linkProduk",
+          CATATAN: "catatan",
+        };
+        const mappedKey = keyMap[r.field] || r.field;
+        payload[mappedKey] = r.value;
+      }
+
+      const res = await fetch(`/api/produk?id=${selectedEditProduk.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const d = await res.json();
+      if (res.ok && (d.status === "success" || d.data)) {
+        showAlert("✅ Perubahan data produk berhasil diterapkan!");
+        setSelectedEditProduk(null);
+        setSearchEditProduk("");
+        setEditProdukRows([{ field: "", value: "" }]);
+        if (selectedPlatformClientId) {
+          await handleSelectPlatform(selectedPlatformClientId);
+        }
+      } else {
+        showAlert(`❌ Gagal memperbarui produk: ${d.message || "Terjadi kesalahan"}`);
+      }
+    } catch {
+      showAlert("⚠️ Terjadi kesalahan koneksi ke server saat menyimpan produk.");
+    } finally {
+      setSavingEditProduk(false);
+    }
+  }
+
   const selectedClientInfo = clients.find((c) => c.id === selectedPlatformClientId);
 
-  const filteredDaftar = clients.filter(
-    (c) =>
-      !searchDaftar ||
-      (c.namaClient ?? "").toLowerCase().includes(searchDaftar.toLowerCase()) ||
-      (c.pic ?? "").toLowerCase().includes(searchDaftar.toLowerCase()) ||
-      (c.platform ?? "").toLowerCase().includes(searchDaftar.toLowerCase()) ||
-      (c.kontak ?? "").toLowerCase().includes(searchDaftar.toLowerCase())
-  );
+  const filteredDaftar = clients.filter((c) => {
+    if (!searchDaftar) return true;
+    const q = searchDaftar.toLowerCase();
+    const k0 = c.ketentuan?.[0];
+    return (
+      (c.namaClient ?? "").toLowerCase().includes(q) ||
+      (k0?.namaPerusahaan ?? "").toLowerCase().includes(q) ||
+      (c.pic ?? "").toLowerCase().includes(q) ||
+      (c.platform ?? "").toLowerCase().includes(q) ||
+      (k0?.marketplace1 ?? "").toLowerCase().includes(q) ||
+      (k0?.marketplace2 ?? "").toLowerCase().includes(q) ||
+      (k0?.marketplace3 ?? "").toLowerCase().includes(q) ||
+      (k0?.kategori ?? "").toLowerCase().includes(q) ||
+      (k0?.email ?? "").toLowerCase().includes(q) ||
+      (k0?.alamat ?? "").toLowerCase().includes(q) ||
+      (c.kontak ?? "").toLowerCase().includes(q) ||
+      (c.produk ?? []).some(
+        (p) =>
+          (p.namaProduk ?? "").toLowerCase().includes(q) ||
+          (p.sku ?? "").toLowerCase().includes(q) ||
+          (p.brand ?? "").toLowerCase().includes(q)
+      )
+    );
+  });
 
   const filteredKatalog = produkList.filter(
     (p) =>
@@ -602,29 +748,38 @@ export default function ClientPage() {
 
       {/* ========================================================================= */}
       {/* TAB 1: DAFTAR CLIENT                                                      */}
-      {/* Header Tabel Baku: PLATFORM, KATEGORI, PIC, KONTAK                        */}
       {/* ========================================================================= */}
       {activeTab === "daftar" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-[480px]">
           <div className="p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <h2 className="font-extrabold text-base text-black">Database Client</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{filteredDaftar.length} client terdaftar di sistem.</p>
+              <h2 className="font-extrabold text-base text-black">Database Client &amp; Brand</h2>
+              <p className="text-xs text-slate-500 mt-0.5">{filteredDaftar.length} client / brand terdaftar di sistem.</p>
             </div>
-            <div className="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-2 w-full sm:w-72 focus-within:ring-2 focus-within:ring-[#941A0B]">
-              <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-sm" />
-              <input
-                type="text"
-                value={searchDaftar}
-                onChange={(e) => setSearchDaftar(e.target.value)}
-                placeholder="Cari platform, PIC, merk..."
-                className="border-none bg-transparent focus:ring-0 outline-none text-sm w-full text-slate-700 placeholder-slate-400"
-              />
-              {searchDaftar && (
-                <button onClick={() => setSearchDaftar("")} className="text-slate-400 hover:text-slate-700 ml-1">
-                  <i className="fa-solid fa-xmark" />
-                </button>
-              )}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center bg-white border border-slate-300 rounded-xl px-3 py-2 w-full sm:w-72 focus-within:ring-2 focus-within:ring-[#941A0B]">
+                <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-sm" />
+                <input
+                  type="text"
+                  value={searchDaftar}
+                  onChange={(e) => setSearchDaftar(e.target.value)}
+                  placeholder="Cari merk, perusahaan, PIC, platform..."
+                  className="border-none bg-transparent focus:ring-0 outline-none text-sm w-full text-slate-700 placeholder-slate-400"
+                />
+                {searchDaftar && (
+                  <button onClick={() => setSearchDaftar("")} className="text-slate-400 hover:text-slate-700 ml-1">
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setActiveTab("input")}
+                className="bg-[#941A0B] hover:bg-[#7D1509] text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shrink-0"
+              >
+                <i className="fa-solid fa-user-plus" />
+                <span>+ Registrasi Baru</span>
+              </button>
             </div>
           </div>
 
@@ -632,73 +787,173 @@ export default function ClientPage() {
             <table className="w-full text-sm text-left whitespace-nowrap">
               <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 font-bold">
                 <tr>
-                  <th className="px-5 py-3.5 font-bold">PLATFORM</th>
-                  <th className="px-5 py-3.5 font-bold">KATEGORI</th>
-                  <th className="px-5 py-3.5 font-bold">PIC</th>
-                  <th className="px-5 py-3.5 font-bold">KONTAK</th>
+                  <th className="px-4 py-3.5 text-center">NO</th>
+                  <th className="px-5 py-3.5 font-bold">MERK &amp; PERUSAHAAN</th>
+                  <th className="px-5 py-3.5 font-bold">PLATFORM MARKETPLACE</th>
+                  <th className="px-5 py-3.5 font-bold">KATEGORI &amp; ALAMAT</th>
+                  <th className="px-5 py-3.5 font-bold">PIC &amp; KONTAK</th>
+                  <th className="px-5 py-3.5 font-bold text-center">PRODUK</th>
                   <th className="px-5 py-3.5 font-bold text-center">AKSI</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingClients ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center text-slate-400 italic">
+                    <td colSpan={7} className="px-5 py-12 text-center text-slate-400 italic">
                       <i className="fa-solid fa-circle-notch fa-spin mr-2 text-[#941A0B]" />
                       Memuat data client...
                     </td>
                   </tr>
-                ) : filteredDaftar.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50 transition">
-                    <td className="px-5 py-3.5">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-[#941A0B]/10 text-[#941A0B] flex items-center justify-center font-bold text-xs shrink-0">
-                          {c.namaClient?.slice(0, 1).toUpperCase() || "C"}
+                ) : filteredDaftar.map((c, idx) => {
+                  const k0 = c.ketentuan?.[0];
+                  const mpList = [
+                    k0?.marketplace1 || c.platform || "Shopee",
+                    k0?.marketplace2,
+                    k0?.marketplace3,
+                  ].filter(Boolean);
+                  const totalProduk = c.produk?.length || 0;
+
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-4 py-3.5 text-center text-xs font-bold text-slate-400">
+                        {idx + 1}
+                      </td>
+
+                      {/* Brand & Perusahaan */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-9 h-9 rounded-xl bg-[#941A0B]/10 text-[#941A0B] flex items-center justify-center font-black text-sm shrink-0 border border-red-200/50">
+                            {c.namaClient?.charAt(0)?.toUpperCase() || "C"}
+                          </div>
+                          <div>
+                            <div className="font-extrabold text-black text-sm flex items-center gap-1.5">
+                              <span>{c.namaClient}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 font-medium">
+                              {k0?.namaPerusahaan || c.namaClient}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="font-bold text-black text-sm">{c.namaClient}</div>
-                          <div className="text-[11px] text-slate-500">{c.platform || "Shopee"}</div>
+                      </td>
+
+                      {/* Marketplace Platform Badges */}
+                      <td className="px-5 py-3.5">
+                        <div className="flex flex-wrap gap-1 items-center max-w-xs">
+                          {mpList.map((mp, mIdx) => (
+                            <span
+                              key={mIdx}
+                              className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${
+                                mIdx === 0
+                                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                                  : "bg-slate-100 text-slate-700 border-slate-200"
+                              }`}
+                            >
+                              {mp}
+                            </span>
+                          ))}
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                        {c.ketentuan?.[0]?.kategori || "Beauty / General"}
-                      </span>
-                    </td>
-                    <td className="px-5 py-3.5 font-medium text-slate-800">{c.pic || "-"}</td>
-                    <td className="px-5 py-3.5 font-mono text-slate-700">
-                      {c.kontak ? (
-                        <a
-                          href={`https://wa.me/${c.kontak.replace(/[^0-9]/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#941A0B] hover:underline flex items-center gap-1.5 font-semibold"
+                      </td>
+
+                      {/* Kategori & Alamat */}
+                      <td className="px-5 py-3.5">
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-200 inline-block mb-1">
+                          {k0?.kategori || "Beauty / General"}
+                        </span>
+                        <div className="text-[11px] text-slate-500 truncate max-w-xs" title={k0?.alamat || "-"}>
+                          {k0?.alamat || "-"}
+                        </div>
+                      </td>
+
+                      {/* PIC & Kontak */}
+                      <td className="px-5 py-3.5">
+                        <div className="font-bold text-slate-800 text-xs">{c.pic || "-"}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {c.kontak ? (
+                            <a
+                              href={`https://wa.me/${c.kontak.replace(/[^0-9]/g, "")}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[#941A0B] hover:underline flex items-center gap-1 font-semibold text-xs font-mono"
+                            >
+                              <i className="fa-brands fa-whatsapp text-emerald-600 text-sm" />
+                              <span>+{c.kontak}</span>
+                            </a>
+                          ) : (
+                            <span className="text-slate-400 text-xs">-</span>
+                          )}
+                          {k0?.email && (
+                            <span className="text-[11px] text-slate-400 truncate max-w-[120px]" title={k0.email}>
+                              • {k0.email}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Produk Terdaftar */}
+                      <td className="px-5 py-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDetailModalClient(c);
+                            setDetailTab("produk");
+                            setShowDetailModal(true);
+                          }}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 mx-auto ${
+                            totalProduk > 0
+                              ? "bg-red-50/80 text-[#941A0B] border-red-200 hover:bg-red-100"
+                              : "bg-slate-50 text-slate-400 border-slate-200 hover:bg-slate-100"
+                          }`}
+                          title="Klik untuk melihat daftar produk"
                         >
-                          <i className="fa-brands fa-whatsapp text-emerald-600 text-base" />
-                          <span>{c.kontak}</span>
-                        </a>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td className="px-5 py-3.5 text-center">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setActiveTab("edit");
-                          handleSelectEditClient(c);
-                        }}
-                        className="text-[#941A0B] hover:bg-red-50 px-3 py-1.5 rounded-lg font-bold text-xs transition inline-flex items-center gap-1 border border-red-200"
-                      >
-                        <i className="fa-solid fa-pen-to-square" />
-                        <span>Rubah</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                          <i className="fa-solid fa-box-archive text-[11px]" />
+                          <span>{totalProduk} Produk</span>
+                        </button>
+                      </td>
+
+                      {/* Aksi */}
+                      <td className="px-5 py-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDetailModalClient(c);
+                              setDetailTab("info");
+                              setShowDetailModal(true);
+                            }}
+                            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-2.5 py-1.5 rounded-lg font-bold text-xs transition inline-flex items-center gap-1 border border-slate-200"
+                            title="Lihat Detail Lengkap & Produk"
+                          >
+                            <i className="fa-solid fa-eye" />
+                            <span>Detail</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenProdukForClient(c.id, "input")}
+                            className="bg-red-50 hover:bg-red-100 text-[#941A0B] px-2.5 py-1.5 rounded-lg font-bold text-xs transition inline-flex items-center gap-1 border border-red-200"
+                            title="Input Produk Baru untuk Client ini"
+                          >
+                            <i className="fa-solid fa-plus" />
+                            <span>Input Produk</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveTab("edit");
+                              handleSelectEditClient(c);
+                            }}
+                            className="hover:bg-slate-100 text-slate-600 p-1.5 rounded-lg font-bold text-xs transition border border-slate-200"
+                            title="Rubah Data Client"
+                          >
+                            <i className="fa-solid fa-pen-to-square" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!loadingClients && filteredDaftar.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-5 py-12 text-center text-slate-400 italic">
+                    <td colSpan={7} className="px-5 py-12 text-center text-slate-400 italic">
                       {searchDaftar ? "Tidak ada client yang sesuai dengan pencarian." : "Belum ada client yang terdaftar."}
                     </td>
                   </tr>
@@ -769,7 +1024,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, namaPerusahaan: e.target.value } : f)))
                           }
-                          placeholder="PT / CV..."
+                          placeholder="Contoh: PT Glow Estetika Nusantara"
                           className={inputCls}
                         />
                       </div>
@@ -781,7 +1036,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, namaMerk: e.target.value } : f)))
                           }
-                          placeholder="Nama Merk Dagang"
+                          placeholder="Contoh: Glow Skin Beauty"
                           className={inputCls}
                           required
                         />
@@ -794,7 +1049,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, penanggungJawab: e.target.value } : f)))
                           }
-                          placeholder="Nama PIC Client"
+                          placeholder="Contoh: Sarah Melinda (Brand Manager)"
                           className={inputCls}
                         />
                       </div>
@@ -821,7 +1076,7 @@ export default function ClientPage() {
                             onChange={(e) =>
                               setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, manualKategori: e.target.value } : f)))
                             }
-                            placeholder="Tulis kategori manual..."
+                            placeholder="Contoh: Health & Wellness"
                             className={`${inputCls} mt-2`}
                             required
                           />
@@ -852,7 +1107,7 @@ export default function ClientPage() {
                                 )
                               )
                             }
-                            placeholder="81234567890"
+                            placeholder="Contoh: 81234567890"
                             className="w-full px-3.5 py-2.5 text-sm font-medium text-black outline-none bg-white font-mono"
                             required
                           />
@@ -866,7 +1121,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, email: e.target.value } : f)))
                           }
-                          placeholder="client@brand.com"
+                          placeholder="Contoh: partnership@glowskin.co.id"
                           className={inputCls}
                         />
                       </div>
@@ -878,7 +1133,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, alamat: e.target.value } : f)))
                           }
-                          placeholder="Alamat kantor / gudang client..."
+                          placeholder="Contoh: Menara Mandiri Lt. 12, Jl. Jend. Sudirman Kav. 54, Jakarta Selatan"
                           className={inputCls}
                         />
                       </div>
@@ -911,7 +1166,7 @@ export default function ClientPage() {
                             onChange={(e) =>
                               setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, manualMp1: e.target.value } : f)))
                             }
-                            placeholder="Tulis marketplace..."
+                            placeholder="Contoh: Tokopedia"
                             className={`${inputCls} mt-2`}
                           />
                         )}
@@ -938,7 +1193,7 @@ export default function ClientPage() {
                             onChange={(e) =>
                               setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, manualMp2: e.target.value } : f)))
                             }
-                            placeholder="Tulis marketplace..."
+                            placeholder="Contoh: TikTok"
                             className={`${inputCls} mt-2`}
                           />
                         )}
@@ -965,7 +1220,7 @@ export default function ClientPage() {
                             onChange={(e) =>
                               setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, manualMp3: e.target.value } : f)))
                             }
-                            placeholder="Tulis marketplace..."
+                            placeholder="Contoh: Lazada"
                             className={`${inputCls} mt-2`}
                           />
                         )}
@@ -978,7 +1233,7 @@ export default function ClientPage() {
                           onChange={(e) =>
                             setClientForms(clientForms.map((f) => (f.id === form.id ? { ...f, catatan: e.target.value } : f)))
                           }
-                          placeholder="Catatan tambahan mengenai ketentuan siaran / PIC..."
+                          placeholder="Contoh: Prioritas live malam (19:00 - 22:00), host wajib pakai outfit pastel"
                           className={inputCls}
                         />
                       </div>
@@ -1040,7 +1295,7 @@ export default function ClientPage() {
                         handleSelectEditClient();
                       }
                     }}
-                    placeholder="Ketik nama perusahaan | merk | PIC..."
+                    placeholder="Ketik nama brand | platform | PIC..."
                     className={inputCls}
                   />
                   {searchEditId && (
@@ -1189,7 +1444,7 @@ export default function ClientPage() {
                       type="text"
                       value={editClientForm.namaPerusahaan}
                       onChange={(e) => setEditClientForm({ ...editClientForm, namaPerusahaan: e.target.value })}
-                      placeholder="PT / CV / Nama Usaha..."
+                      placeholder="Contoh: PT Glow Estetika Nusantara"
                       className={inputCls}
                     />
                   </div>
@@ -1201,7 +1456,7 @@ export default function ClientPage() {
                       type="text"
                       value={editClientForm.namaMerk}
                       onChange={(e) => setEditClientForm({ ...editClientForm, namaMerk: e.target.value })}
-                      placeholder="Nama Brand..."
+                      placeholder="Contoh: Glow Skin Beauty"
                       className={inputCls}
                       required
                     />
@@ -1214,7 +1469,7 @@ export default function ClientPage() {
                       type="text"
                       value={editClientForm.penanggungJawab}
                       onChange={(e) => setEditClientForm({ ...editClientForm, penanggungJawab: e.target.value })}
-                      placeholder="Nama PIC..."
+                      placeholder="Contoh: Sarah Melinda (Brand Manager)"
                       className={inputCls}
                       required
                     />
@@ -1239,7 +1494,7 @@ export default function ClientPage() {
                         type="text"
                         value={editClientForm.manualKategori}
                         onChange={(e) => setEditClientForm({ ...editClientForm, manualKategori: e.target.value })}
-                        placeholder="Tulis kategori manual..."
+                        placeholder="Contoh: Health & Wellness"
                         className={`${inputCls} mt-2`}
                         required
                       />
@@ -1262,7 +1517,7 @@ export default function ClientPage() {
                             nomorTeleponSuffix: e.target.value.replace(/[^0-9]/g, ""),
                           })
                         }
-                        placeholder="81234567890"
+                        placeholder="Contoh: 81234567890"
                         className="w-full px-3.5 py-2.5 text-sm font-medium text-black outline-none bg-white font-mono"
                         required
                       />
@@ -1276,7 +1531,7 @@ export default function ClientPage() {
                       type="email"
                       value={editClientForm.email}
                       onChange={(e) => setEditClientForm({ ...editClientForm, email: e.target.value })}
-                      placeholder="client@brand.com"
+                      placeholder="Contoh: partnership@glowskin.co.id"
                       className={inputCls}
                     />
                   </div>
@@ -1289,7 +1544,7 @@ export default function ClientPage() {
                     rows={2}
                     value={editClientForm.alamat}
                     onChange={(e) => setEditClientForm({ ...editClientForm, alamat: e.target.value })}
-                    placeholder="Alamat lengkap..."
+                    placeholder="Contoh: Menara Mandiri Lt. 12, Jl. Jend. Sudirman Kav. 54, Jakarta Selatan"
                     className={inputCls}
                   />
                 </div>
@@ -1315,7 +1570,7 @@ export default function ClientPage() {
                         type="text"
                         value={editClientForm.manualMp1}
                         onChange={(e) => setEditClientForm({ ...editClientForm, manualMp1: e.target.value })}
-                        placeholder="Tulis marketplace 1..."
+                        placeholder="Contoh: Tokopedia"
                         className={`${inputCls} mt-2`}
                         required
                       />
@@ -1341,7 +1596,7 @@ export default function ClientPage() {
                         type="text"
                         value={editClientForm.manualMp2}
                         onChange={(e) => setEditClientForm({ ...editClientForm, manualMp2: e.target.value })}
-                        placeholder="Tulis marketplace 2..."
+                        placeholder="Contoh: TikTok Shop"
                         className={`${inputCls} mt-2`}
                       />
                     )}
@@ -1366,21 +1621,21 @@ export default function ClientPage() {
                         type="text"
                         value={editClientForm.manualMp3}
                         onChange={(e) => setEditClientForm({ ...editClientForm, manualMp3: e.target.value })}
-                        placeholder="Tulis marketplace 3..."
+                        placeholder="Contoh: Lazada"
                         className={`${inputCls} mt-2`}
                       />
                     )}
                   </div>
                 </div>
 
-                {/* Catatan */}
+                {/* Catatan Khusus */}
                 <div>
-                  <label className={labelCls}>Catatan Tambahan</label>
+                  <label className={labelCls}>Catatan Khusus</label>
                   <textarea
                     rows={2}
                     value={editClientForm.catatan}
                     onChange={(e) => setEditClientForm({ ...editClientForm, catatan: e.target.value })}
-                    placeholder="Ketentuan siaran, target live, dsb..."
+                    placeholder="Contoh: Prioritas live malam (19:00 - 22:00), host wajib pakai outfit pastel"
                     className={inputCls}
                   />
                 </div>
@@ -1500,8 +1755,8 @@ export default function ClientPage() {
                         type="text"
                         value={searchKatalog}
                         onChange={(e) => setSearchKatalog(e.target.value)}
-                        placeholder="Cari Produk / SKU..."
-                        className="border-none bg-transparent focus:ring-0 outline-none text-xs w-full text-slate-700"
+                        placeholder="Contoh: serum, SKU-GLOW-01, 30ml..."
+                        className="border-none bg-transparent focus:ring-0 outline-none text-xs w-full text-slate-700 placeholder-slate-400"
                       />
                     </div>
                   </div>
@@ -1609,7 +1864,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, idProduk: e.target.value } : f)))
                               }
-                              placeholder="mis. PRD-001"
+                              placeholder="Contoh: PRD-GLOW-001"
                               className={inputCls}
                             />
                           </div>
@@ -1621,7 +1876,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, sellerSku: e.target.value } : f)))
                               }
-                              placeholder="mis. SKU-GLOW-01"
+                              placeholder="Contoh: SKU-GS-SERUM-30ML"
                               className={inputCls}
                               required
                             />
@@ -1634,7 +1889,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, brand: e.target.value } : f)))
                               }
-                              placeholder="Nama Brand"
+                              placeholder="Contoh: Glow Skin"
                               className={inputCls}
                               required
                             />
@@ -1647,7 +1902,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, namaProduk: e.target.value } : f)))
                               }
-                              placeholder="Nama Produk"
+                              placeholder="Contoh: Brightening Glow Face Serum 30ml Vitamin C"
                               className={inputCls}
                               required
                             />
@@ -1674,7 +1929,7 @@ export default function ClientPage() {
                                   handleAddVarianTag(pForm.id);
                                 }
                               }}
-                              placeholder="Ketik varian (e.g. 50ml / Merah)..."
+                              placeholder="Contoh: 30ml, 50ml, Shade Light..."
                               className={inputCls}
                             />
                             <button
@@ -1715,7 +1970,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, linkProduk: e.target.value } : f)))
                               }
-                              placeholder="https://..."
+                              placeholder="Contoh: https://shopee.co.id/product/12345/67890"
                               className={inputCls}
                             />
                           </div>
@@ -1727,7 +1982,7 @@ export default function ClientPage() {
                               onChange={(e) =>
                                 setProdukForms(produkForms.map((f) => (f.id === pForm.id ? { ...f, catatan: e.target.value } : f)))
                               }
-                              placeholder="Catatan..."
+                              placeholder="Contoh: Produk unggulan flash sale, stok terbatas 100 pcs"
                               className={inputCls}
                             />
                           </div>
@@ -1784,7 +2039,7 @@ export default function ClientPage() {
                                 handleSelectEditProduk();
                               }
                             }}
-                            placeholder="Pilih dari daftar saran produk..."
+                            placeholder="Contoh: 1 | SKU-GLOW-01 | Serum Glow..."
                             className={inputCls}
                           />
                           {searchEditProduk && (
@@ -1881,12 +2136,7 @@ export default function ClientPage() {
                     <div className="bg-slate-50 border border-slate-200 p-5 rounded-2xl space-y-4">
                       <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wide">Rubah Kolom Data Produk</h4>
                       <form
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          showAlert("✅ Perubahan data produk berhasil diterapkan!");
-                          setSelectedEditProduk(null);
-                          setSearchEditProduk("");
-                        }}
+                        onSubmit={handleSaveEditProduk}
                         className="space-y-3"
                       >
                         {editProdukRows.map((r, rIdx) => (
@@ -1959,9 +2209,11 @@ export default function ClientPage() {
                         <div className="flex justify-end pt-3 border-t border-slate-200">
                           <button
                             type="submit"
-                            className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-2.5 px-7 rounded-xl text-xs transition shadow-md"
+                            disabled={savingEditProduk}
+                            className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-2.5 px-7 rounded-xl text-xs transition shadow-md disabled:opacity-50 flex items-center gap-2"
                           >
-                            Terapkan Perubahan
+                            {savingEditProduk && <i className="fa-solid fa-spinner fa-spin" />}
+                            <span>{savingEditProduk ? "Menyimpan..." : "Terapkan Perubahan"}</span>
                           </button>
                         </div>
                       </form>
@@ -1973,6 +2225,316 @@ export default function ClientPage() {
           )}
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: DETAIL LENGKAP CLIENT & PRODUK                                     */}
+      {/* ========================================================================= */}
+      {showDetailModal && detailModalClient && (() => {
+        const k0 = detailModalClient.ketentuan?.[0];
+        const mpList = [
+          k0?.marketplace1 || detailModalClient.platform || "Shopee",
+          k0?.marketplace2,
+          k0?.marketplace3,
+        ].filter(Boolean);
+        const products = detailModalClient.produk || [];
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+              {/* Modal Header */}
+              <div className="bg-slate-900 text-white p-5 sm:p-6 flex items-start justify-between gap-4 border-b border-slate-800 relative">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-[#941A0B] text-white flex items-center justify-center font-black text-xl shadow-lg border border-red-400/30 shrink-0">
+                    {detailModalClient.namaClient?.charAt(0)?.toUpperCase() || "C"}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="font-extrabold text-lg sm:text-xl text-white">
+                        {detailModalClient.namaClient}
+                      </h2>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-800 text-amber-300 border border-slate-700">
+                        {k0?.kategori || "Beauty"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5 font-medium">
+                      {k0?.namaPerusahaan || detailModalClient.namaClient}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDetailModal(false)}
+                  className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition"
+                  title="Tutup Modal"
+                >
+                  <i className="fa-solid fa-xmark text-lg" />
+                </button>
+              </div>
+
+              {/* Modal Tab Switcher */}
+              <div className="bg-slate-100 px-6 pt-3 flex gap-2 border-b border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("info")}
+                  className={`px-4 py-2.5 text-xs font-extrabold rounded-t-xl transition flex items-center gap-2 border-t border-x ${
+                    detailTab === "info"
+                      ? "bg-white text-[#941A0B] border-slate-200 -mb-[1px] shadow-sm"
+                      : "text-slate-600 hover:text-black border-transparent"
+                  }`}
+                >
+                  <i className="fa-solid fa-circle-info" />
+                  <span>Profil &amp; Legal Client</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTab("produk")}
+                  className={`px-4 py-2.5 text-xs font-extrabold rounded-t-xl transition flex items-center gap-2 border-t border-x ${
+                    detailTab === "produk"
+                      ? "bg-white text-[#941A0B] border-slate-200 -mb-[1px] shadow-sm"
+                      : "text-slate-600 hover:text-black border-transparent"
+                  }`}
+                >
+                  <i className="fa-solid fa-boxes-stacked" />
+                  <span>Katalog Produk ({products.length})</span>
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                {/* TAB 1: INFORMASI PROFIL & LEGAL */}
+                {detailTab === "info" && (
+                  <div className="space-y-5">
+                    {/* Ringkasan Kontak & PIC */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div>
+                        <span className="block text-[11px] font-bold text-slate-400 uppercase mb-0.5">Penanggung Jawab (PIC)</span>
+                        <div className="font-bold text-slate-900 text-sm">{detailModalClient.pic || "-"}</div>
+                      </div>
+                      <div>
+                        <span className="block text-[11px] font-bold text-slate-400 uppercase mb-0.5">WhatsApp PIC</span>
+                        <div className="font-mono font-bold text-emerald-600 text-sm">
+                          {detailModalClient.kontak ? (
+                            <a
+                              href={`https://wa.me/${detailModalClient.kontak.replace(/[^0-9]/g, "")}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="hover:underline flex items-center gap-1"
+                            >
+                              <i className="fa-brands fa-whatsapp" />
+                              <span>+{detailModalClient.kontak}</span>
+                            </a>
+                          ) : (
+                            "-"
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="block text-[11px] font-bold text-slate-400 uppercase mb-0.5">Email Bisnis</span>
+                        <div className="font-medium text-slate-700 text-sm truncate" title={k0?.email || "-"}>
+                          {k0?.email || "-"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Data Detail Perusahaan & Operasional */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                      <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
+                        <h4 className="font-extrabold text-[#941A0B] uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">
+                          Identitas &amp; Legal
+                        </h4>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Nama Perusahaan:</span>
+                          <span className="font-bold text-slate-900 text-sm">{k0?.namaPerusahaan || detailModalClient.namaClient}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Nama Merk / Brand:</span>
+                          <span className="font-bold text-slate-900 text-sm">{detailModalClient.namaClient}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Kategori Produk:</span>
+                          <span className="font-bold text-slate-900">{k0?.kategori || "Beauty / General"}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Alamat Lengkap Kantor / Gudang:</span>
+                          <span className="text-slate-700 font-medium leading-relaxed">{k0?.alamat || "-"}</span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
+                        <h4 className="font-extrabold text-[#941A0B] uppercase tracking-wider text-[11px] border-b border-slate-100 pb-1.5">
+                          Marketplace &amp; Ketentuan
+                        </h4>
+                        <div>
+                          <span className="text-slate-400 block text-[11px] mb-1">Marketplace Terdaftar:</span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {mpList.map((mp, mIdx) => (
+                              <span
+                                key={mIdx}
+                                className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                                  mIdx === 0
+                                    ? "bg-amber-50 text-amber-900 border-amber-200"
+                                    : "bg-slate-100 text-slate-700 border-slate-200"
+                                }`}
+                              >
+                                {mIdx === 0 ? `Utama: ${mp}` : mp}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">Catatan Khusus / Ketentuan Siaran:</span>
+                          <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 text-amber-900 text-xs leading-relaxed font-medium">
+                            {k0?.catatan || "Tidak ada catatan khusus."}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: KATALOG PRODUK TERDAFTAR */}
+                {detailTab === "produk" && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                      <div>
+                        <h4 className="font-extrabold text-sm text-slate-900">
+                          Katalog Produk Terdaftar ({products.length})
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Daftar produk aktif untuk brand <b>{detailModalClient.namaClient}</b>.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenProdukForClient(detailModalClient.id, "input")}
+                        className="bg-[#941A0B] hover:bg-[#7D1509] text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm shrink-0"
+                      >
+                        <i className="fa-solid fa-plus" />
+                        <span>+ Input Produk Baru</span>
+                      </button>
+                    </div>
+
+                    {products.length > 0 ? (
+                      <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                        <table className="w-full text-xs text-left whitespace-nowrap">
+                          <thead className="bg-slate-100 text-slate-600 font-bold uppercase border-b border-slate-200">
+                            <tr>
+                              <th className="px-3.5 py-3 text-center">NO</th>
+                              <th className="px-3.5 py-3">ID PRODUK</th>
+                              <th className="px-3.5 py-3">SELLER SKU</th>
+                              <th className="px-3.5 py-3">NAMA PRODUK</th>
+                              <th className="px-3.5 py-3">VARIAN</th>
+                              <th className="px-3.5 py-3">LINK</th>
+                              <th className="px-3.5 py-3">CATATAN</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {products.map((p, pIdx) => (
+                              <tr key={p.id || pIdx} className="hover:bg-slate-50 transition">
+                                <td className="px-3.5 py-2.5 text-center font-bold text-slate-400">{pIdx + 1}</td>
+                                <td className="px-3.5 py-2.5 font-mono font-bold text-[#941A0B]">{p.idProduk || "-"}</td>
+                                <td className="px-3.5 py-2.5 font-mono text-slate-700">{p.sku || p.sellerSku || "-"}</td>
+                                <td className="px-3.5 py-2.5 font-bold text-slate-900 max-w-xs truncate" title={p.namaProduk}>
+                                  {p.namaProduk}
+                                </td>
+                                <td className="px-3.5 py-2.5">
+                                  {p.varian && p.varian.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {p.varian.map((v: string, vi: number) => (
+                                        <span key={vi} className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 text-[10px]">
+                                          {v}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-slate-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3.5 py-2.5">
+                                  {p.link ? (
+                                    <a
+                                      href={p.link.startsWith("http") ? p.link : `https://${p.link}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:underline flex items-center gap-1 font-semibold"
+                                    >
+                                      <i className="fa-solid fa-arrow-up-right-from-square text-[10px]" />
+                                      <span>Buka Link</span>
+                                    </a>
+                                  ) : (
+                                    <span className="text-slate-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-3.5 py-2.5 text-slate-500 max-w-[150px] truncate" title={p.catatan || "-"}>
+                                  {p.catatan || "-"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                        <div className="w-12 h-12 rounded-full bg-red-50 text-[#941A0B] flex items-center justify-center mx-auto text-lg">
+                          <i className="fa-solid fa-box-open" />
+                        </div>
+                        <div>
+                          <h5 className="font-bold text-slate-800 text-sm">Belum Ada Produk Terdaftar</h5>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Client ini belum memiliki katalog produk di database.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenProdukForClient(detailModalClient.id, "input")}
+                          className="bg-[#941A0B] hover:bg-[#7D1509] text-white px-5 py-2 rounded-xl text-xs font-bold transition shadow-sm inline-flex items-center gap-1.5"
+                        >
+                          <i className="fa-solid fa-plus" />
+                          <span>Input Produk Pertama</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="bg-slate-50 p-4 px-6 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDetailModal(false)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 font-bold text-xs hover:bg-slate-100 transition"
+                >
+                  Tutup
+                </button>
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenProdukForClient(detailModalClient.id, "input")}
+                    className="flex-1 sm:flex-initial bg-[#941A0B] hover:bg-[#7D1509] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-plus" />
+                    <span>+ Input Produk Baru</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab("edit");
+                      handleSelectEditClient(detailModalClient);
+                      setShowDetailModal(false);
+                    }}
+                    className="flex-1 sm:flex-initial bg-slate-800 hover:bg-slate-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <i className="fa-solid fa-pen-to-square" />
+                    <span>Rubah Data Client</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Footer */}
       <div className="mt-12 text-center pb-4">

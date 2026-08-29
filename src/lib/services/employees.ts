@@ -83,20 +83,64 @@ export async function getEmployee(id: string) {
   throw AppError.forbidden("Akses ditolak");
 }
 
+async function resolveTenantId(user: { tenantId?: string | null; role?: string }): Promise<string | undefined> {
+  if (user.tenantId) return user.tenantId;
+  const agency = await db.tenant.findFirst({ where: { type: "AGENCY" } });
+  if (agency) return agency.id;
+  const first = await db.tenant.findFirst();
+  return first?.id ?? undefined;
+}
+
+async function generateNextIdKaryawan(prefix: string = "PCS"): Promise<string> {
+  const all = await db.karyawan.findMany({
+    select: { idKaryawan: true },
+  });
+  const used = new Set(all.map((k) => k.idKaryawan));
+
+  for (let i = 1; i <= 9999; i++) {
+    const candidate = `${prefix}${String(i).padStart(3, "0")}`;
+    if (!used.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  let fallback = `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+  while (used.has(fallback)) {
+    fallback = `${prefix}${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+  return fallback;
+}
+
 export async function createEmployee(input: any) {
   const user = await requirePermission("employee:write");
-  if (!user.tenantId) throw AppError.forbidden("Akun tidak terkait tenant");
+  const tenantId = await resolveTenantId(user);
+  if (!tenantId && user.role !== "SUPER_ADMIN") throw AppError.forbidden("Akun tidak terkait tenant");
 
-  const autoId = input.idKaryawan || `PC${Math.floor(1000 + Math.random() * 9000)}`;
+  let autoId = input.idKaryawan ? String(input.idKaryawan).trim() : "";
+  if (!autoId) {
+    const isStreamer =
+      (input.kategori && String(input.kategori).toUpperCase().includes("STREAMER")) ||
+      (input.jabatan && String(input.jabatan).toUpperCase().includes("STREAMER")) ||
+      (input.kategori && String(input.kategori).toUpperCase() === "HOST");
+    const prefix = isStreamer ? "PCS" : "PC";
+    autoId = await generateNextIdKaryawan(prefix);
+  } else {
+    const existing = await db.karyawan.findFirst({
+      where: { idKaryawan: autoId, ...(tenantId ? { tenantId } : {}) },
+    });
+    if (existing) throw AppError.conflict(`ID Karyawan ${autoId} sudah terdaftar`);
+  }
 
-  const existing = await db.karyawan.findFirst({
-    where: { idKaryawan: autoId, ...tenantWhere(user) },
-  });
-  if (existing) throw AppError.conflict(`ID Karyawan ${autoId} sudah terdaftar`);
+  const cleanPhone = (v?: string | null) => {
+    if (!v) return null;
+    const digits = String(v).replace(/\D/g, "");
+    if (!digits) return null;
+    return digits.startsWith("62") ? digits : digits.startsWith("0") ? `62${digits.slice(1)}` : `62${digits}`;
+  };
 
   return db.karyawan.create({
     data: {
-      tenantId: user.tenantId,
+      tenantId: tenantId ?? null,
       idKaryawan: autoId,
       namaLengkap: input.namaLengkap,
       namaPanggilan: input.namaPanggilan ?? null,
@@ -104,8 +148,8 @@ export async function createEmployee(input: any) {
       tempatLahir: input.tempatLahir ?? null,
       tanggalLahir: toDate(input.tanggalLahir),
       agama: input.agama ?? null,
-      nomorTelepon: input.nomorTelepon ?? null,
-      emergencyContact: input.emergencyContact ?? null,
+      nomorTelepon: cleanPhone(input.nomorTelepon),
+      emergencyContact: cleanPhone(input.emergencyContact),
       email: input.email ?? null,
       statusPerkawinan: input.statusPerkawinan ?? null,
       riwayatPenyakit: input.riwayatPenyakit ?? null,

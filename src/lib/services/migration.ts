@@ -191,8 +191,9 @@ export async function importKaryawan(rows: Record<string, string>[]) {
       });
       // Build a Prisma-typed data object (Zod's parsed enum types don't always
       // match Prisma's input types when spread directly).
+      const finalIdKaryawan = input.idKaryawan || idKaryawan;
       const data = {
-        idKaryawan: input.idKaryawan,
+        idKaryawan: finalIdKaryawan,
         namaLengkap: input.namaLengkap,
         namaPanggilan: input.namaPanggilan ?? null,
         gender: input.gender ?? null,
@@ -207,11 +208,11 @@ export async function importKaryawan(rows: Record<string, string>[]) {
         nomorRekening: input.nomorRekening ?? null,
         namaPemilikRek: input.namaPemilikRek ?? null,
       };
-      const existing = await db.karyawan.findFirst({ where: { idKaryawan: input.idKaryawan } });
+      const existing = await db.karyawan.findFirst({ where: { idKaryawan: finalIdKaryawan } });
       if (existing) {
         await db.karyawan.update({ where: { id: existing.id }, data });
       } else {
-        await db.karyawan.create({ data: { ...data, tenantId: user.tenantId || undefined } });
+        await db.karyawan.create({ data: { ...data, tenantId: user.tenantId ?? null } });
       }
       imported++;
     } catch (e) {
