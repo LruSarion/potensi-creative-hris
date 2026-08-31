@@ -407,6 +407,7 @@ export default function InputJadwalPage() {
     cabangStudio: string;
     nomorStudio: string;
     device: string;
+    shiftOts?: string;
     jamMulaiLive: string;
     jamSelesaiLive: string;
     otsKaryawanId: string;
@@ -429,6 +430,7 @@ export default function InputJadwalPage() {
     cabangStudio: "Timoho",
     nomorStudio: "Studio 1",
     device: "Tidak Pakai",
+    shiftOts: "",
     jamMulaiLive: "",
     jamSelesaiLive: "",
     otsKaryawanId: "",
@@ -1022,6 +1024,7 @@ export default function InputJadwalPage() {
       cabangStudio: target.cabangStudio || "Timoho",
       nomorStudio: target.nomorStudio || "Studio 1",
       device: target.device || "Tidak Pakai",
+      shiftOts: target.shiftOts || "",
       jamMulaiLive: formatTimeOnly(target.jamMulaiLive),
       jamSelesaiLive: formatTimeOnly(target.jamSelesaiLive),
       otsKaryawanId: target.otsKaryawanId || target.otsKaryawan?.id || "",
