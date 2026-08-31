@@ -61,6 +61,67 @@ function applyShiftOts(shiftVal: string): { masuk: string; keluar: string } {
   return { masuk: "", keluar: "" };
 }
 
+function formatTimeSafe(val: any): string {
+  if (!val) return "–";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) {
+    if (typeof val === "string" && val.includes(":")) return val.slice(0, 5);
+    return String(val);
+  }
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function formatDateSafe(val: any, options?: Intl.DateTimeFormatOptions): string {
+  if (!val) return "–";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  return d.toLocaleDateString("id-ID", options || { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
+
+function calcWajibHadir(jamMulaiVal: any): string {
+  if (!jamMulaiVal) return "–";
+  const d = new Date(jamMulaiVal);
+  if (isNaN(d.getTime())) return "15 Menit Sebelum";
+  d.setMinutes(d.getMinutes() - 15);
+  return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }) + " WIB";
+}
+
+function formatTimeOnly(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") {
+    if (val.includes("T")) {
+      const timePart = val.split("T")[1];
+      return timePart ? timePart.slice(0, 5) : "";
+    }
+    if (val.includes(":")) return val.slice(0, 5);
+  }
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+  } catch {
+    return "";
+  }
+}
+
+function formatDateOnly(val: any): string {
+  if (!val) return "";
+  if (typeof val === "string") return val.slice(0, 10);
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return "";
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return "";
+  }
+}
+
+function formatRowItem(item: any): string {
+  if (!item) return "";
+  if (typeof item === "string") return item;
+  return `${item.id || item.idKaryawan || "-"} | ${item.nama || item.namaLengkap || "Streamer"}`;
+}
+
 export default function InputJadwalPage() {
   // Global Data States
   const [streamers, setStreamers] = useState<any[]>([]);
@@ -97,6 +158,37 @@ export default function InputJadwalPage() {
     title: "",
     conflicts: [],
   });
+
+  // Dynamic Platform Client options mapped from Database Clients (Nama Merk / Brand + Marketplace)
+  const platformClientOptions = React.useMemo(() => {
+    const options: Array<{ label: string; value: string; clientId: string }> = [];
+    const seen = new Set<string>();
+
+    if (Array.isArray(clients) && clients.length > 0) {
+      for (const c of clients) {
+        const brand = (c.namaMerk || c.namaClient || "").trim();
+        const k0 = c.ketentuan?.[0];
+        const mps = [k0?.marketplace1 || c.platform, k0?.marketplace2, k0?.marketplace3]
+          .filter(Boolean)
+          .map((m: string) => m.trim());
+        const finalMps = mps.length > 0 ? mps : [c.platform || "Shopee Live"];
+
+        for (const mp of finalMps) {
+          const label = brand ? `${brand} ${mp}` : mp;
+          if (!seen.has(label)) {
+            seen.add(label);
+            options.push({ label, value: label, clientId: c.id });
+          }
+        }
+      }
+    }
+
+    if (options.length === 0) {
+      PLATFORMS.forEach((p) => options.push({ label: p, value: p, clientId: "" }));
+    }
+
+    return options;
+  }, [clients]);
 
   // --------------------------------------------------------------------------
   // TAB 1: JADWAL STREAMER STATES
@@ -163,6 +255,79 @@ export default function InputJadwalPage() {
   const [cariReq1600, setCariReq1600] = useState("");
   const [pageInfoStreamer, setPageInfoStreamer] = useState(1);
 
+  // States for Streamer Live Master Table (Ref Deploy Subtab Jadwal Live format)
+  const [liveFilterPeriode, setLiveFilterPeriode] = useState<
+    "ALL" | "TODAY" | "PREV_7" | "NEXT_7" | "PREV_35" | "NEXT_35" | "EXACT_DATE" | "CUSTOM"
+  >("ALL");
+  const [liveFilterExactDate, setLiveFilterExactDate] = useState("");
+  const [liveFilterRangeDate, setLiveFilterRangeDate] = useState("");
+  const [liveFilterRangeStart, setLiveFilterRangeStart] = useState("");
+  const [liveFilterRangeEnd, setLiveFilterRangeEnd] = useState("");
+  const [liveFilterWaktuToggle, setLiveFilterWaktuToggle] = useState<"ALL" | "CUSTOM">("ALL");
+  const [liveFilterJamMulai, setLiveFilterJamMulai] = useState("");
+  const [liveFilterJamAkhir, setLiveFilterJamAkhir] = useState("");
+  const [liveFilterCol, setLiveFilterCol] = useState<"ALL" | "0" | "1" | "3" | "5" | "4" | "6">("ALL");
+  const [liveFilterText, setLiveFilterText] = useState("");
+  const [liveFilterStatus, setLiveFilterStatus] = useState("");
+  const [liveFilterCabang, setLiveFilterCabang] = useState("");
+  const [liveFilterStudio, setLiveFilterStudio] = useState("");
+  const [livePageSize, setLivePageSize] = useState(10);
+  const [livePage, setLivePage] = useState(1);
+  const [modalDetailJadwalLive, setModalDetailJadwalLive] = useState<any | null>(null);
+
+  function getWajibHadirTime(jamMulai?: string | null): string {
+    if (!jamMulai) return "-";
+    const parts = jamMulai.split(":");
+    if (parts.length < 2) return "-";
+    const hour = parseInt(parts[0], 10);
+    const min = parseInt(parts[1], 10);
+    if (isNaN(hour) || isNaN(min)) return "-";
+    let totalMin = hour * 60 + min - 15;
+    if (totalMin < 0) totalMin += 24 * 60;
+    const h = Math.floor(totalMin / 60) % 24;
+    const m = totalMin % 60;
+    return `${String(h).padStart(2, "0")}.${String(m).padStart(2, "0")} WIB`;
+  }
+
+  function isStreamerSelected(list: string[], s: any): boolean {
+    if (!Array.isArray(list) || !s) return false;
+    const sId = (s.idKaryawan || "").trim().toLowerCase();
+    const sNama = (s.namaLengkap || "").trim().toLowerCase();
+    return list.some((item) => {
+      const itemStr = item.toLowerCase().trim();
+      if (sId && itemStr.startsWith(`${sId} |`)) return true;
+      if (sNama && (itemStr.endsWith(`| ${sNama}`) || itemStr === sNama)) return true;
+      return false;
+    });
+  }
+
+  function toggleStreamerInList(key: "LIBUR" | "REQ_00_08" | "REQ_08_16" | "REQ_16_00", s: any) {
+    const val = `${s.idKaryawan || s.id || "-"} | ${s.namaLengkap}`;
+    const sId = (s.idKaryawan || "").trim().toLowerCase();
+    const sNama = (s.namaLengkap || "").trim().toLowerCase();
+
+    setStateEditInfo((prev) => {
+      const list = [...prev[key]];
+      const existingIndex = list.findIndex((item) => {
+        const itemStr = item.toLowerCase().trim();
+        if (sId && itemStr.startsWith(`${sId} |`)) return true;
+        if (sNama && (itemStr.endsWith(`| ${sNama}`) || itemStr === sNama)) return true;
+        return false;
+      });
+
+      if (existingIndex > -1) {
+        list.splice(existingIndex, 1);
+      } else {
+        if (key === "LIBUR" && list.length >= 20) {
+          showAlert("⚠️ Maksimal Streamer yang dapat Libur dalam 1 hari adalah 20 Orang sesuai batasan sel Kolom Database.");
+          return prev;
+        }
+        list.push(val);
+      }
+      return { ...prev, [key]: list };
+    });
+  }
+
   function bukaModalEditInfo(tgl: string, rowData: any) {
     const existingEdit = infoChanges[tgl];
     if (existingEdit) {
@@ -174,10 +339,10 @@ export default function InputJadwalPage() {
       });
     } else {
       setStateEditInfo({
-        LIBUR: rowData.LIBUR.map((s: any) => `${s.id} | ${s.nama}`),
-        REQ_00_08: rowData.REQ_00_08.map((s: any) => `${s.id} | ${s.nama}`),
-        REQ_08_16: rowData.REQ_08_16.map((s: any) => `${s.id} | ${s.nama}`),
-        REQ_16_00: rowData.REQ_16_00.map((s: any) => `${s.id} | ${s.nama}`),
+        LIBUR: (rowData?.LIBUR || []).map(formatRowItem),
+        REQ_00_08: (rowData?.REQ_00_08 || []).map(formatRowItem),
+        REQ_08_16: (rowData?.REQ_08_16 || []).map(formatRowItem),
+        REQ_16_00: (rowData?.REQ_16_00 || []).map(formatRowItem),
       });
     }
     setCariLiburInfo("");
@@ -185,23 +350,6 @@ export default function InputJadwalPage() {
     setCariReq0816("");
     setCariReq1600("");
     setEditInfoDate(tgl);
-  }
-
-  function toggleCheckboxInfoState(key: "LIBUR" | "REQ_00_08" | "REQ_08_16" | "REQ_16_00", val: string) {
-    setStateEditInfo((prev) => {
-      const list = [...prev[key]];
-      const idx = list.indexOf(val);
-      if (idx > -1) {
-        list.splice(idx, 1);
-      } else {
-        if (key === "LIBUR" && list.length >= 20) {
-          showAlert("⚠️ Maksimal Streamer yang dapat Libur dalam 1 hari adalah 20 Orang sesuai batasan sel Kolom Database.");
-          return prev;
-        }
-        list.push(val);
-      }
-      return { ...prev, [key]: list };
-    });
   }
 
   function simpanKeRamInfo() {
@@ -232,8 +380,8 @@ export default function InputJadwalPage() {
       streamerKaryawanId: "",
       cabangStudio: "Timoho",
       nomorStudio: "01",
-      jamMulaiLive: `${new Date().toISOString().slice(0, 10)}T14:00`,
-      jamSelesaiLive: `${new Date().toISOString().slice(0, 10)}T17:00`,
+      jamMulaiLive: "",
+      jamSelesaiLive: "",
       judulLive: "Live OTS",
       produkPrioritas: "",
       promoLive: "",
@@ -247,9 +395,51 @@ export default function InputJadwalPage() {
   const [filterTanggalRubah, setFilterTanggalRubah] = useState("");
   const [searchEditId, setSearchEditId] = useState("");
   const [selectedEditJadwal, setSelectedEditJadwal] = useState<any>(null);
-  const [editRows, setEditRows] = useState<Array<{ field: string; value: string }>>([
-    { field: "", value: "" },
-  ]);
+  const [editJadwalForm, setEditJadwalForm] = useState<{
+    id: string;
+    idJadwal: string;
+    tanggal: string;
+    platform: string;
+    clientId: string;
+    streamerKaryawanId: string;
+    streamerId: string;
+    streamerNama: string;
+    cabangStudio: string;
+    nomorStudio: string;
+    device: string;
+    jamMulaiLive: string;
+    jamSelesaiLive: string;
+    otsKaryawanId: string;
+    otsId: string;
+    otsNama: string;
+    judulLive: string;
+    promoLive: string;
+    catatanHost: string;
+    catatanOts: string;
+    status: string;
+  }>({
+    id: "",
+    idJadwal: "",
+    tanggal: "",
+    platform: "",
+    clientId: "",
+    streamerKaryawanId: "",
+    streamerId: "",
+    streamerNama: "",
+    cabangStudio: "Timoho",
+    nomorStudio: "Studio 1",
+    device: "Tidak Pakai",
+    jamMulaiLive: "",
+    jamSelesaiLive: "",
+    otsKaryawanId: "",
+    otsId: "",
+    otsNama: "",
+    judulLive: "",
+    promoLive: "",
+    catatanHost: "",
+    catatanOts: "",
+    status: "TERJADWAL",
+  });
   const [savingEditJadwal, setSavingEditJadwal] = useState(false);
 
   // --------------------------------------------------------------------------
@@ -355,20 +545,22 @@ export default function InputJadwalPage() {
 
       if (empRes.status === "success") {
         const all = empRes.data || [];
-        const strList = all.filter((e: any) =>
-          e.kategori?.toUpperCase() === "STREAMER" ||
-          e.jabatan?.toLowerCase().includes("streamer") ||
-          e.jabatan?.toLowerCase().includes("host") ||
-          e.user?.role === "STREAMER"
-        );
-        const otsList = all.filter((e: any) =>
-          e.kategori?.toUpperCase() === "OTS" ||
-          e.jabatan?.toLowerCase().includes("ots") ||
-          e.kategori?.toUpperCase() === "STAFF" ||
-          e.kategori?.toUpperCase() === "OFFICE"
-        );
-        setStreamers(strList.length > 0 ? strList : all);
-        setOtsStaff(otsList.length > 0 ? otsList : all);
+        const activeOnly = all.filter((e: any) => e.statusAktif === "AKTIF" || !e.statusAktif);
+
+        // Host Streamer: Streamer Dedicated and Streamer On-Call, status Aktif
+        const strList = activeOnly.filter((e: any) => {
+          const j = (e.jabatan || "").toLowerCase().trim();
+          return j.includes("streamer dedicated") || j.includes("streamer on-call") || j === "streamer dedicated" || j === "streamer on-call";
+        });
+
+        // OTS Staff: Operator Technical Support, status Aktif
+        const otsList = activeOnly.filter((e: any) => {
+          const j = (e.jabatan || "").toLowerCase().trim();
+          return j.includes("operator technical support") || j === "operator technical support" || j === "ots";
+        });
+
+        setStreamers(strList);
+        setOtsStaff(otsList);
       }
       if (clientRes.status === "success") setClients(clientRes.data);
       if (jadwalRes.status === "success") {
@@ -709,8 +901,8 @@ export default function InputJadwalPage() {
           otsId: "",
           otsNama: "",
           shiftOts: "",
-          jamMulaiLive: "07:00",
-          jamSelesaiLive: "15:00",
+          jamMulaiLive: "",
+          jamSelesaiLive: "",
           catatanOts: "",
           filesOts: [""],
         },
@@ -815,7 +1007,34 @@ export default function InputJadwalPage() {
     }
   }
 
-  // Select target schedule for Edit (Tab 3)
+  // Populate and Select target schedule for Edit (Tab 3)
+  function populateEditJadwalForm(target: any) {
+    setSelectedEditJadwal(target);
+    setEditJadwalForm({
+      id: target.id,
+      idJadwal: target.idJadwal || "",
+      tanggal: formatDateOnly(target.tanggal),
+      platform: target.platform || (platformClientOptions[0]?.value || "Shopee Live"),
+      clientId: target.clientId || target.client?.id || "",
+      streamerKaryawanId: target.streamerKaryawanId || target.streamerKaryawan?.id || "",
+      streamerId: target.streamerKaryawan?.idKaryawan || target.idHost || "-",
+      streamerNama: target.streamerKaryawan?.namaLengkap || target.streamerNama || "-",
+      cabangStudio: target.cabangStudio || "Timoho",
+      nomorStudio: target.nomorStudio || "Studio 1",
+      device: target.device || "Tidak Pakai",
+      jamMulaiLive: formatTimeOnly(target.jamMulaiLive),
+      jamSelesaiLive: formatTimeOnly(target.jamSelesaiLive),
+      otsKaryawanId: target.otsKaryawanId || target.otsKaryawan?.id || "",
+      otsId: target.otsKaryawan?.idKaryawan || target.idOts || "-",
+      otsNama: target.otsKaryawan?.namaLengkap || target.otsNama || "-",
+      judulLive: target.judulLive || "",
+      promoLive: target.promoLive || "",
+      catatanHost: target.catatanHost || "",
+      catatanOts: target.catatanOts || "",
+      status: target.status || "TERJADWAL",
+    });
+  }
+
   function handleSelectEditJadwal() {
     if (!searchEditId.trim()) {
       showAlert("⚠️ Silakan ketik atau pilih ID Jadwal / Nama terlebih dahulu.");
@@ -833,16 +1052,13 @@ export default function InputJadwalPage() {
         j.idJadwal?.toLowerCase() === q ||
         j.idJadwal?.toLowerCase().includes(q) ||
         j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
+        j.otsKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
         j.client?.namaClient?.toLowerCase().includes(q)
       );
     });
 
     if (target) {
-      setSelectedEditJadwal(target);
-      setEditRows([
-        { field: "PLATFORM", value: target.platform || "Shopee Live" },
-        { field: "STREAMER", value: target.streamerKaryawanId || "" },
-      ]);
+      populateEditJadwalForm(target);
     } else {
       showAlert("⚠️ Jadwal target tidak ditemukan untuk tanggal/filter yang dipilih.");
     }
@@ -851,21 +1067,36 @@ export default function InputJadwalPage() {
   // Save Edit Schedule
   async function handleSaveEditJadwal(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedEditJadwal) return;
+    if (!selectedEditJadwal || !editJadwalForm.id) return;
     setSavingEditJadwal(true);
 
     try {
-      const payload: any = { ...selectedEditJadwal };
-      for (const row of editRows) {
-        if (row.field === "PLATFORM") payload.platform = row.value;
-        if (row.field === "STREAMER") payload.streamerKaryawanId = row.value;
-        if (row.field === "CABANG") payload.cabangStudio = row.value;
-        if (row.field === "STUDIO") payload.nomorStudio = row.value;
-        if (row.field === "STATUS") payload.status = row.value;
-        if (row.field === "JUDUL") payload.judulLive = row.value;
-      }
+      const startTime = editJadwalForm.jamMulaiLive.includes("T")
+        ? editJadwalForm.jamMulaiLive
+        : `${editJadwalForm.tanggal}T${editJadwalForm.jamMulaiLive.length === 5 ? `${editJadwalForm.jamMulaiLive}:00` : editJadwalForm.jamMulaiLive}`;
+      const endTime = editJadwalForm.jamSelesaiLive.includes("T")
+        ? editJadwalForm.jamSelesaiLive
+        : `${editJadwalForm.tanggal}T${editJadwalForm.jamSelesaiLive.length === 5 ? `${editJadwalForm.jamSelesaiLive}:00` : editJadwalForm.jamSelesaiLive}`;
 
-      const res = await fetch(`/api/jadwal?id=${selectedEditJadwal.id}`, {
+      const payload: any = {
+        idJadwal: editJadwalForm.idJadwal,
+        tanggal: `${editJadwalForm.tanggal}T00:00:00.000Z`,
+        platform: editJadwalForm.platform,
+        clientId: editJadwalForm.clientId || undefined,
+        streamerKaryawanId: editJadwalForm.streamerKaryawanId || undefined,
+        otsKaryawanId: editJadwalForm.otsKaryawanId || undefined,
+        cabangStudio: editJadwalForm.cabangStudio,
+        nomorStudio: editJadwalForm.nomorStudio,
+        jamMulaiLive: startTime,
+        jamSelesaiLive: endTime,
+        judulLive: editJadwalForm.judulLive,
+        promoLive: editJadwalForm.promoLive,
+        catatanHost: editJadwalForm.catatanHost,
+        catatanOts: editJadwalForm.catatanOts,
+        status: editJadwalForm.status,
+      };
+
+      const res = await fetch(`/api/jadwal?id=${editJadwalForm.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -920,6 +1151,685 @@ export default function InputJadwalPage() {
   // Crash Simulation
   function handleCheckBebasCrash() {
     showAlert("🛡️ Validasi Bebas Crash: Tidak ditemukan bentrok jadwal / crash pada slot studio dan host yang dipilih. Aman untuk disimpan!");
+  }
+
+  function renderStreamerLiveTable() {
+    const filtered = allJadwal.filter((j) => {
+      if (j.idJadwal?.startsWith("OTS")) return false;
+
+      // 1. Filter Periode
+      const jDateStr = j.tanggal ? new Date(j.tanggal).toISOString().slice(0, 10) : "";
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+
+      if (liveFilterPeriode === "TODAY") {
+        if (jDateStr !== todayStr) return false;
+      } else if (liveFilterPeriode === "PREV_7") {
+        const d7 = new Date(today);
+        d7.setDate(today.getDate() - 7);
+        const d7Str = d7.toISOString().slice(0, 10);
+        if (jDateStr < d7Str || jDateStr > todayStr) return false;
+      } else if (liveFilterPeriode === "NEXT_7") {
+        const d7 = new Date(today);
+        d7.setDate(today.getDate() + 7);
+        const d7Str = d7.toISOString().slice(0, 10);
+        if (jDateStr < todayStr || jDateStr > d7Str) return false;
+      } else if (liveFilterPeriode === "PREV_35") {
+        const d35 = new Date(today);
+        d35.setDate(today.getDate() - 35);
+        const d35Str = d35.toISOString().slice(0, 10);
+        if (jDateStr < d35Str || jDateStr > todayStr) return false;
+      } else if (liveFilterPeriode === "NEXT_35") {
+        const d35 = new Date(today);
+        d35.setDate(today.getDate() + 35);
+        const d35Str = d35.toISOString().slice(0, 10);
+        if (jDateStr < todayStr || jDateStr > d35Str) return false;
+      } else if (liveFilterPeriode === "EXACT_DATE") {
+        if (liveFilterExactDate && jDateStr !== liveFilterExactDate) return false;
+      } else if (liveFilterPeriode === "CUSTOM") {
+        if (liveFilterRangeStart && liveFilterRangeEnd) {
+          if (jDateStr < liveFilterRangeStart || jDateStr > liveFilterRangeEnd) return false;
+        }
+      }
+
+      // 2. Filter Rentang Jam
+      if (liveFilterWaktuToggle === "CUSTOM") {
+        const jMulai = (j.jamMulaiLive || "").slice(0, 5);
+        const jSelesai = (j.jamSelesaiLive || "").slice(0, 5);
+        if (liveFilterJamMulai && jMulai < liveFilterJamMulai) return false;
+        if (liveFilterJamAkhir && jSelesai > liveFilterJamAkhir) return false;
+      }
+
+      // 3. Filter Kolom & Teks
+      if (liveFilterCol === "1") {
+        // Status
+        if (liveFilterStatus) {
+          const jStatus = (j.status || "").toUpperCase();
+          const jLiveState = (j.liveState || "").toUpperCase();
+          if (liveFilterStatus === "ON AIR") {
+            if (jLiveState !== "LIVE") return false;
+          } else {
+            if (jStatus !== liveFilterStatus) return false;
+          }
+        }
+      } else if (liveFilterCol === "6") {
+        // Cabang & Studio
+        if (liveFilterCabang) {
+          const cStr = `${j.cabangStudio || ""} ${j.studio || ""}`.toLowerCase();
+          if (!cStr.includes(liveFilterCabang.toLowerCase())) return false;
+        }
+        if (liveFilterStudio) {
+          const sStr = `${j.nomorStudio || ""} ${j.studio || ""}`.toLowerCase();
+          if (!sStr.includes(liveFilterStudio.toLowerCase())) return false;
+        }
+      } else {
+        if (liveFilterText.trim()) {
+          const q = liveFilterText.toLowerCase().trim();
+          if (liveFilterCol === "0") {
+            // ID Jadwal
+            if (!j.idJadwal?.toLowerCase().includes(q)) return false;
+          } else if (liveFilterCol === "3") {
+            // Platform & Brand
+            const matchBrand = j.client?.namaClient?.toLowerCase().includes(q);
+            const matchPlat = j.platform?.toLowerCase().includes(q);
+            if (!matchBrand && !matchPlat) return false;
+          } else if (liveFilterCol === "5") {
+            // Nama Streamer
+            const matchName = j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) || j.streamerNama?.toLowerCase().includes(q);
+            if (!matchName) return false;
+          } else if (liveFilterCol === "4") {
+            // ID Host
+            const matchId = j.streamerKaryawan?.idKaryawan?.toLowerCase().includes(q) || j.streamerId?.toLowerCase().includes(q);
+            if (!matchId) return false;
+          } else {
+            // ALL Kolom
+            const matchAll =
+              j.idJadwal?.toLowerCase().includes(q) ||
+              j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
+              j.streamerKaryawan?.idKaryawan?.toLowerCase().includes(q) ||
+              j.client?.namaClient?.toLowerCase().includes(q) ||
+              j.platform?.toLowerCase().includes(q) ||
+              j.cabangStudio?.toLowerCase().includes(q) ||
+              j.status?.toLowerCase().includes(q);
+            if (!matchAll) return false;
+          }
+        }
+      }
+
+      return true;
+    });
+
+    const totalTablePages = Math.max(1, Math.ceil(filtered.length / livePageSize));
+    const currentTablePage = Math.min(livePage, totalTablePages);
+    const startIndex = (currentTablePage - 1) * livePageSize;
+    const endIndex = Math.min(startIndex + livePageSize, filtered.length);
+    const paginated = filtered.slice(startIndex, endIndex);
+
+    return (
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-6">
+        {/* Header Title Bar */}
+        <div className="p-4 sm:px-6 bg-slate-50/80 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
+              <i className="fa-solid fa-video text-[#941A0B]" />
+              <span>Jadwal Live Streaming</span>
+            </h3>
+            <p className="text-[11px] text-slate-400">
+              Menampilkan {filtered.length} sesi siaran live (Total: {allJadwal.filter((j) => !j.idJadwal?.startsWith("OTS")).length} sesi)
+            </p>
+          </div>
+          <span className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-xs">
+            {filtered.length} Sesi Terjadwal
+          </span>
+        </div>
+
+        {/* 4-BLOCK MASTER FILTER (Grid 4 Kolom @ 25% matching ref-deploy) */}
+        <div className="p-4 bg-slate-50/50 border-b border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start w-full">
+            {/* BLOK 1: Filter Periode (25%) */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Periode Waktu</label>
+              <select
+                value={liveFilterPeriode}
+                onChange={(e) => {
+                  setLiveFilterPeriode(e.target.value as any);
+                  setLivePage(1);
+                }}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] transition-colors font-medium shadow-xs"
+              >
+                <option value="ALL">-- Semua Periode --</option>
+                <option value="TODAY">Hari Ini</option>
+                <option value="PREV_7">7 Hari Ke Belakang</option>
+                <option value="NEXT_7">7 Hari Ke Depan</option>
+                <option value="PREV_35">35 Hari Ke Belakang</option>
+                <option value="NEXT_35">35 Hari Ke Depan</option>
+                <option value="EXACT_DATE">Tentukan Tanggal...</option>
+                <option value="CUSTOM">Kustom Periode...</option>
+              </select>
+
+              {liveFilterPeriode === "EXACT_DATE" && (
+                <FlatpickrPicker
+                  id="filterExactDateLive"
+                  value={liveFilterExactDate}
+                  placeholder="Pilih Tanggal..."
+                  options={{ mode: "single", dateFormat: "Y-m-d" }}
+                  onChange={(dateStr) => {
+                    setLiveFilterExactDate(dateStr);
+                    setLivePage(1);
+                  }}
+                />
+              )}
+
+              {liveFilterPeriode === "CUSTOM" && (
+                <FlatpickrPicker
+                  id="filterRangeDateLive"
+                  value={liveFilterRangeDate}
+                  placeholder="Pilih Rentang..."
+                  options={{ mode: "range", dateFormat: "Y-m-d" }}
+                  onChange={(dateStr, dates) => {
+                    setLiveFilterRangeDate(dateStr);
+                    if (dates.length === 2) {
+                      setLiveFilterRangeStart(dates[0].toISOString().slice(0, 10));
+                      setLiveFilterRangeEnd(dates[1].toISOString().slice(0, 10));
+                    }
+                    setLivePage(1);
+                  }}
+                />
+              )}
+            </div>
+
+            {/* BLOK 2: Filter Rentang Jam (25%) */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rentang Waktu / Jam</label>
+              <select
+                value={liveFilterWaktuToggle}
+                onChange={(e) => {
+                  setLiveFilterWaktuToggle(e.target.value as any);
+                  setLivePage(1);
+                }}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] transition-colors font-medium shadow-xs"
+              >
+                <option value="ALL">-- Semua Jam --</option>
+                <option value="CUSTOM">Pilih Rentang Jam...</option>
+              </select>
+
+              {liveFilterWaktuToggle === "CUSTOM" && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={liveFilterJamMulai}
+                    onChange={(e) => {
+                      setLiveFilterJamMulai(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className="border border-slate-300 rounded-xl px-2 py-1.5 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] w-full font-bold text-slate-800 shadow-xs"
+                  />
+                  <span className="text-slate-400 font-bold">-</span>
+                  <input
+                    type="time"
+                    value={liveFilterJamAkhir}
+                    onChange={(e) => {
+                      setLiveFilterJamAkhir(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className="border border-slate-300 rounded-xl px-2 py-1.5 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] w-full font-bold text-slate-800 shadow-xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* BLOK 3: Pilihan Kolom Data (25%) */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Target Kolom</label>
+              <select
+                value={liveFilterCol}
+                onChange={(e) => {
+                  setLiveFilterCol(e.target.value as any);
+                  setLivePage(1);
+                }}
+                className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] transition-colors font-medium shadow-xs"
+              >
+                <option value="ALL">-- Semua Data --</option>
+                <option value="0">ID Jadwal</option>
+                <option value="1">Status</option>
+                <option value="3">Platform & Brand</option>
+                <option value="5">Nama Streamer</option>
+                <option value="4">ID Host</option>
+                <option value="6">Cabang & Studio</option>
+              </select>
+            </div>
+
+            {/* BLOK 4: Pencarian Teks & Dropdown Dinamis (25%) */}
+            <div className="flex flex-col gap-1.5 w-full">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Cari / Pilih Opsi</label>
+
+              {liveFilterCol === "1" ? (
+                <select
+                  value={liveFilterStatus}
+                  onChange={(e) => {
+                    setLiveFilterStatus(e.target.value);
+                    setLivePage(1);
+                  }}
+                  className="w-full border border-slate-300 rounded-xl px-3 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] transition-colors font-medium shadow-xs"
+                >
+                  <option value="">-- Semua Status --</option>
+                  <option value="TERJADWAL">TERJADWAL</option>
+                  <option value="PREPARE">PREPARE</option>
+                  <option value="ON AIR">ON AIR</option>
+                  <option value="PERLU LAPOR">PERLU LAPOR</option>
+                  <option value="SELESAI">SELESAI</option>
+                  <option value="BATAL">BATAL / DIBATALKAN</option>
+                </select>
+              ) : liveFilterCol === "6" ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <select
+                    value={liveFilterCabang}
+                    onChange={(e) => {
+                      setLiveFilterCabang(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className="border border-slate-300 rounded-xl px-2 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] font-medium shadow-xs"
+                  >
+                    <option value="">-- Cabang --</option>
+                    <option value="Timoho">Timoho</option>
+                    <option value="Berbah">Berbah</option>
+                    <option value="Wiyoro">Wiyoro</option>
+                  </select>
+                  <select
+                    value={liveFilterStudio}
+                    onChange={(e) => {
+                      setLiveFilterStudio(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className="border border-slate-300 rounded-xl px-2 py-2 text-xs bg-white outline-none focus:ring-2 focus:ring-[#941A0B] font-medium shadow-xs"
+                  >
+                    <option value="">-- Studio --</option>
+                    <option value="Studio 1">Studio 1</option>
+                    <option value="Studio 2">Studio 2</option>
+                    <option value="Studio 3">Studio 3</option>
+                    <option value="Studio 4">Studio 4</option>
+                    <option value="Studio 5">Studio 5</option>
+                    <option value="Studio 6">Studio 6</option>
+                    <option value="Studio 7">Studio 7</option>
+                    <option value="Studio 8">Studio 8</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="relative w-full">
+                  <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs pointer-events-none" />
+                  <input
+                    type="text"
+                    value={liveFilterText}
+                    placeholder="Ketik untuk mencari..."
+                    onChange={(e) => {
+                      setLiveFilterText(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className="w-full pl-8 pr-8 py-2 border border-slate-300 rounded-xl text-xs outline-none focus:ring-2 focus:ring-[#941A0B] bg-white shadow-xs font-medium"
+                  />
+                  {liveFilterText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLiveFilterText("");
+                        setLivePage(1);
+                      }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500"
+                    >
+                      <i className="fa-solid fa-xmark text-sm" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* TABEL DATA JADWAL LIVE (100% Match ref-deploy/streamer-dashboard.html) */}
+        <div className="overflow-x-auto overflow-y-auto max-h-[65vh] relative">
+          <table className="w-full min-w-max text-left border-collapse whitespace-nowrap text-xs">
+            <thead className="bg-slate-100 border-b border-slate-200 sticky top-0 z-20 shadow-xs">
+              <tr>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider sticky left-0 bg-slate-100 z-30 shadow-[1px_0_0_#cbd5e1] text-center min-w-[50px]">NO</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider text-center min-w-[110px]">STATUS</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider min-w-[160px]">WAKTU LIVE</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider text-center min-w-[130px]">WAJIB HADIR</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider min-w-[180px]">PLATFORM & BRAND</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider min-w-[180px]">STREAMER & STUDIO</th>
+                <th className="px-4 py-3 text-[11px] font-extrabold text-slate-600 uppercase tracking-wider text-center min-w-[80px]">INFO</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">
+                    Belum ada data jadwal live streaming yang sesuai kriteria filter.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((j, idx) => {
+                  const noBaris = (currentTablePage - 1) * livePageSize + idx + 1;
+                  const tglStr = formatDateSafe(j.tanggal, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+                  const jamStr = `${formatTimeSafe(j.jamMulaiLive)} - ${formatTimeSafe(j.jamSelesaiLive)} WIB`;
+                  const wajibHadirStr = getWajibHadirTime(j.jamMulaiLive);
+
+                  return (
+                    <tr key={j.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-4 py-3.5 text-center font-bold text-slate-400 sticky left-0 bg-white group-hover:bg-slate-50 z-10 shadow-[1px_0_0_#f1f5f9]">
+                        {noBaris}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold border uppercase tracking-wider ${
+                          j.liveState === "LIVE"
+                            ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                            : j.status === "SELESAI"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : j.status === "DIBATALKAN" || j.status === "BATAL"
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : "bg-[#941A0B]/10 text-[#941A0B] border-[#941A0B]/20"
+                        }`}>
+                          {j.liveState === "LIVE" ? "🔴 ON AIR" : j.status || "TERJADWAL"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-extrabold text-slate-800 text-xs">{tglStr}</div>
+                        <div className="font-bold text-emerald-600 text-[11px] mt-0.5">{jamStr}</div>
+                      </td>
+                      <td className="px-4 py-3 text-center font-bold text-amber-700 bg-amber-50/50 rounded-lg">
+                        <i className="fa-regular fa-clock text-amber-500 mr-1" />
+                        {wajibHadirStr}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-slate-900 text-xs">{j.client?.namaClient ?? "Brand Partner"}</div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-[10px] font-bold text-[#941A0B] bg-red-50 px-2 py-0.5 rounded border border-red-100">
+                            {j.platform ?? "Shopee Live"}
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-mono">({j.idJadwal})</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-extrabold text-slate-800 text-xs">
+                          {j.streamerKaryawan?.namaLengkap ?? j.streamerNama ?? "-"}
+                        </div>
+                        <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
+                          <span className="font-mono font-semibold">{j.streamerKaryawan?.idKaryawan ?? j.streamerId ?? "-"}</span>
+                          <span className="text-slate-300">•</span>
+                          <span><i className="fa-solid fa-location-dot text-slate-400 mr-1" />{j.cabangStudio ?? j.studio ?? "Timoho"} {j.nomorStudio ? `(${j.nomorStudio})` : ""}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setModalDetailJadwalLive(j)}
+                          className="bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white font-bold px-3 py-1.5 rounded-xl text-xs transition border border-blue-200 shadow-xs flex items-center gap-1 mx-auto"
+                          title="Lihat Detail Info Jadwal"
+                        >
+                          <i className="fa-solid fa-circle-info" />
+                          <span>Info</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* PAGINATION BAR */}
+        <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3 text-slate-500">
+            <span>
+              Menampilkan <strong className="text-slate-800">{filtered.length === 0 ? 0 : startIndex + 1}</strong> - <strong className="text-slate-800">{endIndex}</strong> dari <strong className="text-slate-800">{filtered.length}</strong> jadwal
+            </span>
+            <select
+              value={livePageSize}
+              onChange={(e) => {
+                setLivePageSize(Number(e.target.value));
+                setLivePage(1);
+              }}
+              className="px-2 py-1 border border-slate-300 rounded-lg text-xs bg-white font-bold outline-none"
+            >
+              <option value={10}>10 / hal</option>
+              <option value={20}>20 / hal</option>
+              <option value={50}>50 / hal</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={currentTablePage <= 1}
+              onClick={() => setLivePage((p) => Math.max(1, p - 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 font-bold transition shadow-xs text-xs"
+            >
+              Sebelumnya
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalTablePages }, (_, idx) => idx + 1).slice(0, 5).map((pageNum) => (
+                <button
+                  key={pageNum}
+                  type="button"
+                  onClick={() => setLivePage(pageNum)}
+                  className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
+                    pageNum === currentTablePage
+                      ? "bg-[#941A0B] text-white shadow-xs"
+                      : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              disabled={currentTablePage >= totalTablePages}
+              onClick={() => setLivePage((p) => Math.min(totalTablePages, p + 1))}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 font-bold transition shadow-xs text-xs"
+            >
+              Selanjutnya
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderOtsScheduleTable() {
+    const filtered = allJadwal.filter((j) => {
+      if (!j.idJadwal?.startsWith("OTS") && !j.otsKaryawanId) return false;
+      if (!tableSearchQuery.trim()) return true;
+      const q = tableSearchQuery.toLowerCase().trim();
+      return (
+        j.idJadwal?.toLowerCase().includes(q) ||
+        j.otsKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
+        j.cabangStudio?.toLowerCase().includes(q) ||
+        j.status?.toLowerCase().includes(q)
+      );
+    });
+
+    const totalTablePages = Math.max(1, Math.ceil(filtered.length / tablePageSize));
+    const currentTablePage = Math.min(tablePage, totalTablePages);
+    const startIndex = (currentTablePage - 1) * tablePageSize;
+    const endIndex = Math.min(startIndex + tablePageSize, filtered.length);
+    const paginated = filtered.slice(startIndex, endIndex);
+
+    return (
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-4 mt-6">
+        <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-base text-slate-900 flex items-center gap-2">
+              <i className="fa-solid fa-calendar-week text-blue-600" />
+              <span>Jadwal Kerja Operator & Technical Support</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Monitoring jadwal operasional studio dan jam wajib hadir OTS.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <i className="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs pointer-events-none" />
+              <input
+                type="text"
+                value={tableSearchQuery}
+                placeholder="Cari ID, OTS, Studio..."
+                onChange={(e) => {
+                  setTableSearchQuery(e.target.value);
+                  setTablePage(1);
+                }}
+                className="pl-8 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm font-medium"
+              />
+            </div>
+
+            <select
+              value={tablePageSize}
+              onChange={(e) => {
+                setTablePageSize(Number(e.target.value));
+                setTablePage(1);
+              }}
+              className="px-2.5 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-700 bg-white outline-none focus:ring-2 focus:ring-blue-500 shadow-sm font-semibold"
+            >
+              <option value={5}>5 / hlm</option>
+              <option value={10}>10 / hlm</option>
+              <option value={20}>20 / hlm</option>
+              <option value={50}>50 / hlm</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="overflow-auto rounded-xl border border-slate-200 max-h-[520px]">
+          <table className="min-w-full text-left text-xs border-collapse">
+            <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
+              <tr>
+                <th className="px-3.5 py-3 text-center w-12">NO</th>
+                <th className="px-4 py-3 text-center w-28 whitespace-nowrap">STATUS</th>
+                <th className="px-4 py-3">WAKTU KERJA</th>
+                <th className="px-4 py-3 text-center whitespace-nowrap">WAJIB HADIR</th>
+                <th className="px-3.5 py-3 text-center w-36">CATATAN</th>
+                <th className="px-4 py-3">OTS / STAFF</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">
+                    Belum ada jadwal kerja OTS yang sesuai kriteria pencarian.
+                  </td>
+                </tr>
+              ) : (
+                paginated.map((j, idx) => {
+                  const st = (j.status || "TERJADWAL").toUpperCase();
+                  let badgeClass = "bg-blue-100 text-blue-700 border-blue-200";
+                  if (st === "SELESAI") badgeClass = "bg-emerald-100 text-emerald-700 border-emerald-200";
+                  else if (st === "DIBATALKAN" || st === "REJECTED") badgeClass = "bg-red-100 text-red-700 border-red-200";
+                  else if (st === "ON_GOING" || st === "BERJALAN" || j.liveState === "LIVE") badgeClass = "bg-rose-100 text-rose-700 border-rose-200 animate-pulse font-bold";
+                  else if (st === "PENDING") badgeClass = "bg-amber-100 text-amber-700 border-amber-200";
+
+                  return (
+                    <tr key={j.id || idx} className="hover:bg-slate-50 transition">
+                      <td className="px-3.5 py-3 text-center font-bold text-slate-400">{startIndex + idx + 1}</td>
+                      <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border shadow-2xs uppercase tracking-wide inline-block ${badgeClass}`}>
+                          {st}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="font-bold text-slate-900 text-xs">
+                          {formatDateSafe(j.tanggal)}
+                          {j.cabangStudio && (
+                            <span className="ml-2 text-rose-600 font-semibold">
+                              <i className="fa-solid fa-location-dot mr-1" />
+                              {j.cabangStudio} {j.nomorStudio ? `(${j.nomorStudio})` : ""}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-emerald-600 font-mono mt-0.5 flex items-center gap-1">
+                          <i className="fa-regular fa-clock" />
+                          <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                          ID: <span className="text-blue-600 font-bold">{j.idJadwal || "–"}</span>
+                          {j.platform && ` • ${j.platform}`}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                        <div className="font-bold text-amber-600 text-xs font-mono">
+                          {calcWajibHadir(j.jamMulaiLive)}
+                        </div>
+                        <div className="text-[10px] text-slate-400">Brief & Persiapan</div>
+                      </td>
+                      <td className="px-3.5 py-3 text-center align-middle">
+                        {j.catatanOts || j.catatanHost ? (
+                          <span className="text-slate-700 text-xs font-medium">{j.catatanOts || j.catatanHost}</span>
+                        ) : (
+                          <span className="text-slate-300 font-bold text-xs">–</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        <div className="font-bold text-slate-900">
+                          {j.otsKaryawan?.namaLengkap || j.streamerKaryawan?.namaLengkap || "Belum Ditugaskan"}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-mono">
+                          {j.otsKaryawan?.idKaryawan || j.streamerKaryawan?.idKaryawan || "–"}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {filtered.length > 0 && (
+          <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="text-slate-500 font-medium">
+              Menampilkan <span className="font-semibold text-slate-700">{startIndex + 1}</span> -{" "}
+              <span className="font-semibold text-slate-700">{endIndex}</span> dari{" "}
+              <span className="font-semibold text-slate-700">{filtered.length}</span> sesi
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                disabled={currentTablePage <= 1}
+                onClick={() => setTablePage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 font-medium transition shadow-sm"
+              >
+                Sebelumnya
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalTablePages }, (_, idx) => idx + 1).slice(0, 5).map((pageNum) => (
+                  <button
+                    key={pageNum}
+                    onClick={() => setTablePage(pageNum)}
+                    className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
+                      pageNum === currentTablePage
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-200/60"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                disabled={currentTablePage >= totalTablePages}
+                onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 font-medium transition shadow-sm"
+              >
+                Selanjutnya
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   const inputCls = "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-[#941A0B] bg-white transition";
@@ -1021,9 +1931,9 @@ export default function InputJadwalPage() {
                     : `Jadwal Streamer Baru`;
 
                   return (
-                    <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+                    <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible relative mb-4">
                       {/* Header Card */}
-                      <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
+                      <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center rounded-t-xl">
                         <div className="flex items-center gap-3">
                           <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
                             #{idx + 1}
@@ -1077,16 +1987,20 @@ export default function InputJadwalPage() {
                             <select
                               value={item.platform}
                               onChange={(e) => {
+                                const v = e.target.value;
+                                const opt = platformClientOptions.find((o) => o.value === v);
                                 const updated = [...streamerForms];
-                                updated[idx].platform = e.target.value;
+                                updated[idx].platform = v;
+                                if (opt?.clientId) updated[idx].clientId = opt.clientId;
                                 setStreamerForms(updated);
                                 setIsStreamerCrashVerified(false);
                               }}
                               className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
                               required
                             >
-                              {PLATFORMS.map((p) => (
-                                <option key={p} value={p}>{p}</option>
+                              <option value="">-- Pilih Platform Client --</option>
+                              {platformClientOptions.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
                             </select>
                           </div>
@@ -1695,7 +2609,11 @@ export default function InputJadwalPage() {
                     .filter((r: any) => {
                       if (r.status !== "APPROVED") return false;
                       const rDate = (r.tanggalMulai ? new Date(r.tanggalMulai).toISOString().slice(0, 10) : "");
-                      const isSesi1 = r.jenis === "REQUEST_SESI_1" || (r.alasan || "").includes("00:00") || (r.alasan || "").includes("Sesi 1");
+                      const isSesi1 =
+                        r.jenis === "REQUEST_SESI_1" ||
+                        r.jenis === "REQUEST_00_08" ||
+                        (r.alasan || "").includes("00:00 - 08:00") ||
+                        (r.alasan || "").includes("Sesi 1");
                       return rDate === tgl && isSesi1;
                     })
                     .map((r: any) => {
@@ -1707,7 +2625,11 @@ export default function InputJadwalPage() {
                     .filter((r: any) => {
                       if (r.status !== "APPROVED") return false;
                       const rDate = (r.tanggalMulai ? new Date(r.tanggalMulai).toISOString().slice(0, 10) : "");
-                      const isSesi2 = r.jenis === "REQUEST_SESI_2" || (r.alasan || "").includes("08:00") || (r.alasan || "").includes("Sesi 2");
+                      const isSesi2 =
+                        r.jenis === "REQUEST_SESI_2" ||
+                        r.jenis === "REQUEST_08_16" ||
+                        (r.alasan || "").includes("08:00 - 16:00") ||
+                        (r.alasan || "").includes("Sesi 2");
                       return rDate === tgl && isSesi2;
                     })
                     .map((r: any) => {
@@ -1719,7 +2641,11 @@ export default function InputJadwalPage() {
                     .filter((r: any) => {
                       if (r.status !== "APPROVED") return false;
                       const rDate = (r.tanggalMulai ? new Date(r.tanggalMulai).toISOString().slice(0, 10) : "");
-                      const isSesi3 = r.jenis === "REQUEST_SESI_3" || (r.alasan || "").includes("16:00") || (r.alasan || "").includes("Sesi 3");
+                      const isSesi3 =
+                        r.jenis === "REQUEST_SESI_3" ||
+                        r.jenis === "REQUEST_16_00" ||
+                        (r.alasan || "").includes("16:00 - 00:00") ||
+                        (r.alasan || "").includes("Sesi 3");
                       return rDate === tgl && isSesi3;
                     })
                     .map((r: any) => {
@@ -1834,7 +2760,7 @@ export default function InputJadwalPage() {
                                   <td className="px-3 py-3 text-center">
                                     <button
                                       type="button"
-                                      onClick={() => bukaModalEditInfo(r.TANGGAL, baseRow)}
+                                      onClick={() => bukaModalEditInfo(r.TANGGAL, r)}
                                       className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition flex items-center justify-center mx-auto shadow-sm"
                                       title="Edit Info Streamer"
                                     >
@@ -2204,19 +3130,16 @@ export default function InputJadwalPage() {
                                     return s.namaLengkap?.toLowerCase().includes(q) || s.idKaryawan?.toLowerCase().includes(q);
                                   })
                                   .sort((a: any, b: any) => {
-                                    const aVal = `${a.idKaryawan} | ${a.namaLengkap}`;
-                                    const bVal = `${b.idKaryawan} | ${b.namaLengkap}`;
-                                    const aChecked = stateEditInfo.LIBUR.includes(aVal) ? 0 : 1;
-                                    const bChecked = stateEditInfo.LIBUR.includes(bVal) ? 0 : 1;
+                                    const aChecked = isStreamerSelected(stateEditInfo.LIBUR, a) ? 0 : 1;
+                                    const bChecked = isStreamerSelected(stateEditInfo.LIBUR, b) ? 0 : 1;
                                     return aChecked - bChecked;
                                   })
                                   .map((s: any) => {
-                                    const val = `${s.idKaryawan} | ${s.namaLengkap}`;
-                                    const isChecked = stateEditInfo.LIBUR.includes(val);
+                                    const isChecked = isStreamerSelected(stateEditInfo.LIBUR, s);
                                     return (
                                       <tr
                                         key={s.id}
-                                        onClick={() => toggleCheckboxInfoState("LIBUR", val)}
+                                        onClick={() => toggleStreamerInList("LIBUR", s)}
                                         className="border-b border-slate-100 hover:bg-red-50 cursor-pointer transition-colors"
                                       >
                                         <td className="p-2 text-center">
@@ -2270,19 +3193,16 @@ export default function InputJadwalPage() {
                                     return s.namaLengkap?.toLowerCase().includes(q) || s.idKaryawan?.toLowerCase().includes(q);
                                   })
                                   .sort((a: any, b: any) => {
-                                    const aVal = `${a.idKaryawan} | ${a.namaLengkap}`;
-                                    const bVal = `${b.idKaryawan} | ${b.namaLengkap}`;
-                                    const aChecked = stateEditInfo.REQ_00_08.includes(aVal) ? 0 : 1;
-                                    const bChecked = stateEditInfo.REQ_00_08.includes(bVal) ? 0 : 1;
+                                    const aChecked = isStreamerSelected(stateEditInfo.REQ_00_08, a) ? 0 : 1;
+                                    const bChecked = isStreamerSelected(stateEditInfo.REQ_00_08, b) ? 0 : 1;
                                     return aChecked - bChecked;
                                   })
                                   .map((s: any) => {
-                                    const val = `${s.idKaryawan} | ${s.namaLengkap}`;
-                                    const isChecked = stateEditInfo.REQ_00_08.includes(val);
+                                    const isChecked = isStreamerSelected(stateEditInfo.REQ_00_08, s);
                                     return (
                                       <tr
                                         key={s.id}
-                                        onClick={() => toggleCheckboxInfoState("REQ_00_08", val)}
+                                        onClick={() => toggleStreamerInList("REQ_00_08", s)}
                                         className="border-b border-slate-100 hover:bg-indigo-50 cursor-pointer transition-colors"
                                       >
                                         <td className="p-2 text-center">
@@ -2336,19 +3256,16 @@ export default function InputJadwalPage() {
                                     return s.namaLengkap?.toLowerCase().includes(q) || s.idKaryawan?.toLowerCase().includes(q);
                                   })
                                   .sort((a: any, b: any) => {
-                                    const aVal = `${a.idKaryawan} | ${a.namaLengkap}`;
-                                    const bVal = `${b.idKaryawan} | ${b.namaLengkap}`;
-                                    const aChecked = stateEditInfo.REQ_08_16.includes(aVal) ? 0 : 1;
-                                    const bChecked = stateEditInfo.REQ_08_16.includes(bVal) ? 0 : 1;
+                                    const aChecked = isStreamerSelected(stateEditInfo.REQ_08_16, a) ? 0 : 1;
+                                    const bChecked = isStreamerSelected(stateEditInfo.REQ_08_16, b) ? 0 : 1;
                                     return aChecked - bChecked;
                                   })
                                   .map((s: any) => {
-                                    const val = `${s.idKaryawan} | ${s.namaLengkap}`;
-                                    const isChecked = stateEditInfo.REQ_08_16.includes(val);
+                                    const isChecked = isStreamerSelected(stateEditInfo.REQ_08_16, s);
                                     return (
                                       <tr
                                         key={s.id}
-                                        onClick={() => toggleCheckboxInfoState("REQ_08_16", val)}
+                                        onClick={() => toggleStreamerInList("REQ_08_16", s)}
                                         className="border-b border-slate-100 hover:bg-sky-50 cursor-pointer transition-colors"
                                       >
                                         <td className="p-2 text-center">
@@ -2402,19 +3319,16 @@ export default function InputJadwalPage() {
                                     return s.namaLengkap?.toLowerCase().includes(q) || s.idKaryawan?.toLowerCase().includes(q);
                                   })
                                   .sort((a: any, b: any) => {
-                                    const aVal = `${a.idKaryawan} | ${a.namaLengkap}`;
-                                    const bVal = `${b.idKaryawan} | ${b.namaLengkap}`;
-                                    const aChecked = stateEditInfo.REQ_16_00.includes(aVal) ? 0 : 1;
-                                    const bChecked = stateEditInfo.REQ_16_00.includes(bVal) ? 0 : 1;
+                                    const aChecked = isStreamerSelected(stateEditInfo.REQ_16_00, a) ? 0 : 1;
+                                    const bChecked = isStreamerSelected(stateEditInfo.REQ_16_00, b) ? 0 : 1;
                                     return aChecked - bChecked;
                                   })
                                   .map((s: any) => {
-                                    const val = `${s.idKaryawan} | ${s.namaLengkap}`;
-                                    const isChecked = stateEditInfo.REQ_16_00.includes(val);
+                                    const isChecked = isStreamerSelected(stateEditInfo.REQ_16_00, s);
                                     return (
                                       <tr
                                         key={s.id}
-                                        onClick={() => toggleCheckboxInfoState("REQ_16_00", val)}
+                                        onClick={() => toggleStreamerInList("REQ_16_00", s)}
                                         className="border-b border-slate-100 hover:bg-fuchsia-50 cursor-pointer transition-colors"
                                       >
                                         <td className="p-2 text-center">
@@ -2458,6 +3372,9 @@ export default function InputJadwalPage() {
               )}
             </div>
           )}
+
+          {/* Tabel Jadwal Live di Bawah Formulir Streamer (Semua Subtab) */}
+          {renderStreamerLiveTable()}
         </div>
       )}
 
@@ -2465,324 +3382,279 @@ export default function InputJadwalPage() {
       {/* TAB 2: JADWAL OTS                                                         */}
       {/* ========================================================================= */}
       {mainTab === "ots" && (
-        <form onSubmit={submitOtsSchedules} className="space-y-6">
-          <div className="space-y-4">
-            {otsForms.map((item, idx) => {
-              const headTitle = item.tanggal && item.otsNama
-                ? `${item.tanggal} | ${item.cabangStudio} | ${item.otsNama}`
-                : `Jadwal OTS Baru`;
+        <div className="space-y-6">
+          <form onSubmit={submitOtsSchedules} className="space-y-6">
+            <div className="space-y-4">
+              {otsForms.map((item, idx) => {
+                const headTitle = item.tanggal && item.otsNama
+                  ? `${item.tanggal} | ${item.cabangStudio} | ${item.otsNama}`
+                  : `Jadwal OTS Baru`;
 
-              return (
-                <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
-                  {/* Header Card */}
-                  <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
-                        #{idx + 1}
-                      </div>
-                      <h3 className="font-bold text-slate-800 text-sm leading-tight">
-                        {headTitle}
-                      </h3>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {otsForms.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setOtsForms(otsForms.filter((_, i) => i !== idx));
-                            setIsOtsCrashVerified(false);
-                          }}
-                          className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
-                          title="Hapus Form"
-                        >
-                          <i className="fa-solid fa-trash" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Body Card */}
-                  <div className="p-5 sm:p-6 space-y-6 block">
-                    {/* Row 1: Tanggal Penugasan & Cabang */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Penugasan *</label>
-                        <input
-                          type="date"
-                          value={item.tanggal}
-                          onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                          onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            const updated = [...otsForms];
-                            updated[idx].tanggal = v;
-                            updated[idx].idJadwal = generateNewScheduleId("OTS", v);
-                            setOtsForms(updated);
-                            setIsOtsCrashVerified(false);
-                          }}
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cabang Studio *</label>
-                        <select
-                          value={item.cabangStudio}
-                          onChange={(e) => {
-                            const updated = [...otsForms];
-                            updated[idx].cabangStudio = e.target.value;
-                            setOtsForms(updated);
-                            setIsOtsCrashVerified(false);
-                          }}
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
-                          required
-                        >
-                          <option value="Timoho">Timoho</option>
-                          <option value="Berbah">Berbah</option>
-                          <option value="Wiyoro">Wiyoro</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Row 2: Cari Staff OTS, ID OTS (Auto), Nama OTS */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cari Staff OTS *</label>
-                        <select
-                          value={item.otsKaryawanId || ""}
-                          onChange={(e) => {
-                            const oId = e.target.value;
-                            const oObj = otsStaff.find((o) => o.id === oId);
-                            const updated = [...otsForms];
-                            updated[idx].otsKaryawanId = oId;
-                            updated[idx].otsId = oObj?.idKaryawan || "";
-                            updated[idx].otsNama = oObj?.namaLengkap || "";
-                            setOtsForms(updated);
-                            setIsOtsCrashVerified(false);
-                          }}
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
-                          required
-                        >
-                          <option value="">-- Pilih / Ketik ID / Nama OTS --</option>
-                          {otsStaff.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.idKaryawan} - {o.namaLengkap}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 mb-1.5">ID OTS (Auto)</label>
-                          <input
-                            type="text"
-                            value={item.otsId || ""}
-                            readOnly
-                            placeholder="ID Auto"
-                            className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none font-mono"
-                          />
+                return (
+                  <div key={item.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible relative mb-4">
+                    {/* Header Card */}
+                    <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center rounded-t-xl">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                          #{idx + 1}
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nama OTS</label>
-                          <input
-                            type="text"
-                            value={item.otsNama || ""}
-                            readOnly
-                            placeholder="Nama OTS"
-                            className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
-                          />
-                        </div>
+                        <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                          {headTitle}
+                        </h3>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {otsForms.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOtsForms(otsForms.filter((_, i) => i !== idx));
+                              setIsOtsCrashVerified(false);
+                            }}
+                            className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
+                            title="Hapus Form"
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* Row 3: Pilih Shift, Masuk, Keluar, Catatan */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                    {/* Body Card */}
+                    <div className="p-5 sm:p-6 space-y-6 block">
+                      {/* Row 1: Tanggal Penugasan & Cabang */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
-                          <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Pilih Shift</label>
-                          <select
-                            value={item.shiftOts || ""}
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Penugasan *</label>
+                          <input
+                            type="date"
+                            value={item.tanggal}
+                            onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                            onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                             onChange={(e) => {
-                              const sVal = e.target.value;
-                              const shiftTimes = applyShiftOts(sVal);
+                              const v = e.target.value;
                               const updated = [...otsForms];
-                              updated[idx].shiftOts = sVal;
-                              if (shiftTimes.masuk) {
-                                updated[idx].jamMulaiLive = shiftTimes.masuk;
-                                updated[idx].jamSelesaiLive = shiftTimes.keluar;
-                              }
+                              updated[idx].tanggal = v;
+                              updated[idx].idJadwal = generateNewScheduleId("OTS", v);
                               setOtsForms(updated);
                               setIsOtsCrashVerified(false);
                             }}
-                            className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cabang Studio *</label>
+                          <select
+                            value={item.cabangStudio}
+                            onChange={(e) => {
+                              const updated = [...otsForms];
+                              updated[idx].cabangStudio = e.target.value;
+                              setOtsForms(updated);
+                              setIsOtsCrashVerified(false);
+                            }}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                            required
                           >
-                            <option value="">Kustom</option>
-                            <option value="07:00-15:00">Shift 1 (07:00-15:00)</option>
-                            <option value="15:00-23:00">Shift 2 (15:00-23:00)</option>
-                            <option value="23:00-07:00">Shift 3 (23:00-07:00)</option>
+                            <option value="Timoho">Timoho</option>
+                            <option value="Berbah">Berbah</option>
+                            <option value="Wiyoro">Wiyoro</option>
                           </select>
                         </div>
-                        <div>
-                          <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Masuk *</label>
-                          <input
-                            type="text"
-                            value={item.jamMulaiLive}
-                            placeholder="07:00"
-                            onChange={(e) => {
-                              const updated = [...otsForms];
-                              updated[idx].jamMulaiLive = e.target.value;
-                              setOtsForms(updated);
-                              setIsOtsCrashVerified(false);
-                            }}
-                            className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
-                            required
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Keluar *</label>
-                          <input
-                            type="text"
-                            value={item.jamSelesaiLive}
-                            placeholder="15:00"
-                            onChange={(e) => {
-                              const updated = [...otsForms];
-                              updated[idx].jamSelesaiLive = e.target.value;
-                              setOtsForms(updated);
-                              setIsOtsCrashVerified(false);
-                            }}
-                            className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
-                            required
-                          />
-                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan Pekerjaan</label>
-                        <textarea
-                          rows={1}
-                          value={item.catatanOts || ""}
-                          onChange={(e) => {
-                            const updated = [...otsForms];
-                            updated[idx].catatanOts = e.target.value;
-                            setOtsForms(updated);
-                          }}
-                          placeholder="Instruksi tugas OTS..."
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                        />
-                      </div>
-                    </div>
 
-                    {/* Row 4: File Pendukung (Multi-link) */}
-                    <div className="mt-5 pt-5 border-t border-slate-100">
-                      <div className="flex justify-between items-center mb-3">
-                        <label className="block text-sm font-semibold text-slate-700">File Pendukung</label>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = [...otsForms];
-                            updated[idx].filesOts = [...(updated[idx].filesOts || [""]), ""];
-                            setOtsForms(updated);
-                          }}
-                          className="text-xs text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition flex items-center gap-1"
-                        >
-                          <i className="fa-solid fa-plus" /> Tambah Link
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {(item.filesOts && item.filesOts.length > 0 ? item.filesOts : [""]).map((fUrl, fIdx) => (
-                          <div key={fIdx} className="flex gap-2">
+                      {/* Row 2: Cari Staff OTS, ID OTS (Auto), Nama OTS */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cari Staff OTS *</label>
+                          <select
+                            value={item.otsKaryawanId || ""}
+                            onChange={(e) => {
+                              const oId = e.target.value;
+                              const oObj = otsStaff.find((o) => o.id === oId);
+                              const updated = [...otsForms];
+                              updated[idx].otsKaryawanId = oId;
+                              updated[idx].otsId = oObj?.idKaryawan || "";
+                              updated[idx].otsNama = oObj?.namaLengkap || "";
+                              setOtsForms(updated);
+                              setIsOtsCrashVerified(false);
+                            }}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                            required
+                          >
+                            <option value="">-- Pilih / Ketik Nama OTS --</option>
+                            {otsStaff.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.idKaryawan} - {o.namaLengkap}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1.5">ID OTS (Auto)</label>
                             <input
                               type="text"
-                              value={fUrl}
+                              value={item.otsId || ""}
+                              readOnly
+                              placeholder="ID Auto"
+                              className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nama OTS</label>
+                            <input
+                              type="text"
+                              value={item.otsNama || ""}
+                              readOnly
+                              placeholder="Nama Auto"
+                              className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 3: Pilih Shift, Masuk, Keluar, Catatan */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                          <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Pilih Shift</label>
+                            <select
+                              value={item.shiftOts || ""}
+                              onChange={(e) => {
+                                const sVal = e.target.value;
+                                const shiftTimes = applyShiftOts(sVal);
+                                const updated = [...otsForms];
+                                updated[idx].shiftOts = sVal;
+                                if (shiftTimes.masuk) {
+                                  updated[idx].jamMulaiLive = shiftTimes.masuk;
+                                  updated[idx].jamSelesaiLive = shiftTimes.keluar;
+                                }
+                                setOtsForms(updated);
+                                setIsOtsCrashVerified(false);
+                              }}
+                              className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                            >
+                              <option value="">Kustom</option>
+                              <option value="07:00-15:00">Shift 1 (07:00-15:00)</option>
+                              <option value="15:00-23:00">Shift 2 (15:00-23:00)</option>
+                              <option value="23:00-07:00">Shift 3 (23:00-07:00)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Masuk *</label>
+                            <input
+                              type="time"
+                              value={item.jamMulaiLive || ""}
+                              onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                              onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                               onChange={(e) => {
                                 const updated = [...otsForms];
-                                const files = [...(updated[idx].filesOts || [""])];
-                                files[fIdx] = e.target.value;
-                                updated[idx].filesOts = files;
+                                updated[idx].jamMulaiLive = e.target.value;
                                 setOtsForms(updated);
+                                setIsOtsCrashVerified(false);
                               }}
-                              placeholder="Paste link file/dokumen di sini..."
-                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold text-slate-800 shadow-xs cursor-pointer"
+                              required
                             />
-                            {fIdx > 0 && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const updated = [...otsForms];
-                                  const files = [...(updated[idx].filesOts || [])];
-                                  files.splice(fIdx, 1);
-                                  updated[idx].filesOts = files;
-                                  setOtsForms(updated);
-                                }}
-                                className="bg-red-50 text-red-500 hover:bg-red-100 px-3.5 rounded-lg transition"
-                              >
-                                <i className="fa-solid fa-trash" />
-                              </button>
-                            )}
                           </div>
-                        ))}
+                          <div>
+                            <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">Keluar *</label>
+                            <input
+                              type="time"
+                              value={item.jamSelesaiLive || ""}
+                              onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                              onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                              onChange={(e) => {
+                                const updated = [...otsForms];
+                                updated[idx].jamSelesaiLive = e.target.value;
+                                setOtsForms(updated);
+                                setIsOtsCrashVerified(false);
+                              }}
+                              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-bold text-slate-800 shadow-xs cursor-pointer"
+                              required
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan OTS / Pekerjaan</label>
+                          <input
+                            type="text"
+                            value={item.catatanOts || ""}
+                            placeholder="Catatan penugasan studio..."
+                            onChange={(e) => {
+                              const updated = [...otsForms];
+                              updated[idx].catatanOts = e.target.value;
+                              setOtsForms(updated);
+                            }}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
 
-          {/* Action Bar */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
-            <button
-              type="button"
-              onClick={() => {
-                if (otsForms.length >= 100) return;
-                setOtsForms([
-                  ...otsForms,
-                  {
-                    id: Date.now(),
-                    idJadwal: generateNewScheduleId("OTS"),
-                    tanggal: new Date().toISOString().slice(0, 10),
-                    platform: "Shopee Live",
-                    cabangStudio: "Timoho",
-                    nomorStudio: "Studio 1",
-                    otsKaryawanId: "",
-                    otsId: "",
-                    otsNama: "",
-                    shiftOts: "",
-                    jamMulaiLive: "07:00",
-                    jamSelesaiLive: "15:00",
-                    catatanOts: "",
-                    filesOts: [""],
-                  },
-                ]);
-                setIsOtsCrashVerified(false);
-              }}
-              className="w-full sm:w-auto text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold py-3 px-6 rounded-xl transition flex items-center justify-center gap-2 text-sm"
-            >
-              <i className="fa-solid fa-plus" /> Tambah Jadwal OTS (Maks 100)
-            </button>
-
-            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            {/* Tombol Aksi OTS */}
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <button
                 type="button"
-                onClick={checkBebasCrashOts}
-                className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2 text-sm"
+                onClick={() => {
+                  if (otsForms.length >= 100) return;
+                  setOtsForms([
+                    ...otsForms,
+                    {
+                      id: Date.now(),
+                      idJadwal: generateNewScheduleId("OTS"),
+                      tanggal: new Date().toISOString().slice(0, 10),
+                      platform: "Shopee Live",
+                      cabangStudio: "Timoho",
+                      nomorStudio: "01",
+                      otsKaryawanId: "",
+                      otsId: "",
+                      otsNama: "",
+                      shiftOts: "",
+                      jamMulaiLive: "",
+                      jamSelesaiLive: "",
+                      catatanOts: "",
+                    },
+                  ]);
+                  setIsOtsCrashVerified(false);
+                }}
+                className="w-full sm:w-auto px-5 py-2.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm border border-blue-200"
               >
-                <i className="fa-solid fa-shield-halved" /> Bebas Crash
+                <i className="fa-solid fa-plus" /> Tambah Jadwal OTS (Maks 100)
               </button>
-              <button
-                type="submit"
-                disabled={loading || !isOtsCrashVerified}
-                className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 text-sm ${
-                  isOtsCrashVerified && !loading
-                    ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md cursor-pointer"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
-                }`}
-              >
-                <i className={`fa-solid ${loading ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
-                <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal OTS"}</span>
-              </button>
+
+              <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={checkBebasCrashOts}
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-shield-halved" /> Bebas Crash
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading || !isOtsCrashVerified}
+                  className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition flex items-center justify-center gap-2 text-sm ${
+                    isOtsCrashVerified && !loading
+                      ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md cursor-pointer"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                  }`}
+                >
+                  <i className={`fa-solid ${loading ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
+                  <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal OTS"}</span>
+                </button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+
+          {/* Tabel Jadwal OTS di Bawah Formulir */}
+          {renderOtsScheduleTable()}
+        </div>
       )}
 
       {/* ========================================================================= */}
@@ -2811,7 +3683,7 @@ export default function InputJadwalPage() {
                 onClick={() => setTipeRubah("OTS")}
                 className={`px-5 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 ${
                   tipeRubah === "OTS"
-                    ? "bg-[#941A0B] text-white shadow-md"
+                    ? "bg-blue-600 text-white shadow-md"
                     : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
                 }`}
               >
@@ -2844,7 +3716,7 @@ export default function InputJadwalPage() {
                         setSearchEditId(e.target.value);
                         setShowEditJadwalDropdown(true);
                       }}
-                      placeholder="Ketik ID Jadwal atau nama streamer..."
+                      placeholder="Ketik ID Jadwal atau nama karyawan..."
                       className={inputCls}
                     />
                     {searchEditId && (
@@ -2872,6 +3744,7 @@ export default function InputJadwalPage() {
                             return (
                               j.idJadwal?.toLowerCase().includes(q) ||
                               j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
+                              j.otsKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
                               j.client?.namaClient?.toLowerCase().includes(q)
                             );
                           })
@@ -2881,26 +3754,33 @@ export default function InputJadwalPage() {
                               key={j.id}
                               onMouseDown={() => {
                                 setSearchEditId(j.idJadwal);
-                                setSelectedEditJadwal(j);
-                                setEditRows([
-                                  { field: "PLATFORM", value: j.platform || "Shopee Live" },
-                                  { field: "STREAMER", value: j.streamerKaryawanId || "" },
-                                ]);
+                                populateEditJadwalForm(j);
                                 setShowEditJadwalDropdown(false);
                               }}
                               className="p-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between transition"
                             >
                               <div>
-                                <span className="font-bold text-[#941A0B] font-mono text-xs">{j.idJadwal}</span>
-                                <span className="text-xs font-bold text-black ml-2">{j.client?.namaClient || j.platform}</span>
+                                <span className={`font-bold font-mono text-xs ${tipeRubah === "STREAMER" ? "text-[#941A0B]" : "text-blue-600"}`}>
+                                  {j.idJadwal}
+                                </span>
+                                <span className="text-xs font-bold text-black ml-2">{j.client?.namaClient || j.platform || j.cabangStudio}</span>
                                 <div className="text-[11px] text-slate-500">
-                                  Host: <span className="text-slate-700 font-medium">{j.streamerKaryawan?.namaLengkap || "Belum di-assign"}</span> • Waktu:{" "}
+                                  {tipeRubah === "STREAMER" ? (
+                                    <>Host: <span className="text-slate-700 font-medium">{j.streamerKaryawan?.namaLengkap || "Belum di-assign"}</span></>
+                                  ) : (
+                                    <>OTS: <span className="text-slate-700 font-medium">{j.otsKaryawan?.namaLengkap || "Belum di-assign"}</span></>
+                                  )}{" "}
+                                  • Waktu:{" "}
                                   <span className="text-slate-700 font-mono">
                                     {new Date(j.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short" })}
                                   </span>
                                 </div>
                               </div>
-                              <span className="text-xs font-bold text-[#941A0B] bg-red-50 px-2.5 py-1 rounded-lg border border-red-100">
+                              <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                                tipeRubah === "STREAMER"
+                                  ? "text-[#941A0B] bg-red-50 border-red-100"
+                                  : "text-blue-700 bg-blue-50 border-blue-100"
+                              }`}>
                                 Pilih
                               </span>
                             </div>
@@ -2914,7 +3794,9 @@ export default function InputJadwalPage() {
                       setShowEditJadwalDropdown(false);
                       handleSelectEditJadwal();
                     }}
-                    className="bg-[#941A0B] hover:bg-[#7D1509] text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-md flex-shrink-0"
+                    className={`${
+                      tipeRubah === "STREAMER" ? "bg-[#941A0B] hover:bg-[#7D1509]" : "bg-blue-600 hover:bg-blue-700"
+                    } text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 shadow-md flex-shrink-0`}
                   >
                     <i className="fa-solid fa-pen-to-square" /> Rubah Data
                   </button>
@@ -2923,165 +3805,402 @@ export default function InputJadwalPage() {
             </div>
           </div>
 
-          {/* Target Summary Banner */}
-          {selectedEditJadwal && (
-            <div className="bg-slate-900 text-white p-5 sm:p-6 rounded-2xl border border-slate-800 shadow-md">
-              <h2 className="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-800 pb-2">
-                Target Perubahan Jadwal Terpilih
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Form Rubah Data Jadwal (Streamer) */}
+          {selectedEditJadwal && tipeRubah === "STREAMER" && (
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <div>
-                  <span className="block text-xs text-slate-400">ID Jadwal</span>
-                  <div className="font-bold text-base text-red-400 font-mono">{selectedEditJadwal.idJadwal}</div>
+                  <h2 className="text-base font-extrabold text-slate-900">Perbarui Kolom Data Jadwal Streamer</h2>
+                  <p className="text-xs text-slate-400">Kolom Host Streamer dan Pendamping OTS dikunci untuk menjaga integritas penugasan.</p>
                 </div>
-                <div>
-                  <span className="block text-xs text-slate-400">Brand / Streamer</span>
-                  <div className="font-bold text-base text-white">
-                    {selectedEditJadwal.client?.namaClient || "-"} / {selectedEditJadwal.streamerKaryawan?.namaLengkap || "Belum di-assign"}
-                  </div>
-                </div>
-                <div>
-                  <span className="block text-xs text-slate-400">Waktu Siaran</span>
-                  <div className="font-bold text-base text-slate-200">
-                    {new Date(selectedEditJadwal.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                    {new Date(selectedEditJadwal.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                  </div>
-                </div>
+                <span className="font-mono font-bold text-xs bg-red-50 text-[#941A0B] px-3 py-1 rounded-lg border border-red-200">
+                  {editJadwalForm.idJadwal}
+                </span>
               </div>
-            </div>
-          )}
 
-          {/* Form Perubahan Kolom Dinamis */}
-          {selectedEditJadwal && (
-            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h2 className="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-3">
-                Perbarui Kolom Data Jadwal
-              </h2>
-              <form onSubmit={handleSaveEditJadwal} className="space-y-4">
-                <div className="space-y-3">
-                  {editRows.map((row, idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center p-3 bg-slate-50 rounded-xl border border-slate-200">
-                      <div className="w-full sm:w-1/3">
-                        <select
-                          value={row.field}
-                          onChange={(e) => {
-                            const updated = [...editRows];
-                            updated[idx].field = e.target.value;
-                            setEditRows(updated);
-                          }}
-                          className={selectCls}
-                          required
-                        >
-                          <option value="" disabled>-- Pilih Kolom Data --</option>
-                          <option value="PLATFORM">Platform Marketplace</option>
-                          <option value="STREAMER">Streamer / Host</option>
-                          <option value="CABANG">Cabang Studio</option>
-                          <option value="STUDIO">Nomor Studio</option>
-                          <option value="STATUS">Status Jadwal</option>
-                          <option value="JUDUL">Judul Sesi</option>
-                        </select>
-                      </div>
-
-                      <div className="w-full sm:flex-1">
-                        {row.field === "PLATFORM" ? (
-                          <select
-                            value={row.value}
-                            onChange={(e) => {
-                              const updated = [...editRows];
-                              updated[idx].value = e.target.value;
-                              setEditRows(updated);
-                            }}
-                            className={selectCls}
-                          >
-                            {PLATFORMS.map((p) => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
-                          </select>
-                        ) : row.field === "STREAMER" ? (
-                          <select
-                            value={row.value}
-                            onChange={(e) => {
-                              const updated = [...editRows];
-                              updated[idx].value = e.target.value;
-                              setEditRows(updated);
-                            }}
-                            className={selectCls}
-                          >
-                            <option value="">-- Pilih Streamer --</option>
-                            {streamers.map((s) => (
-                              <option key={s.id} value={s.id}>{s.namaLengkap} ({s.idKaryawan})</option>
-                            ))}
-                          </select>
-                        ) : row.field === "STATUS" ? (
-                          <select
-                            value={row.value}
-                            onChange={(e) => {
-                              const updated = [...editRows];
-                              updated[idx].value = e.target.value;
-                              setEditRows(updated);
-                            }}
-                            className={selectCls}
-                          >
-                            <option value="TERJADWAL">TERJADWAL</option>
-                            <option value="PLOTING">PLOTING</option>
-                            <option value="SELESAI">SELESAI</option>
-                            <option value="BATAL">BATAL</option>
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={row.value}
-                            onChange={(e) => {
-                              const updated = [...editRows];
-                              updated[idx].value = e.target.value;
-                              setEditRows(updated);
-                            }}
-                            placeholder="Masukkan nilai baru..."
-                            className={inputCls}
-                            required
-                          />
-                        )}
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setEditRows(editRows.filter((_, i) => i !== idx))}
-                        disabled={editRows.length === 1}
-                        className="text-red-500 hover:text-red-700 p-2 disabled:opacity-30"
-                      >
-                        <i className="fa-solid fa-trash" />
-                      </button>
-                    </div>
-                  ))}
+              <form onSubmit={handleSaveEditJadwal} className="space-y-5">
+                {/* Row 1: Tanggal & Platform */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className={labelCls}>Tanggal Live *</label>
+                    <input
+                      type="date"
+                      value={editJadwalForm.tanggal}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, tanggal: e.target.value })}
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Platform Client *</label>
+                    <select
+                      value={editJadwalForm.platform}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const opt = platformClientOptions.find((o) => o.value === v);
+                        setEditJadwalForm({
+                          ...editJadwalForm,
+                          platform: v,
+                          clientId: opt?.clientId || editJadwalForm.clientId,
+                        });
+                      }}
+                      className={selectCls}
+                      required
+                    >
+                      <option value="">-- Pilih Platform Client --</option>
+                      {platformClientOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setEditRows([...editRows, { field: "", value: "" }])}
-                  className="text-[#941A0B] text-sm font-bold flex items-center gap-2 pt-2"
-                >
-                  <i className="fa-solid fa-plus" /> Tambah Kolom
-                </button>
+                {/* Row 2: Host Streamer (Locked) & Staff OTS (Locked) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span>Host Streamer *</span>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        <i className="fa-solid fa-lock mr-1" /> Dikunci
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editJadwalForm.streamerNama && editJadwalForm.streamerNama !== "-" ? `${editJadwalForm.streamerId} - ${editJadwalForm.streamerNama}` : "Belum di-assign"}
+                      disabled
+                      readOnly
+                      className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-4 py-2.5 text-sm outline-none font-medium cursor-not-allowed"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                      <span>Staff OTS (Pendamping)</span>
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                        <i className="fa-solid fa-lock mr-1" /> Dikunci
+                      </span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editJadwalForm.otsNama && editJadwalForm.otsNama !== "-" ? `${editJadwalForm.otsId} - ${editJadwalForm.otsNama}` : "Tidak Ada Pendamping"}
+                      disabled
+                      readOnly
+                      className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-4 py-2.5 text-sm outline-none font-medium cursor-not-allowed"
+                    />
+                  </div>
+                </div>
 
-                <div className="flex justify-end pt-4 border-t border-slate-100">
+                {/* Row 3: Cabang Studio, Nomor Studio, Device */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className={labelCls}>Cabang Studio *</label>
+                    <select
+                      value={editJadwalForm.cabangStudio}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, cabangStudio: e.target.value })}
+                      className={selectCls}
+                      required
+                    >
+                      <option value="Timoho">Timoho</option>
+                      <option value="Berbah">Berbah</option>
+                      <option value="Wiyoro">Wiyoro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Nomor Studio</label>
+                    <select
+                      value={editJadwalForm.nomorStudio}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, nomorStudio: e.target.value })}
+                      className={selectCls}
+                    >
+                      <option value="">Pilih Studio</option>
+                      {["Studio 1", "Studio 2", "Studio 3", "Studio 4", "Studio 5", "Studio 6", "Studio 7", "Studio 8"].map((st) => (
+                        <option key={st} value={st}>{st}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Device</label>
+                    <select
+                      value={editJadwalForm.device || "Tidak Pakai"}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, device: e.target.value })}
+                      className={selectCls}
+                    >
+                      <option value="Tidak Pakai">Tidak Pakai</option>
+                      <option value="Iphone XR Merah">Iphone XR Merah</option>
+                      <option value="Iphone XR Putih">Iphone XR Putih</option>
+                      <option value="Iphone XR Orange">Iphone XR Orange</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 4: Jam Mulai, Jam Selesai, Status */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className={labelCls}>Jam Mulai *</label>
+                    <input
+                      type="time"
+                      value={editJadwalForm.jamMulaiLive || ""}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, jamMulaiLive: e.target.value })}
+                      className={`${inputCls} font-bold text-slate-800 cursor-pointer`}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Jam Selesai *</label>
+                    <input
+                      type="time"
+                      value={editJadwalForm.jamSelesaiLive || ""}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, jamSelesaiLive: e.target.value })}
+                      className={`${inputCls} font-bold text-slate-800 cursor-pointer`}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Status Sesi</label>
+                    <select
+                      value={editJadwalForm.status}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, status: e.target.value })}
+                      className={selectCls}
+                    >
+                      <option value="TERJADWAL">TERJADWAL</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="APPROVED">APPROVED</option>
+                      <option value="SELESAI">SELESAI</option>
+                      <option value="DIBATALKAN">DIBATALKAN</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 5: Judul Live, Promo Live, Catatan */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-4">
+                    <div>
+                      <label className={labelCls}>Judul Live</label>
+                      <input
+                        type="text"
+                        value={editJadwalForm.judulLive || ""}
+                        onChange={(e) => setEditJadwalForm({ ...editJadwalForm, judulLive: e.target.value })}
+                        placeholder="Judul streaming..."
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Promo Live</label>
+                      <textarea
+                        rows={2}
+                        value={editJadwalForm.promoLive || ""}
+                        onChange={(e) => setEditJadwalForm({ ...editJadwalForm, promoLive: e.target.value })}
+                        placeholder="Catatan promo siaran..."
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className={labelCls}>Catatan Host</label>
+                      <textarea
+                        rows={2}
+                        value={editJadwalForm.catatanHost || ""}
+                        onChange={(e) => setEditJadwalForm({ ...editJadwalForm, catatanHost: e.target.value })}
+                        placeholder="Catatan untuk Host..."
+                        className={inputCls}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Catatan OTS</label>
+                      <textarea
+                        rows={2}
+                        value={editJadwalForm.catatanOts || ""}
+                        onChange={(e) => setEditJadwalForm({ ...editJadwalForm, catatanOts: e.target.value })}
+                        placeholder="Catatan untuk OTS..."
+                        className={inputCls}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEditJadwal(null)}
+                    className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition text-xs"
+                  >
+                    Batal
+                  </button>
                   <button
                     type="submit"
                     disabled={savingEditJadwal}
-                    className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center gap-2 text-sm disabled:opacity-50"
+                    className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-2.5 px-8 rounded-xl transition shadow-md flex items-center gap-2 text-xs disabled:opacity-50"
                   >
                     <i className={`fa-solid ${savingEditJadwal ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
-                    <span>{savingEditJadwal ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                    <span>{savingEditJadwal ? "Menyimpan..." : "Simpan Perubahan Jadwal"}</span>
                   </button>
                 </div>
               </form>
             </div>
           )}
+
+          {/* Form Rubah Data Jadwal (OTS) */}
+          {selectedEditJadwal && tipeRubah === "OTS" && (
+            <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">Perbarui Kolom Data Jadwal OTS</h2>
+                  <p className="text-xs text-slate-400">Kolom Staff OTS dikunci untuk menjaga integritas penugasan.</p>
+                </div>
+                <span className="font-mono font-bold text-xs bg-blue-50 text-blue-700 px-3 py-1 rounded-lg border border-blue-200">
+                  {editJadwalForm.idJadwal}
+                </span>
+              </div>
+
+              <form onSubmit={handleSaveEditJadwal} className="space-y-5">
+                {/* Row 1: Tanggal & Cabang */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className={labelCls}>Tanggal Penugasan *</label>
+                    <input
+                      type="date"
+                      value={editJadwalForm.tanggal}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, tanggal: e.target.value })}
+                      className={inputCls}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Cabang Studio *</label>
+                    <select
+                      value={editJadwalForm.cabangStudio}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, cabangStudio: e.target.value })}
+                      className={selectCls}
+                      required
+                    >
+                      <option value="Timoho">Timoho</option>
+                      <option value="Berbah">Berbah</option>
+                      <option value="Wiyoro">Wiyoro</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 2: Staff OTS (Locked) */}
+                <div className="border-t border-slate-100 pt-4">
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                    <span>Staff OTS *</span>
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                      <i className="fa-solid fa-lock mr-1" /> Dikunci
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editJadwalForm.otsNama && editJadwalForm.otsNama !== "-" ? `${editJadwalForm.otsId} - ${editJadwalForm.otsNama}` : "Belum Ditugaskan"}
+                    disabled
+                    readOnly
+                    className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-4 py-2.5 text-sm outline-none font-medium cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Row 3: Pilih Shift, Jam Masuk, Jam Keluar, Status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className={labelCls}>Pilih Shift</label>
+                    <select
+                      value={editJadwalForm.shiftOts || ""}
+                      onChange={(e) => {
+                        const sVal = e.target.value;
+                        const shiftTimes = applyShiftOts(sVal);
+                        setEditJadwalForm({
+                          ...editJadwalForm,
+                          shiftOts: sVal,
+                          ...(shiftTimes.masuk ? { jamMulaiLive: shiftTimes.masuk, jamSelesaiLive: shiftTimes.keluar } : {}),
+                        });
+                      }}
+                      className={selectCls}
+                    >
+                      <option value="">Kustom</option>
+                      <option value="07:00-15:00">Shift 1 (07:00-15:00)</option>
+                      <option value="15:00-23:00">Shift 2 (15:00-23:00)</option>
+                      <option value="23:00-07:00">Shift 3 (23:00-07:00)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>Masuk *</label>
+                    <input
+                      type="time"
+                      value={editJadwalForm.jamMulaiLive || ""}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, jamMulaiLive: e.target.value })}
+                      className={`${inputCls} font-bold text-slate-800 cursor-pointer`}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Keluar *</label>
+                    <input
+                      type="time"
+                      value={editJadwalForm.jamSelesaiLive || ""}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, jamSelesaiLive: e.target.value })}
+                      className={`${inputCls} font-bold text-slate-800 cursor-pointer`}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Status Sesi</label>
+                    <select
+                      value={editJadwalForm.status}
+                      onChange={(e) => setEditJadwalForm({ ...editJadwalForm, status: e.target.value })}
+                      className={selectCls}
+                    >
+                      <option value="TERJADWAL">TERJADWAL</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="APPROVED">APPROVED</option>
+                      <option value="SELESAI">SELESAI</option>
+                      <option value="DIBATALKAN">DIBATALKAN</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Row 4: Catatan OTS */}
+                <div>
+                  <label className={labelCls}>Catatan OTS / Pekerjaan</label>
+                  <textarea
+                    rows={2}
+                    value={editJadwalForm.catatanOts || ""}
+                    onChange={(e) => setEditJadwalForm({ ...editJadwalForm, catatanOts: e.target.value })}
+                    placeholder="Catatan penugasan OTS..."
+                    className={inputCls}
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEditJadwal(null)}
+                    className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 font-bold transition text-xs"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEditJadwal}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-8 rounded-xl transition shadow-md flex items-center gap-2 text-xs disabled:opacity-50"
+                  >
+                    <i className={`fa-solid ${savingEditJadwal ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
+                    <span>{savingEditJadwal ? "Menyimpan..." : "Simpan Perubahan Jadwal"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Tabel Bawah Sesuai Subtab yang Dipilih */}
+          {tipeRubah === "STREAMER" ? renderStreamerLiveTable() : renderOtsScheduleTable()}
         </div>
       )}
-
-      {/* ========================================================================= */}
-      {/* TAB 4: JADWAL KLIEN (5 Subtabs Sesuai ref-deploy/input-jadwal.html)         */}
-      {/* ========================================================================= */}
       {mainTab === "klien" && (
         <div className="space-y-6">
           {/* Subtab Navigation */}
@@ -3950,229 +5069,10 @@ export default function InputJadwalPage() {
               </div>
             </div>
 
-            {/* Card 3: Form Pengaturan Kuota */}
-            <form onSubmit={handleSaveQuota} className="border-t border-slate-200 pt-6 space-y-4">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <i className="fa-solid fa-calculator text-[#941A0B]" />
-                Pengaturan Kuota Default Streamer
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className={labelCls}>Kuota Default Libur (Hari / Bulan)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={quotaForm.defaultKuotaLibur}
-                    onChange={(e) => setQuotaForm({ ...quotaForm, defaultKuotaLibur: parseInt(e.target.value, 10) || 0 })}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className={labelCls}>Kuota Default Request Sesi Live (Kali / Bulan)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={quotaForm.defaultKuotaShift}
-                    onChange={(e) => setQuotaForm({ ...quotaForm, defaultKuotaShift: parseInt(e.target.value, 10) || 0 })}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={kendaliLoading}
-                  className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold px-6 py-2.5 rounded-xl text-xs transition shadow-md disabled:opacity-50 flex items-center gap-2"
-                >
-                  <i className="fa-solid fa-cloud-arrow-up" />
-                  <span>{kendaliLoading ? "Menyimpan..." : "Simpan Pengaturan Kuota"}</span>
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* MONITORING TABEL JADWAL SESI TERDAFTAR (Selalu Aktif di Bawah)             */}
-      {/* ========================================================================= */}
-      {(() => {
-        const filteredJadwal = recentJadwal.filter((j) => {
-          if (!tableSearchQuery.trim()) return true;
-          const q = tableSearchQuery.toLowerCase().trim();
-          return (
-            j.idJadwal?.toLowerCase().includes(q) ||
-            j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
-            j.client?.namaClient?.toLowerCase().includes(q) ||
-            j.cabangStudio?.toLowerCase().includes(q) ||
-            j.platform?.toLowerCase().includes(q) ||
-            j.status?.toLowerCase().includes(q)
-          );
-        });
-
-        const totalTablePages = Math.max(1, Math.ceil(filteredJadwal.length / tablePageSize));
-        const currentTablePage = Math.min(tablePage, totalTablePages);
-        const startIndex = (currentTablePage - 1) * tablePageSize;
-        const endIndex = Math.min(startIndex + tablePageSize, filteredJadwal.length);
-        const paginatedJadwal = filteredJadwal.slice(startIndex, endIndex);
-
-        return (
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mt-8">
-            <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">Jadwal Sesi Terdaftar</h3>
-                <span className="text-xs text-slate-500">
-                  {filteredJadwal.length} sesi termonitor (Total: {recentJadwal.length})
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={tableSearchQuery}
-                  placeholder="Cari ID, Host, Studio..."
-                  onChange={(e) => {
-                    setTableSearchQuery(e.target.value);
-                    setTablePage(1);
-                  }}
-                  className="px-3 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#941A0B] bg-white shadow-sm"
-                />
-
-                <select
-                  value={tablePageSize}
-                  onChange={(e) => {
-                    setTablePageSize(Number(e.target.value));
-                    setTablePage(1);
-                  }}
-                  className="px-2 py-1.5 border border-slate-200 rounded-xl text-xs text-slate-700 bg-white outline-none focus:ring-2 focus:ring-[#941A0B] shadow-sm"
-                >
-                  <option value={5}>5 / hlm</option>
-                  <option value={10}>10 / hlm</option>
-                  <option value={20}>20 / hlm</option>
-                  <option value={50}>50 / hlm</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead className="bg-[#941A0B] text-white font-extrabold">
-                  <tr>
-                    <th className="px-4 py-3">ID Jadwal</th>
-                    <th className="px-4 py-3">Platform</th>
-                    <th className="px-4 py-3">Streamer</th>
-                    <th className="px-4 py-3">Studio</th>
-                    <th className="px-4 py-3">Waktu</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {paginatedJadwal.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-slate-400 italic">
-                        Tidak ada jadwal sesi yang cocok.
-                      </td>
-                    </tr>
-                  ) : (
-                    paginatedJadwal.map((j) => (
-                      <tr key={j.id} className="hover:bg-slate-50 transition">
-                        <td className="px-4 py-3 font-mono font-bold text-[#941A0B]">{j.idJadwal}</td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-medium">
-                            {j.platform ?? "General"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-800">
-                          {j.streamerKaryawan?.namaLengkap ?? "Belum di-assign"}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          {j.cabangStudio ? `${j.cabangStudio} #${j.nomorStudio ?? "01"}` : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-slate-600">
-                          <div className="font-semibold text-slate-800">
-                            {new Date(j.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                          </div>
-                          <div className="text-[11px]">
-                            {new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} -{" "}
-                            {new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {j.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          {!j.streamerKaryawanId && j.status !== "SELESAI" && (
-                            <button
-                              onClick={() => {
-                                setAssignJadwalId(j.id);
-                                setAssignStreamerId("");
-                                setAssignModalOpen(true);
-                              }}
-                              className="px-3 py-1 bg-[#941A0B] hover:bg-[#7D1509] text-white text-[10px] font-bold rounded-lg transition shadow-sm"
-                            >
-                              Assign Streamer
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            {filteredJadwal.length > 0 && (
-              <div className="p-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <div className="text-slate-500 font-medium">
-                  Menampilkan <span className="font-semibold text-slate-700">{startIndex + 1}</span> -{" "}
-                  <span className="font-semibold text-slate-700">{endIndex}</span> dari{" "}
-                  <span className="font-semibold text-slate-700">{filteredJadwal.length}</span> sesi
-                </div>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    disabled={currentTablePage <= 1}
-                    onClick={() => setTablePage((p) => Math.max(1, p - 1))}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 font-medium transition shadow-sm"
-                  >
-                    Sebelumnya
-                  </button>
-
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: totalTablePages }, (_, idx) => idx + 1).map((pageNum) => (
-                      <button
-                        key={pageNum}
-                        onClick={() => setTablePage(pageNum)}
-                        className={`w-7 h-7 rounded-lg text-xs font-semibold transition ${
-                          pageNum === currentTablePage
-                            ? "bg-[#941A0B] text-white shadow-sm"
-                            : "text-slate-600 hover:bg-slate-200/60"
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    ))}
-                  </div>
-
-                  <button
-                    disabled={currentTablePage >= totalTablePages}
-                    onClick={() => setTablePage((p) => Math.min(totalTablePages, p + 1))}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-white disabled:opacity-40 font-medium transition shadow-sm"
-                  >
-                    Selanjutnya
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
 
       {/* Modal Bebas Crash */}
       {modalCrashData.isOpen && (
@@ -4280,6 +5180,132 @@ export default function InputJadwalPage() {
                 className="bg-[#941A0B] hover:bg-[#7D1509] text-white text-xs font-bold px-4 py-2 rounded-xl transition shadow-md disabled:opacity-50"
               >
                 {loading ? "Menyimpan..." : "Assign Sesi"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* POPUP MODAL: INFO JADWAL LIVE DETAIL (ref-deploy format) */}
+      {modalDetailJadwalLive && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 z-[160]">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-xl w-full shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Detail Info Sesi Live</span>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <span className="font-mono text-[#941A0B]">{modalDetailJadwalLive.idJadwal}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                    modalDetailJadwalLive.liveState === "LIVE"
+                      ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                      : modalDetailJadwalLive.status === "SELESAI"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-[#941A0B]/10 text-[#941A0B] border-[#941A0B]/20"
+                  }`}>
+                    {modalDetailJadwalLive.liveState === "LIVE" ? "🔴 ON AIR" : modalDetailJadwalLive.status || "TERJADWAL"}
+                  </span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalDetailJadwalLive(null)}
+                className="text-slate-400 hover:text-slate-700 transition"
+              >
+                <i className="fa-solid fa-xmark text-lg" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Waktu & Jadwal</span>
+                <div className="font-bold text-slate-800">
+                  {formatDateSafe(modalDetailJadwalLive.tanggal, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                </div>
+                <div className="text-emerald-600 font-bold">
+                  {formatTimeSafe(modalDetailJadwalLive.jamMulaiLive)} - {formatTimeSafe(modalDetailJadwalLive.jamSelesaiLive)} WIB
+                </div>
+                <div className="text-amber-700 font-medium text-[11px]">
+                  Wajib Hadir: {getWajibHadirTime(modalDetailJadwalLive.jamMulaiLive)}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Lokasi & Device</span>
+                <div className="font-bold text-slate-800">
+                  {modalDetailJadwalLive.cabangStudio ?? modalDetailJadwalLive.studio ?? "Timoho"}
+                </div>
+                <div className="text-slate-600 font-semibold">
+                  {modalDetailJadwalLive.nomorStudio ? `Studio: ${modalDetailJadwalLive.nomorStudio}` : "Studio 1"}
+                </div>
+                <div className="text-slate-500 text-[11px]">
+                  Device: {modalDetailJadwalLive.device ?? "Tidak Pakai"}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Host Streamer</span>
+                <div className="font-bold text-slate-800">
+                  {modalDetailJadwalLive.streamerKaryawan?.namaLengkap ?? modalDetailJadwalLive.streamerNama ?? "-"}
+                </div>
+                <div className="text-slate-500 font-mono text-[11px]">
+                  ID: {modalDetailJadwalLive.streamerKaryawan?.idKaryawan ?? modalDetailJadwalLive.streamerId ?? "-"}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Staff OTS</span>
+                <div className="font-bold text-slate-800">
+                  {modalDetailJadwalLive.otsKaryawan?.namaLengkap ?? modalDetailJadwalLive.otsNama ?? "-"}
+                </div>
+                <div className="text-slate-500 font-mono text-[11px]">
+                  ID: {modalDetailJadwalLive.otsKaryawan?.idKaryawan ?? modalDetailJadwalLive.otsId ?? "-"}
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1 sm:col-span-2">
+                <span className="text-[10px] text-slate-400 font-bold uppercase">Brand & Platform</span>
+                <div className="font-bold text-slate-900 text-sm">
+                  {modalDetailJadwalLive.client?.namaClient ?? "Brand Partner"}
+                </div>
+                <div className="text-slate-600 font-medium">
+                  Platform: <span className="font-bold text-[#941A0B]">{modalDetailJadwalLive.platform ?? "Shopee Live"}</span>
+                </div>
+                {modalDetailJadwalLive.judulLive && (
+                  <div className="text-slate-600">
+                    Judul Live: <span className="font-semibold text-slate-800">{modalDetailJadwalLive.judulLive}</span>
+                  </div>
+                )}
+                {modalDetailJadwalLive.promoLive && (
+                  <div className="text-slate-600">
+                    Promo: <span className="font-semibold text-slate-800">{modalDetailJadwalLive.promoLive}</span>
+                  </div>
+                )}
+                {modalDetailJadwalLive.produkPrioritas && (
+                  <div className="text-slate-600">
+                    Produk Prioritas: <span className="font-semibold text-slate-800">{modalDetailJadwalLive.produkPrioritas}</span>
+                  </div>
+                )}
+              </div>
+
+              {(modalDetailJadwalLive.catatanHost || modalDetailJadwalLive.catatanOts) && (
+                <div className="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80 space-y-1 sm:col-span-2">
+                  <span className="text-[10px] text-amber-700 font-bold uppercase">Catatan</span>
+                  {modalDetailJadwalLive.catatanHost && (
+                    <div className="text-slate-700"><strong>Host:</strong> {modalDetailJadwalLive.catatanHost}</div>
+                  )}
+                  {modalDetailJadwalLive.catatanOts && (
+                    <div className="text-slate-700"><strong>OTS:</strong> {modalDetailJadwalLive.catatanOts}</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setModalDetailJadwalLive(null)}
+                className="px-6 py-2.5 bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold rounded-xl text-xs transition shadow-sm"
+              >
+                Tutup
               </button>
             </div>
           </div>

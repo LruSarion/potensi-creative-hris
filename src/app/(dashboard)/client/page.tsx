@@ -486,9 +486,15 @@ export default function ClientPage() {
     setProdukForms(
       produkForms.map((f) => {
         if (f.id === formId && f.varianInput.trim()) {
+          const splitTags = f.varianInput
+            .split(",")
+            .map((v) => v.trim())
+            .filter(Boolean);
+          const existing = new Set(f.varianList);
+          const newTags = splitTags.filter((t) => !existing.has(t));
           return {
             ...f,
-            varianList: [...f.varianList, f.varianInput.trim()],
+            varianList: [...f.varianList, ...newTags],
             varianInput: "",
           };
         }
@@ -542,6 +548,19 @@ export default function ClientPage() {
       let successCount = 0;
       for (const p of produkForms) {
         if (!p.namaProduk.trim()) continue;
+
+        // Merge tags from varianList + any leftover varianInput text
+        const variantSet = new Set<string>();
+        for (const v of p.varianList) {
+          if (typeof v === "string") {
+            v.split(",").map((s) => s.trim()).filter(Boolean).forEach((item) => variantSet.add(item));
+          }
+        }
+        if (p.varianInput && p.varianInput.trim()) {
+          p.varianInput.split(",").map((s) => s.trim()).filter(Boolean).forEach((item) => variantSet.add(item));
+        }
+        const finalVarianList = Array.from(variantSet);
+
         const res = await fetch("/api/produk", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -552,8 +571,8 @@ export default function ClientPage() {
             sellerSku: p.sellerSku.trim() || undefined,
             sku: p.sellerSku.trim() || undefined,
             brand: p.brand.trim() || undefined,
-            varian: p.varianList,
-            varianList: p.varianList,
+            varian: finalVarianList,
+            varianList: finalVarianList,
             link: p.linkProduk.trim() || undefined,
             linkProduk: p.linkProduk.trim() || undefined,
             catatan: p.catatan.trim() || undefined,
@@ -566,6 +585,7 @@ export default function ClientPage() {
         showAlert(`✅ Berhasil menyimpan ${successCount} produk baru!`);
         setProdukForms([createDefaultProdukForm(1, true)]);
         await handleSelectPlatform(selectedPlatformClientId);
+        await loadClients();
         setSubTabProduk("list");
       } else {
         showAlert("❌ Gagal menyimpan produk. Periksa kembali isian.");
@@ -665,6 +685,7 @@ export default function ClientPage() {
         if (selectedPlatformClientId) {
           await handleSelectPlatform(selectedPlatformClientId);
         }
+        await loadClients();
       } else {
         showAlert(`❌ Gagal memperbarui produk: ${d.message || "Terjadi kesalahan"}`);
       }
@@ -2371,13 +2392,9 @@ export default function ClientPage() {
                             {mpList.map((mp, mIdx) => (
                               <span
                                 key={mIdx}
-                                className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                                  mIdx === 0
-                                    ? "bg-amber-50 text-amber-900 border-amber-200"
-                                    : "bg-slate-100 text-slate-700 border-slate-200"
-                                }`}
+                                className="px-2.5 py-1 rounded-lg text-xs font-bold border bg-slate-100 text-slate-700 border-slate-200"
                               >
-                                {mIdx === 0 ? `Utama: ${mp}` : mp}
+                                {mp}
                               </span>
                             ))}
                           </div>

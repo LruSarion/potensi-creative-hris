@@ -59,6 +59,14 @@ function hydrateProduk(p: any, idx?: number) {
       meta = JSON.parse(p.kategori);
     }
   } catch {}
+
+  const rawVarian = meta.varian ?? meta.varianList ?? meta.variant;
+  const varianList: string[] = Array.isArray(rawVarian)
+    ? rawVarian.flatMap((v: any) => (typeof v === "string" ? v.split(",") : String(v))).map((s: string) => s.trim()).filter(Boolean)
+    : typeof rawVarian === "string"
+    ? rawVarian.split(",").map((s: string) => s.trim()).filter(Boolean)
+    : [];
+
   return {
     id: p.id,
     no: idx !== undefined ? idx + 1 : undefined,
@@ -67,13 +75,7 @@ function hydrateProduk(p: any, idx?: number) {
     sellerSku: meta.sellerSku || meta.sku || "-",
     brand: meta.brand || p.client?.namaClient || "Brand",
     namaProduk: p.namaProduk,
-    varian: Array.isArray(meta.varian)
-      ? meta.varian
-      : Array.isArray(meta.varianList)
-      ? meta.varianList
-      : meta.varian
-      ? String(meta.varian).split(",").map((s: string) => s.trim()).filter(Boolean)
-      : [],
+    varian: varianList,
     link: meta.link || meta.linkProduk || "",
     catatan: meta.catatan || "-",
     kategori: meta.kategori || "General",
@@ -287,12 +289,21 @@ export async function createProduk(input: ProdukInput) {
   const client = await db.client.findFirst({ where: { id: parsed.clientId, ...tenantWhere(user) } });
   if (!client) throw AppError.notFound("Client tidak ditemukan");
 
-  const varianArr = Array.isArray(parsed.varian)
-    ? parsed.varian
-    : Array.isArray(parsed.varianList)
-    ? parsed.varianList
-    : parsed.varian
-    ? [String(parsed.varian)]
+  let rawVarian: any = undefined;
+  if (Array.isArray(parsed.varian) && parsed.varian.length > 0) {
+    rawVarian = parsed.varian;
+  } else if (Array.isArray(parsed.varianList) && parsed.varianList.length > 0) {
+    rawVarian = parsed.varianList;
+  } else if (parsed.varian) {
+    rawVarian = parsed.varian;
+  } else if (parsed.varianList) {
+    rawVarian = parsed.varianList;
+  }
+
+  const varianArr: string[] = Array.isArray(rawVarian)
+    ? rawVarian.flatMap((v: any) => (typeof v === "string" ? v.split(",") : String(v))).map((s: string) => s.trim()).filter(Boolean)
+    : typeof rawVarian === "string"
+    ? rawVarian.split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
 
   const metaProduk = {
@@ -342,14 +353,21 @@ export async function updateProduk(id: string, input: any) {
   const brand = input.brand || input.BRAND || metaExisting.brand || existing.client?.namaClient || "-";
   const sku = input.sku || input.SELLER_SKU || input.sellerSku || metaExisting.sku || metaExisting.sellerSku || "-";
   const idProduk = input.idProduk || input.ID_PRODUK || metaExisting.idProduk || undefined;
-  const varian = input.varian || input.VARIANT || input.varianList || metaExisting.varian || [];
+  const rawVarian =
+    input.varian !== undefined
+      ? input.varian
+      : input.VARIANT !== undefined
+      ? input.VARIANT
+      : input.varianList !== undefined
+      ? input.varianList
+      : metaExisting.varian ?? metaExisting.varianList;
   const link = input.link || input.LINK_PRODUK || input.linkProduk || metaExisting.link || metaExisting.linkProduk || "";
   const catatan = input.catatan || input.CATATAN || metaExisting.catatan || "";
 
-  const varianArr = Array.isArray(varian)
-    ? varian
-    : typeof varian === "string"
-    ? varian.split(",").map((s) => s.trim()).filter(Boolean)
+  const varianArr: string[] = Array.isArray(rawVarian)
+    ? rawVarian.flatMap((v: any) => (typeof v === "string" ? v.split(",") : String(v))).map((s: string) => s.trim()).filter(Boolean)
+    : typeof rawVarian === "string"
+    ? rawVarian.split(",").map((s: string) => s.trim()).filter(Boolean)
     : [];
 
   const metaProduk = {

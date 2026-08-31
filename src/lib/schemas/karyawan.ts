@@ -10,10 +10,7 @@ export const karyawanSchema = z.object({
   jabatan: z.string().optional().nullable(),
   kategori: z.string().optional().nullable(),
   tipeJadwal: z.enum(["OFFICE_HOURS", "SHIFT", "LIVE"]).optional().nullable(),
-  nomorTelepon: z.string().optional().nullable().refine(
-    (val) => !val || /^[0-9+() -]{8,20}$/.test(val),
-    { message: "Format nomor telepon tidak valid (minimal 8 digit)" }
-  ),
+  nomorTelepon: z.string().optional().nullable(),
   email: z.string().optional().nullable().refine(
     (val) => !val || z.string().email().safeParse(val).success,
     { message: "Format email tidak valid" }
@@ -21,10 +18,7 @@ export const karyawanSchema = z.object({
   startDate: z.string().optional().nullable(),
   endDate: z.string().optional().nullable(),
   statusAktif: z.enum(["AKTIF", "NON_AKTIF"]).optional().nullable(),
-  nik: z.string().optional().nullable().refine(
-    (val) => !val || /^[0-9]{16}$/.test(val.replace(/\D/g, "")),
-    { message: "NIK harus berupa 16 digit angka" }
-  ),
+  nik: z.string().optional().nullable(),
   npwp: z.string().optional().nullable(),
   statusPtkp: z.string().optional().nullable(),
   alamatKtp: z.string().optional().nullable(),
@@ -34,10 +28,7 @@ export const karyawanSchema = z.object({
   statusPerkawinan: z.string().optional().nullable(),
   agama: z.string().optional().nullable(),
   riwayatPenyakit: z.string().optional().nullable(),
-  emergencyContact: z.string().optional().nullable().refine(
-    (val) => !val || /^[0-9+() -]{8,20}$/.test(val),
-    { message: "Format kontak darurat tidak valid (minimal 8 digit)" }
-  ),
+  emergencyContact: z.string().optional().nullable(),
   scanKtpDriveId: z.string().optional().nullable(),
   scanKkDriveId: z.string().optional().nullable(),
   scanNpwpDriveId: z.string().optional().nullable(),

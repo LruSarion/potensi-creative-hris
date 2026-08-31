@@ -310,16 +310,12 @@ export default function InputKaryawanPage() {
         showAlert(`⚠️ Mohon isi Nama Lengkap (minimal 2 karakter) pada Formulir #${f.id}`);
         return;
       }
-      if (!f.nomorTeleponSuffix.trim() || f.nomorTeleponSuffix.trim().length < 8) {
-        showAlert(`⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit) pada Formulir #${f.id}`);
+      if (!f.nomorTeleponSuffix.trim()) {
+        showAlert(`⚠️ Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
         return;
       }
       if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
         showAlert(`⚠️ Format email tidak valid pada Formulir #${f.id} (Contoh: nama@domain.com)`);
-        return;
-      }
-      if (f.nik.trim() && f.nik.replace(/\D/g, "").length !== 16) {
-        showAlert(`⚠️ NIK KTP harus terdiri dari 16 digit angka pada Formulir #${f.id}`);
         return;
       }
       if (!f.jabatan) {
@@ -386,72 +382,73 @@ export default function InputKaryawanPage() {
     }
   }
 
-  function handleSelectTargetEmployee(customEmp?: any) {
+  function findExactEmployee(query: string, list: any[]) {
+    if (!query || !query.trim()) return null;
+    const q = query.trim().toLowerCase();
+
+    // 1. Check exact ID (e.g. "pcs001")
+    let target = list.find((e) => (e.idKaryawan || "").toLowerCase() === q || (e.id || "").toLowerCase() === q);
+    if (target) return target;
+
+    // 2. Check exact full formatted tag (e.g. "pcs001 - siti nurhaliza (host)")
+    target = list.find((e) => {
+      const fullTag = `${e.idKaryawan} - ${e.namaLengkap} (${e.jabatan})`.toLowerCase();
+      const shortTag = `${e.idKaryawan} - ${e.namaLengkap}`.toLowerCase();
+      return fullTag === q || shortTag === q;
+    });
+    if (target) return target;
+
+    // 3. Check exact full name
+    target = list.find((e) => (e.namaLengkap || "").toLowerCase() === q);
+    if (target) return target;
+
+    return null;
+  }
+
+  function findMatchingEmployee(query: string, list: any[]) {
+    if (!query || !query.trim()) return null;
+    const raw = query.trim();
+    const q = raw.toLowerCase();
+
+    // 1. Try exact match first
+    const exact = findExactEmployee(raw, list);
+    if (exact) return exact;
+
+    // 2. Check direct ID in brackets [ID:...]
+    const idTagMatch = raw.match(/\[ID:([^\]]+)\]/i);
+    const extractedId = idTagMatch ? idTagMatch[1].trim().toLowerCase() : "";
+    if (extractedId) {
+      const byExtracted = list.find((e) => (e.id || "").toLowerCase() === extractedId || (e.idKaryawan || "").toLowerCase() === extractedId);
+      if (byExtracted) return byExtracted;
+    }
+
+    // 3. Check if starts with ID: "PCS001 - ..."
+    const idPrefixMatch = raw.match(/^([A-Za-z0-9_-]+)\s*[-–|:]/);
+    const prefixId = idPrefixMatch ? idPrefixMatch[1].trim().toLowerCase() : "";
+    if (prefixId) {
+      const byPrefix = list.find((e) => (e.id || "").toLowerCase() === prefixId || (e.idKaryawan || "").toLowerCase() === prefixId);
+      if (byPrefix) return byPrefix;
+    }
+
+    // 4. Prefix name or ID match (minimum 2 chars)
+    if (q.length >= 2) {
+      const target = list.find((e) => {
+        const eIdK = (e.idKaryawan || "").toLowerCase();
+        const eName = (e.namaLengkap || "").toLowerCase();
+        return eIdK === q || eName.startsWith(q) || eName === q;
+      });
+      if (target) return target;
+    }
+
+    return null;
+  }
+
+  function handleSelectTargetEmployee(customEmp?: any, customQuery?: string) {
     let target: any | null = customEmp || null;
+    const queryStr = customQuery !== undefined ? customQuery : searchEditId;
 
-    if (!target && searchEditId.trim()) {
-      const raw = searchEditId.trim();
-      const q = raw.toLowerCase();
-
-      // 1. Check direct ID or [ID:...] tag
-      const idTagMatch = raw.match(/\[ID:([^\]]+)\]/i);
-      const extractedId = idTagMatch ? idTagMatch[1].trim().toLowerCase() : "";
-
-      // 2. Check if starts with ID (e.g. "PCS001 - ...", "PCS001 | ...")
-      const idPrefixMatch = raw.match(/^([A-Za-z0-9_-]+)\s*[-–|:]/);
-      const prefixId = idPrefixMatch ? idPrefixMatch[1].trim().toLowerCase() : "";
-
-      // Step 1: Exact ID or idKaryawan match
-      target =
-        employeeList.find((e) => {
-          const eId = (e.id || "").toLowerCase();
-          const eIdK = (e.idKaryawan || "").toLowerCase();
-          return (
-            (extractedId && (eId === extractedId || eIdK === extractedId)) ||
-            (prefixId && (eId === prefixId || eIdK === prefixId)) ||
-            eId === q ||
-            eIdK === q
-          );
-        }) || null;
-
-      // Step 2: Exact Name match
-      if (!target) {
-        target =
-          employeeList.find((e) => {
-            const eName = (e.namaLengkap || "").toLowerCase();
-            return eName === q;
-          }) || null;
-      }
-
-      // Step 3: Tokenized Name / ID match
-      if (!target) {
-        const parts = raw.split(/[-–|()]/).map((p) => p.trim().toLowerCase()).filter(Boolean);
-        target =
-          employeeList.find((e) => {
-            const eIdK = (e.idKaryawan || "").toLowerCase();
-            const eName = (e.namaLengkap || "").toLowerCase();
-            return (
-              parts.some((p) => p && eIdK === p) ||
-              parts.some((p) => p && eName === p) ||
-              (parts.length > 1 && eName.includes(parts[1]))
-            );
-          }) || null;
-      }
-
-      // Step 4: Substring matching on Name or ID (never match solely on Jabatan)
-      if (!target) {
-        target =
-          employeeList.find((e) => {
-            const eIdK = (e.idKaryawan || "").toLowerCase();
-            const eName = (e.namaLengkap || "").toLowerCase();
-            return (
-              (eIdK && q.includes(eIdK)) ||
-              (eName && q.includes(eName)) ||
-              (eName && eName.includes(q)) ||
-              (eIdK && eIdK.includes(q))
-            );
-          }) || null;
-      }
+    if (!target && queryStr && queryStr.trim()) {
+      target = findMatchingEmployee(queryStr, employeeList);
     }
 
     if (target) {
@@ -459,6 +456,7 @@ export default function InputKaryawanPage() {
       setSearchEditId(`${target.idKaryawan} - ${target.namaLengkap}`);
       setFullEditForm(populateEditForm(target));
       setEditRows([{ field: "NAMA_LENGKAP", value: target.namaLengkap || "" }]);
+      setShowEmployeeDropdown(false);
 
       fetch(`/api/employees?id=${target.id}`)
         .then((r) => r.json())
@@ -470,7 +468,7 @@ export default function InputKaryawanPage() {
           }
         })
         .catch(() => {});
-    } else {
+    } else if (customQuery === undefined && !customEmp) {
       showAlert("⚠️ Karyawan dengan ID atau Nama tersebut tidak ditemukan.");
     }
   }
@@ -506,16 +504,12 @@ export default function InputKaryawanPage() {
       showAlert("⚠️ Mohon isi Nama Lengkap Karyawan (minimal 2 karakter).");
       return;
     }
-    if (!fullEditForm.nomorTeleponSuffix.trim() || fullEditForm.nomorTeleponSuffix.trim().length < 8) {
-      showAlert("⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit).");
+    if (!fullEditForm.nomorTeleponSuffix.trim()) {
+      showAlert("⚠️ Mohon isi Nomor WhatsApp.");
       return;
     }
     if (fullEditForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fullEditForm.email.trim())) {
       showAlert("⚠️ Format email tidak valid.");
-      return;
-    }
-    if (fullEditForm.nik.trim() && !/^\d{16}$/.test(fullEditForm.nik.trim())) {
-      showAlert("⚠️ NIK KTP wajib 16 digit angka.");
       return;
     }
 
@@ -965,10 +959,8 @@ export default function InputKaryawanPage() {
                           type="text"
                           value={item.nik}
                           onChange={(e) => updateFormField(item.id, "nik", e.target.value)}
-                          maxLength={16}
-                          placeholder="Contoh: 3201234567890001 (16 digit)"
+                          placeholder="Contoh: 3201234567890001"
                           className={inputCls}
-                          required
                         />
                       </div>
                       <div>
@@ -1103,8 +1095,8 @@ export default function InputKaryawanPage() {
               <div className="flex-1 relative">
                 <div className="relative">
                   <input
-                    list="listPegawaiEdit"
                     type="text"
+                    autoComplete="off"
                     value={searchEditId}
                     onFocus={() => setShowEmployeeDropdown(true)}
                     onChange={(e) => {
@@ -1115,7 +1107,7 @@ export default function InputKaryawanPage() {
                       if (e.key === "Enter") {
                         e.preventDefault();
                         setShowEmployeeDropdown(false);
-                        handleSelectTargetEmployee();
+                        handleSelectTargetEmployee(undefined, searchEditId);
                       }
                     }}
                     placeholder="Contoh: PCS001 atau Siti Nurhaliza..."
@@ -1135,12 +1127,6 @@ export default function InputKaryawanPage() {
                   )}
                 </div>
 
-                <datalist id="listPegawaiEdit">
-                  {employeeList.map((emp) => (
-                    <option key={emp.id} value={`${emp.idKaryawan} - ${emp.namaLengkap} (${emp.jabatan})`} />
-                  ))}
-                </datalist>
-
                 {/* Floating Live Suggestions for Employees */}
                 {showEmployeeDropdown && searchEditId.trim() && (
                   <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-slate-100">
@@ -1158,6 +1144,11 @@ export default function InputKaryawanPage() {
                         <div
                           key={emp.id}
                           onMouseDown={(e) => {
+                            e.preventDefault();
+                            handleSelectTargetEmployee(emp);
+                            setShowEmployeeDropdown(false);
+                          }}
+                          onClick={(e) => {
                             e.preventDefault();
                             handleSelectTargetEmployee(emp);
                             setShowEmployeeDropdown(false);
@@ -1184,7 +1175,7 @@ export default function InputKaryawanPage() {
                 type="button"
                 onClick={() => {
                   setShowEmployeeDropdown(false);
-                  handleSelectTargetEmployee();
+                  handleSelectTargetEmployee(undefined, searchEditId);
                 }}
                 className="bg-[#941A0B] hover:bg-[#7D1509] text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-md shrink-0"
               >
@@ -1611,10 +1602,8 @@ export default function InputKaryawanPage() {
                       type="text"
                       value={fullEditForm.nik}
                       onChange={(e) => updateFullEditField("nik", e.target.value)}
-                      maxLength={16}
-                      placeholder="Contoh: 3201234567890001 (16 digit)"
+                      placeholder="Contoh: 3201234567890001"
                       className={inputCls}
-                      required
                     />
                   </div>
                   <div>
@@ -1951,19 +1940,6 @@ export default function InputKaryawanPage() {
                           title="Lihat Detail Lengkap"
                         >
                           <i className="fa-solid fa-eye" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setActiveTab("edit");
-                            setSearchEditId(emp.idKaryawan);
-                            setTargetEmployee(emp);
-                            setEditRows([{ field: "NAMA_LENGKAP", value: emp.namaLengkap || "" }]);
-                          }}
-                          className="text-[#941A0B] hover:bg-red-50 p-1.5 rounded-lg transition text-xs"
-                          title="Edit Data"
-                        >
-                          <i className="fa-solid fa-pen" />
                         </button>
                         <button
                           type="button"

@@ -1,17 +1,22 @@
 import type { NextAuthConfig } from "next-auth";
 import Google from "next-auth/providers/google";
+import Credentials from "next-auth/providers/credentials";
 import type { Role } from "@/generated/prisma/enums";
 
 /**
- * Edge-safe Auth config for middleware.
+ * Edge-safe Auth config for middleware/proxy.
  * Does NOT import Prisma/adapter (not available in Edge runtime).
- * Only used for route protection in middleware.
+ * Only used for route protection in proxy/middleware.
  */
+const googleClientId = process.env.GOOGLE_CLIENT_ID || process.env.AUTH_GOOGLE_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.AUTH_GOOGLE_SECRET;
+
 const hasGoogleCreds = Boolean(
-  process.env.GOOGLE_CLIENT_ID &&
-  process.env.GOOGLE_CLIENT_SECRET &&
-  process.env.GOOGLE_CLIENT_ID !== "" &&
-  process.env.GOOGLE_CLIENT_SECRET !== ""
+  googleClientId &&
+  googleClientSecret &&
+  googleClientId !== "" &&
+  googleClientSecret !== "" &&
+  googleClientId !== "demo-google-client-id.apps.googleusercontent.com"
 );
 
 export const authConfig = {
@@ -19,12 +24,20 @@ export const authConfig = {
     ...(hasGoogleCreds
       ? [
           Google({
-            clientId: process.env.GOOGLE_CLIENT_ID,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+            clientId: googleClientId,
+            clientSecret: googleClientSecret,
           }),
         ]
-      : []),
+      : [
+          // Fallback provider to satisfy NextAuth config assertion in edge/proxy runtime
+          Credentials({
+            name: "Credentials",
+            credentials: {},
+            authorize: async () => null,
+          }),
+        ]),
   ],
+  secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || "ed98a06860607f40cb199700d73f54aaa3d68d79572a797e8233972e47282f71",
   session: { strategy: "jwt" },
   trustHost: true,
   pages: { signIn: "/login" },

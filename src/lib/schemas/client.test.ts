@@ -82,6 +82,24 @@ describe("produkSchema", () => {
     ).toBe(true);
   });
 
+  it("accepts varian as string or array of strings", () => {
+    expect(
+      produkSchema.safeParse({
+        clientId: "c1",
+        namaProduk: "Produk B",
+        varian: "30ml, 50ml",
+      }).success
+    ).toBe(true);
+
+    expect(
+      produkSchema.safeParse({
+        clientId: "c1",
+        namaProduk: "Produk C",
+        varian: ["Merah", "Biru"],
+      }).success
+    ).toBe(true);
+  });
+
   it("rejects invalid status enum", () => {
     expect(
       produkSchema.safeParse({ clientId: "c1", namaProduk: "A", status: "NOPE" }).success

@@ -44,21 +44,13 @@ const ROLE_ROUTES: Record<string, string[]> = {
 
 const { auth } = NextAuth(authConfig);
 
-export default auth((req) => {
+export const proxy = auth((req) => {
   const { pathname } = req.nextUrl;
   const isLoggedIn = !!req.auth?.user;
   const role = req.auth?.user?.role as string | undefined;
 
   // Allow public routes (exact match for "/" or prefix for specific subpaths).
   if (pathname === "/" || PUBLIC_ROUTES.some((r) => r !== "/" && pathname.startsWith(r))) {
-    return NextResponse.next();
-  }
-
-  // API routes (except /api/auth) handle their own auth via requireRole -> 401 JSON.
-  if (pathname.startsWith("/api/auth")) {
-    return NextResponse.next();
-  }
-  if (pathname.startsWith("/api/")) {
     return NextResponse.next();
   }
 
@@ -92,6 +84,8 @@ export default auth((req) => {
   return NextResponse.next();
 });
 
+export default proxy;
+
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
 };
