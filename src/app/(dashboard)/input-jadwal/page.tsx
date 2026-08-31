@@ -122,6 +122,54 @@ function formatRowItem(item: any): string {
   return `${item.id || item.idKaryawan || "-"} | ${item.nama || item.namaLengkap || "Streamer"}`;
 }
 
+function resolvePlatformClientValue(target: any, options: Array<{ label: string; value: string; clientId: string }>): string {
+  if (!target) return "";
+  const targetClientId = target.clientId || target.client?.id;
+  const targetPlatform = (target.platform || "").trim();
+  const targetClientName = (target.client?.namaMerk || target.client?.namaClient || "").trim();
+
+  // 1. Exact match by value or label in options
+  if (targetPlatform) {
+    const exactMatch = options.find(
+      (o) => o.value.toLowerCase() === targetPlatform.toLowerCase() || o.label.toLowerCase() === targetPlatform.toLowerCase()
+    );
+    if (exactMatch) return exactMatch.value;
+  }
+
+  // 2. Match by clientId and platform substring
+  if (targetClientId && targetPlatform) {
+    const clientPlatformMatch = options.find(
+      (o) => o.clientId === targetClientId && o.value.toLowerCase().includes(targetPlatform.toLowerCase())
+    );
+    if (clientPlatformMatch) return clientPlatformMatch.value;
+  }
+
+  // 3. Match by clientId alone
+  if (targetClientId) {
+    const clientMatch = options.find((o) => o.clientId === targetClientId);
+    if (clientMatch) return clientMatch.value;
+  }
+
+  // 4. Match by brand name + platform substring
+  if (targetClientName && targetPlatform) {
+    const brandMatch = options.find(
+      (o) => o.value.toLowerCase().includes(targetClientName.toLowerCase()) && o.value.toLowerCase().includes(targetPlatform.toLowerCase())
+    );
+    if (brandMatch) return brandMatch.value;
+  }
+
+  // 5. Match by brand name alone
+  if (targetClientName) {
+    const brandMatch = options.find((o) => o.value.toLowerCase().includes(targetClientName.toLowerCase()));
+    if (brandMatch) return brandMatch.value;
+  }
+
+  // 6. Return existing target.platform if present
+  if (targetPlatform) return targetPlatform;
+
+  return options[0]?.value || "Shopee Live";
+}
+
 export default function InputJadwalPage() {
   // Global Data States
   const [streamers, setStreamers] = useState<any[]>([]);
@@ -1012,12 +1060,15 @@ export default function InputJadwalPage() {
   // Populate and Select target schedule for Edit (Tab 3)
   function populateEditJadwalForm(target: any) {
     setSelectedEditJadwal(target);
+    const resolvedPlatform = resolvePlatformClientValue(target, platformClientOptions);
+    const matchedOpt = platformClientOptions.find((o) => o.value === resolvedPlatform);
+
     setEditJadwalForm({
       id: target.id,
       idJadwal: target.idJadwal || "",
       tanggal: formatDateOnly(target.tanggal),
-      platform: target.platform || (platformClientOptions[0]?.value || "Shopee Live"),
-      clientId: target.clientId || target.client?.id || "",
+      platform: resolvedPlatform,
+      clientId: matchedOpt?.clientId || target.clientId || target.client?.id || "",
       streamerKaryawanId: target.streamerKaryawanId || target.streamerKaryawan?.id || "",
       streamerId: target.streamerKaryawan?.idKaryawan || target.idHost || "-",
       streamerNama: target.streamerKaryawan?.namaLengkap || target.streamerNama || "-",
@@ -2002,6 +2053,9 @@ export default function InputJadwalPage() {
                               required
                             >
                               <option value="">-- Pilih Platform Client --</option>
+                              {item.platform && !platformClientOptions.some((o) => o.value === item.platform) && (
+                                <option value={item.platform}>{item.platform}</option>
+                              )}
                               {platformClientOptions.map((opt) => (
                                 <option key={opt.value} value={opt.value}>{opt.label}</option>
                               ))}
@@ -3851,6 +3905,9 @@ export default function InputJadwalPage() {
                       required
                     >
                       <option value="">-- Pilih Platform Client --</option>
+                      {editJadwalForm.platform && !platformClientOptions.some((o) => o.value === editJadwalForm.platform) && (
+                        <option value={editJadwalForm.platform}>{editJadwalForm.platform}</option>
+                      )}
                       {platformClientOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
