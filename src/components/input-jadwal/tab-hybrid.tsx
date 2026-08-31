@@ -138,7 +138,7 @@ export function TabHybrid({
           onClick={() => setHybridSubTab("export")}
           className={`px-4 py-2 text-sm font-bold border-b-2 transition ${
             hybridSubTab === "export"
-              ? "border-[#941A0B] text-[#941A0B]"
+              ? "border-blue-600 text-blue-600"
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -150,7 +150,7 @@ export function TabHybrid({
           onClick={() => setHybridSubTab("import")}
           className={`px-4 py-2 text-sm font-bold border-b-2 transition ${
             hybridSubTab === "import"
-              ? "border-[#941A0B] text-[#941A0B]"
+              ? "border-blue-600 text-blue-600"
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -258,7 +258,7 @@ export function TabHybrid({
                   type="file"
                   accept=".csv,.xlsx,.xls"
                   onChange={handleFileUpload}
-                  className="w-full border border-slate-300 rounded-xl p-3 text-xs bg-slate-50 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#941A0B] file:text-white hover:file:bg-[#7a1509]"
+                  className="w-full border border-slate-300 rounded-xl p-3 text-xs bg-slate-50 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
                 />
               </div>
             ) : (
@@ -338,7 +338,7 @@ export function TabHybrid({
               <button
                 type="submit"
                 disabled={loading}
-                className="px-8 py-3 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-2"
+                className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center gap-2"
               >
                 <i className="fa-solid fa-cloud-arrow-up" />
                 <span>{loading ? "Memproses Import..." : "Import Jadwal"}</span>

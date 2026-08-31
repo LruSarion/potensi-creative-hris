@@ -269,7 +269,7 @@ export function TabOts({
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <h2 className="font-extrabold text-black text-base flex items-center gap-2">
-            <i className="fa-solid fa-headphones text-[#941A0B]" />
+            <i className="fa-solid fa-headphones text-blue-600" />
             <span>Formulir Penugasan Jadwal Kerja OTS</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -279,7 +279,7 @@ export function TabOts({
         <button
           type="button"
           onClick={handleAddOtsForm}
-          className="px-4 py-2 bg-red-50 hover:bg-red-100 text-[#941A0B] rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-red-200"
+          className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-blue-200"
         >
           <i className="fa-solid fa-plus" /> Tambah Form OTS
         </button>
@@ -305,7 +305,7 @@ export function TabOts({
           >
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <span className="w-7 h-7 bg-[#941A0B] text-white rounded-lg flex items-center justify-center text-xs font-bold">
+                <span className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center text-xs font-bold">
                   {idx + 1}
                 </span>
                 <span className="font-mono text-xs font-bold text-slate-700">
@@ -467,30 +467,30 @@ export function TabOts({
           <button
             type="button"
             onClick={handleAddOtsForm}
-            className="w-full sm:w-auto px-6 py-3 bg-red-50 text-[#941A0B] rounded-xl hover:bg-red-100 font-bold transition flex items-center justify-center gap-2 text-xs border border-red-200"
+            className="w-full sm:w-auto text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
           >
-            <i className="fa-solid fa-plus" /> Tambah Form OTS
+            <i className="fa-solid fa-plus" /> Tambah Jadwal OTS (Maks 100)
           </button>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <button
               type="button"
               onClick={checkBebasCrashOts}
-              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
+              className="w-full sm:w-auto px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-bold transition-all shadow-md flex items-center justify-center gap-2 text-sm"
             >
               <i className="fa-solid fa-shield-halved" /> Bebas Crash
             </button>
             <button
               type="submit"
-              disabled={loading}
-              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs text-white ${
+              disabled={loading || !isOtsCrashVerified}
+              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm ${
                 isOtsCrashVerified && !loading
-                  ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                  : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                  ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
               }`}
             >
               <i className="fa-solid fa-cloud-arrow-up" />
-              <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal OTS"}</span>
+              <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal"}</span>
             </button>
           </div>
         </div>
@@ -501,7 +501,7 @@ export function TabOts({
         <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h3 className="font-extrabold text-black text-sm flex items-center gap-2">
-              <i className="fa-solid fa-list-check text-[#941A0B]" />
+              <i className="fa-solid fa-list-check text-blue-600" />
               <span>Tabel Monitoring Jadwal Kerja OTS</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">

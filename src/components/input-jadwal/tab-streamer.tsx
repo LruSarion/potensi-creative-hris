@@ -527,7 +527,7 @@ export function TabStreamer({
           onClick={() => setStreamerSubTab("form")}
           className={`px-4 py-2 text-sm font-bold border-b-2 transition ${
             streamerSubTab === "form"
-              ? "border-[#941A0B] text-[#941A0B]"
+              ? "border-blue-600 text-blue-600"
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -541,7 +541,7 @@ export function TabStreamer({
           }}
           className={`px-4 py-2 text-sm font-bold border-b-2 transition ${
             streamerSubTab === "info"
-              ? "border-[#941A0B] text-[#941A0B]"
+              ? "border-blue-600 text-blue-600"
               : "border-transparent text-slate-500 hover:text-slate-800"
           }`}
         >
@@ -570,7 +570,7 @@ export function TabStreamer({
             >
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 bg-[#941A0B] text-white rounded-lg flex items-center justify-center text-xs font-bold">
+                  <span className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center text-xs font-bold">
                     {idx + 1}
                   </span>
                   <span className="font-mono text-xs font-bold text-slate-700">
@@ -790,7 +790,7 @@ export function TabStreamer({
             <button
               type="button"
               onClick={handleAddForm}
-              className="w-full sm:w-auto px-6 py-3 bg-red-50 text-[#941A0B] rounded-xl hover:bg-red-100 font-bold transition flex items-center justify-center gap-2 text-xs border border-red-200"
+              className="w-full sm:w-auto text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
             >
               <i className="fa-solid fa-plus" /> Tambah Jadwal (Maks 100)
             </button>
@@ -799,21 +799,21 @@ export function TabStreamer({
               <button
                 type="button"
                 onClick={checkBebasCrashStreamer}
-                className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
+                className="w-full sm:w-auto px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-bold transition-all shadow-md flex items-center justify-center gap-2 text-sm"
               >
                 <i className="fa-solid fa-shield-halved" /> Bebas Crash
               </button>
               <button
                 type="submit"
-                disabled={loading}
-                className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs text-white ${
+                disabled={loading || !isStreamerCrashVerified}
+                className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm ${
                   isStreamerCrashVerified && !loading
-                    ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                    : "bg-slate-300 text-slate-500 cursor-not-allowed"
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
                 }`}
               >
                 <i className="fa-solid fa-cloud-arrow-up" />
-                <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal Streamer"}</span>
+                <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal"}</span>
               </button>
             </div>
           </div>
@@ -823,7 +823,7 @@ export function TabStreamer({
             <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
               <div>
                 <h3 className="font-extrabold text-black text-sm flex items-center gap-2">
-                  <i className="fa-solid fa-video text-[#941A0B]" />
+                  <i className="fa-solid fa-video text-blue-600" />
                   <span>Tabel Monitoring Jadwal Live Streamer</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">

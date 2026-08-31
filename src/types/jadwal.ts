@@ -165,6 +165,16 @@ export type HybridSubTabId = "export" | "import";
 
 /** Static platform list. */
 export const PLATFORMS = [
+  "Bioaqua Shopee",
+  "Bioaqua TikTok",
+  "Glad2Glow Shopee",
+  "Glad2Glow TikTok",
+  "Originote Shopee",
+  "Originote TikTok",
+  "Skintific Shopee",
+  "Skintific TikTok",
+  "Somethinc Shopee",
+  "Somethinc TikTok",
   "Shopee Live",
   "TikTok Shop",
   "Tokopedia Live",

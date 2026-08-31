@@ -3,13 +3,13 @@
  * Avoids duplicating Tailwind class strings in every component.
  */
 export const inputCls =
-  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-[#941A0B] bg-white transition";
+  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-blue-500 bg-white transition";
 
 export const dateInputCls =
-  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-[#941A0B] bg-white transition cursor-pointer";
+  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-blue-500 bg-white transition cursor-pointer";
 
 export const selectCls =
-  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-[#941A0B] bg-white transition";
+  "w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-medium text-black outline-none focus:ring-2 focus:ring-blue-500 bg-white transition";
 
 export const labelCls =
   "block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5";

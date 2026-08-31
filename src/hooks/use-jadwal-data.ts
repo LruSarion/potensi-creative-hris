@@ -146,9 +146,13 @@ export function useJadwalData() {
       }
     }
 
-    if (options.length === 0) {
-      PLATFORMS.forEach((p) => options.push({ label: p, value: p, clientId: "" }));
-    }
+    // Always ensure standard / fallback platforms are present
+    PLATFORMS.forEach((p) => {
+      if (!seen.has(p)) {
+        seen.add(p);
+        options.push({ label: p, value: p, clientId: "" });
+      }
+    });
 
     return options;
   }, [clients]);
