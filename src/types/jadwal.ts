@@ -78,6 +78,8 @@ export interface EditJadwalFormState {
   promoLive: string;
   catatanHost: string;
   catatanOts: string;
+  filePendukungHost?: string;
+  filePendukungOts?: string;
   status: string;
 }
 
@@ -104,6 +106,8 @@ export const EMPTY_EDIT_JADWAL_FORM: EditJadwalFormState = {
   promoLive: "",
   catatanHost: "",
   catatanOts: "",
+  filePendukungHost: "",
+  filePendukungOts: "",
   status: "TERJADWAL",
 };
 

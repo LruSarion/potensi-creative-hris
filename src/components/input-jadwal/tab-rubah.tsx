@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import type { TabSharedProps } from "./types";
 import type { EditJadwalFormState } from "@/types/jadwal";
-import { EMPTY_EDIT_JADWAL_FORM, STUDIOS, PLATFORMS } from "@/types/jadwal";
+import { EMPTY_EDIT_JADWAL_FORM } from "@/types/jadwal";
 import {
   formatDateOnly,
   formatTimeOnly,
@@ -37,7 +37,10 @@ export function TabRubah({
   const [savingEditJadwal, setSavingEditJadwal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // --- Streamer Live Monitoring Table Filters (matching Streamer Dashboard -> Tab Jadwal -> subtab Jadwal Live) ---
+  // OTS Files
+  const [otsFileList, setOtsFileList] = useState<string[]>([""]);
+
+  // --- Streamer Live Monitoring Table Filters ---
   const [liveFilterPeriode, setLiveFilterPeriode] = useState<
     "ALL" | "TODAY" | "PREV_7" | "NEXT_7" | "PREV_35" | "NEXT_35" | "EXACT_DATE" | "CUSTOM"
   >("ALL");
@@ -55,7 +58,7 @@ export function TabRubah({
   const [livePageSize, setLivePageSize] = useState(10);
   const [livePage, setLivePage] = useState(1);
 
-  // --- OTS Monitoring Table Filters (matching Staff Dashboard -> Tab Jadwal) ---
+  // --- OTS Monitoring Table Filters ---
   const [otsFilterWaktu, setOtsFilterWaktu] = useState("all");
   const [otsFilterKategori, setOtsFilterKategori] = useState("all");
   const [otsSearchQuery, setOtsSearchQuery] = useState("");
@@ -80,7 +83,7 @@ export function TabRubah({
       streamerNama: target.streamerKaryawan?.namaLengkap || target.streamerNama || "-",
       cabangStudio: target.cabangStudio || "Timoho",
       nomorStudio: target.nomorStudio || "Studio 1",
-      device: target.device || "Tidak Pakai",
+      device: target.device || "",
       shiftOts: target.shiftOts || "",
       jamMulaiLive: formatTimeOnly(target.jamMulaiLive),
       jamSelesaiLive: formatTimeOnly(target.jamSelesaiLive),
@@ -93,13 +96,23 @@ export function TabRubah({
       catatanOts: target.catatanOts || "",
       status: target.status || "TERJADWAL",
     });
+
+    if (target.filePendukungOtsDriveId) {
+      const files = target.filePendukungOtsDriveId.split(",").map((s: string) => s.trim());
+      setOtsFileList(files.length > 0 ? files : [""]);
+    } else {
+      setOtsFileList([""]);
+    }
+
     setShowDropdown(false);
 
     // Scroll to form smoothly
-    const formEl = document.getElementById("panelPerbaruiKolom");
-    if (formEl) {
-      formEl.scrollIntoView({ behavior: "smooth" });
-    }
+    setTimeout(() => {
+      const formEl = document.getElementById("panelFormPerubahan");
+      if (formEl) {
+        formEl.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 100);
   }
 
   function handleSearchSelect() {
@@ -166,6 +179,8 @@ export function TabRubah({
               : editJadwalForm.jamSelesaiLive
           }`;
 
+      const validFiles = otsFileList.map((f) => f.trim()).filter(Boolean);
+
       const payload: any = {
         idJadwal: editJadwalForm.idJadwal,
         tanggal: `${editJadwalForm.tanggal}T00:00:00.000Z`,
@@ -183,6 +198,7 @@ export function TabRubah({
         promoLive: editJadwalForm.promoLive,
         catatanHost: editJadwalForm.catatanHost,
         catatanOts: editJadwalForm.catatanOts,
+        filePendukungOtsDriveId: validFiles.length > 0 ? validFiles.join(", ") : undefined,
         status: editJadwalForm.status,
       };
 
@@ -201,7 +217,7 @@ export function TabRubah({
         showAlert(`❌ Gagal mengubah jadwal: ${d.message || "Terjadi kesalahan"}`);
       }
     } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan perubahan.");
+      showAlert("⚠️ Terjadi kesalahan kone connection saat menyimpan perubahan.");
     } finally {
       setSavingEditJadwal(false);
     }
@@ -342,69 +358,65 @@ export function TabRubah({
 
   return (
     <div className="space-y-6">
-      {/* Selector: Streamer vs OTS */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <h2 className="font-extrabold text-black text-base flex items-center gap-2">
-              <i className="fa-solid fa-pen-to-square text-[#941A0B]" />
-              <span>Rubah Jadwal Siaran / Kerja</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Cari jadwal target, perbarui kolom data, atau pilih langsung dari tabel di bawah
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setTipeRubah("STREAMER");
-                setSelectedEditJadwal(null);
-                setSearchEditId("");
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                tipeRubah === "STREAMER"
-                  ? "bg-[#941A0B] text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              <i className="fa-solid fa-video mr-1.5" />
-              Jadwal Streamer
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setTipeRubah("OTS");
-                setSelectedEditJadwal(null);
-                setSearchEditId("");
-              }}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
-                tipeRubah === "OTS"
-                  ? "bg-[#941A0B] text-white shadow-xs"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              <i className="fa-solid fa-headphones mr-1.5" />
-              Jadwal OTS
-            </button>
-          </div>
+      {/* 1. KARTU CARI JADWAL TARGET (PERSIS REF DEPLOY) */}
+      <div className="bg-white p-5 sm:p-6 rounded-xl border border-slate-200 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-800 mb-3">Cari Jadwal Target</h2>
+
+        {/* TOMBOL PILIHAN KONTRAST STREAMER vs OTS */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-5 pb-5 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => {
+              setTipeRubah("STREAMER");
+              setSelectedEditJadwal(null);
+              setSearchEditId("");
+            }}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 w-full sm:w-auto ${
+              tipeRubah === "STREAMER"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <i className="fa-solid fa-video" /> Jadwal Streamer
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTipeRubah("OTS");
+              setSelectedEditJadwal(null);
+              setSearchEditId("");
+            }}
+            className={`px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 w-full sm:w-auto ${
+              tipeRubah === "OTS"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <i className="fa-solid fa-headphones" /> Jadwal OTS
+          </button>
         </div>
 
-        {/* Search Bar & Date Filter */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-          <div>
-            <label className={labelCls}>Filter Tanggal (Opsional)</label>
+        <div className="flex flex-col md:flex-row gap-4">
+          {/* INPUT FILTER TANGGAL (CALENDAR) */}
+          <div className="w-full md:w-48 flex-shrink-0">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Pilih Tanggal
+            </label>
             <FlatpickrPicker
               value={filterTanggalRubah}
-              placeholder="Semua Tanggal..."
+              placeholder="Semua Tanggal"
               options={{ mode: "single", dateFormat: "Y-m-d" }}
               onChange={(dateStr) => setFilterTanggalRubah(dateStr)}
             />
           </div>
-          <div className="relative sm:col-span-2">
-            <label className={labelCls}>Cari ID Jadwal / Streamer / OTS / Brand</label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+
+          {/* INPUT PENCARIAN DATALIST */}
+          <div className="w-full flex-1">
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+              Pilih ID / Nama
+            </label>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative w-full flex-1">
                 <input
                   type="text"
                   value={searchEditId}
@@ -419,8 +431,8 @@ export function TabRubah({
                       handleSearchSelect();
                     }
                   }}
-                  placeholder="Ketik ID jadwal (e.g. STR/...) atau nama..."
-                  className={inputCls}
+                  placeholder="Ketik atau pilih dari daftar..."
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 pr-10 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
                 {searchEditId && (
                   <button
@@ -431,11 +443,11 @@ export function TabRubah({
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
                   >
-                    <i className="fa-solid fa-circle-xmark text-sm" />
+                    <i className="fa-solid fa-circle-xmark text-lg" />
                   </button>
                 )}
 
-                {/* Dropdown Suggestions */}
+                {/* Dropdown Auto-suggest */}
                 {showDropdown && searchCandidates.length > 0 && (
                   <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto divide-y divide-slate-100">
                     {searchCandidates.slice(0, 15).map((j) => (
@@ -448,14 +460,14 @@ export function TabRubah({
                           <span className="font-mono font-bold text-blue-600">
                             {j.idJadwal}
                           </span>
-                          <span className="text-slate-600 font-bold ml-2">
+                          <span className="text-slate-700 font-bold ml-2">
                             {j.streamerKaryawan?.namaLengkap || j.otsKaryawan?.namaLengkap || "–"}
                           </span>
                           <div className="text-[11px] text-slate-400">
                             {formatDateSafe(j.tanggal)} • {formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} • {j.platform}
                           </div>
                         </div>
-                        <span className="text-xs font-bold text-[#941A0B] bg-red-50 px-2 py-1 rounded-lg">
+                        <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-lg">
                           Rubah Data
                         </span>
                       </div>
@@ -463,12 +475,13 @@ export function TabRubah({
                   </div>
                 )}
               </div>
+
               <button
                 type="button"
                 onClick={handleSearchSelect}
-                className="px-5 py-2.5 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center gap-1.5"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-md flex-shrink-0"
               >
-                <i className="fa-solid fa-magnifying-glass" />
+                <i className="fa-solid fa-pen-to-square" />
                 <span>Rubah Data</span>
               </button>
             </div>
@@ -476,408 +489,627 @@ export function TabRubah({
         </div>
       </div>
 
-      {/* EDIT FORM PANEL (PERBARUI KOLOM DATA JADWAL) */}
+      {/* 2. PANEL TARGET PERUBAHAN JADWAL & FORMULIR LENGKAP INPUT BARU (DIKUNCI) */}
       {selectedEditJadwal && (
-        <div id="panelPerbaruiKolom" className="space-y-4 animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-slate-800 text-white p-5 rounded-2xl border border-slate-700 shadow-sm">
-            <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3 border-b border-slate-700 pb-2">
-              Target Perubahan Jadwal Aktif
+        <div id="panelFormPerubahan" className="space-y-4 animate-in fade-in duration-200">
+          {/* Info Card Target */}
+          <div className="bg-slate-800 text-white p-5 sm:p-6 rounded-xl border border-slate-700 shadow-sm">
+            <h2 className="text-sm font-bold text-slate-300 mb-4 border-b border-slate-600 pb-2">
+              Target Perubahan Jadwal
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <span className="block text-[11px] text-slate-400">ID Jadwal</span>
-                <div className="font-mono font-bold text-base text-blue-400">
-                  {editJadwalForm.idJadwal || "–"}
+                <span className="block text-xs text-slate-400 mb-0.5">ID Jadwal</span>
+                <div className="font-bold text-lg text-blue-400 font-mono">
+                  {editJadwalForm.idJadwal || "-"}
                 </div>
               </div>
               <div>
-                <span className="block text-[11px] text-slate-400">Nama Target</span>
-                <div className="font-bold text-base text-white">
+                <span className="block text-xs text-slate-400 mb-0.5">Nama Target</span>
+                <div className="font-bold text-lg">
                   {tipeRubah === "STREAMER" ? editJadwalForm.streamerNama : editJadwalForm.otsNama}
                 </div>
               </div>
               <div>
-                <span className="block text-[11px] text-slate-400">Waktu Siaran / Kerja</span>
-                <div className="font-mono font-bold text-base text-emerald-400">
+                <span className="block text-xs text-slate-400 mb-0.5">Waktu Kerja</span>
+                <div className="font-bold text-lg text-emerald-400 font-mono">
                   {editJadwalForm.jamMulaiLive} - {editJadwalForm.jamSelesaiLive} WIB
                 </div>
               </div>
             </div>
           </div>
 
-          <form onSubmit={handleSaveEditJadwal} className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-extrabold text-black text-sm flex items-center gap-2">
-                <i className="fa-solid fa-sliders text-[#941A0B]" />
-                <span>Perbarui Kolom Data Jadwal ({tipeRubah === "STREAMER" ? "Streamer" : "OTS"})</span>
-              </h3>
+          {/* FORMULIR IDENTIK SEPERTI INPUT JADWAL BARU */}
+          <form
+            onSubmit={handleSaveEditJadwal}
+            className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+          >
+            <div className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                  <i className="fa-solid fa-pen-to-square" />
+                </div>
+                <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                  Perbarui Kolom Data Jadwal ({tipeRubah === "STREAMER" ? "Streamer" : "OTS"})
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setSelectedEditJadwal(null)}
-                className="text-xs text-red-600 font-bold hover:underline"
+                className="text-slate-400 hover:text-red-500 transition text-sm font-bold flex items-center gap-1"
               >
-                Batal / Tutup Form
+                <i className="fa-solid fa-xmark text-lg" />
+                <span>Batal / Tutup</span>
               </button>
             </div>
 
-            {/* FORM FIELDS SESUAI INPUT BARU */}
-            {tipeRubah === "STREAMER" ? (
-              /* --- FORMULIR RUBAH STREAMER --- */
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Tanggal */}
-                <div>
-                  <label className={labelCls}>Tanggal Live *</label>
-                  <FlatpickrPicker
-                    value={editJadwalForm.tanggal}
-                    placeholder="Pilih Tanggal..."
-                    options={{ mode: "single", dateFormat: "Y-m-d" }}
-                    onChange={(dateStr) => updateEditField("tanggal", dateStr)}
-                  />
-                </div>
+            <div className="p-5 sm:p-6 space-y-6 block">
+              {/* ========================================================= */}
+              {/* KONDISI A: FORMULIR IDENTIK INPUT STREAMER (KARYAWAN DIKUNCI) */}
+              {/* ========================================================= */}
+              {tipeRubah === "STREAMER" ? (
+                <>
+                  {/* Row 1: Tanggal & Platform */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Tanggal Live *
+                      </label>
+                      <FlatpickrPicker
+                        value={editJadwalForm.tanggal}
+                        placeholder="Pilih Tanggal..."
+                        options={{ mode: "single", dateFormat: "Y-m-d" }}
+                        onChange={(dateStr) => updateEditField("tanggal", dateStr)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Platform Client *
+                      </label>
+                      <select
+                        value={editJadwalForm.platform}
+                        onChange={(e) => {
+                          const sel = e.target.value;
+                          const matched = platformClientOptions.find((p) => p.value === sel);
+                          updateEditField("platform", sel);
+                          if (matched?.clientId) {
+                            updateEditField("clientId", matched.clientId);
+                          }
+                        }}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                        required
+                      >
+                        <option value="">-- Pilih Platform Client --</option>
+                        {platformClientOptions.map((p) => (
+                          <option key={p.value} value={p.value}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
-                {/* Platform Client */}
-                <div>
-                  <label className={labelCls}>Platform Client *</label>
-                  <select
-                    value={editJadwalForm.platform}
-                    onChange={(e) => {
-                      const sel = e.target.value;
-                      const matched = platformClientOptions.find((p) => p.value === sel);
-                      updateEditField("platform", sel);
-                      if (matched?.clientId) {
-                        updateEditField("clientId", matched.clientId);
-                      }
-                    }}
-                    className={selectCls}
-                    required
-                  >
-                    <option value="">-- Pilih Platform Client --</option>
-                    {platformClientOptions.map((p) => (
-                      <option key={p.value} value={p.value}>
-                        {p.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  {/* Row 2: Cari Host Streamer (DIKUNCI / LOCKED SESUAI ATURAN) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        <span className="flex items-center gap-1.5 text-slate-700">
+                          <i className="fa-solid fa-lock text-amber-600" />
+                          Cari Host Streamer (Dikunci)
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={`${editJadwalForm.streamerNama} (${editJadwalForm.streamerId})`}
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-600 rounded-lg px-4 py-2.5 text-sm outline-none cursor-not-allowed font-medium"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          ID Host (Auto)
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.streamerId}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none font-mono"
+                          readOnly
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          Nama Streamer
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.streamerNama}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                          readOnly
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                {/* HOST / STREAMER (DIKUNCI / LOCKED SESUAI ATURAN) */}
-                <div>
-                  <label className={labelCls}>
-                    <span className="flex items-center gap-1">
-                      <i className="fa-solid fa-lock text-amber-600" />
-                      Host / Streamer (Dikunci)
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      readOnly
-                      disabled
-                      value={`${editJadwalForm.streamerNama || "–"} (${editJadwalForm.streamerId || "–"})`}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 cursor-not-allowed shadow-2xs"
+                  {/* Row 3: Cabang Studio, Nomor Studio, Device, Status */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Cabang Studio *
+                      </label>
+                      <select
+                        value={editJadwalForm.cabangStudio}
+                        onChange={(e) => updateEditField("cabangStudio", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                        required
+                      >
+                        <option value="Timoho">Timoho</option>
+                        <option value="Berbah">Berbah</option>
+                        <option value="Wiyoro">Wiyoro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Nomor Studio
+                      </label>
+                      <select
+                        value={editJadwalForm.nomorStudio}
+                        onChange={(e) => updateEditField("nomorStudio", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      >
+                        <option value="Studio 1">Studio 1</option>
+                        <option value="Studio 2">Studio 2</option>
+                        <option value="Studio 3">Studio 3</option>
+                        <option value="Studio 4">Studio 4</option>
+                        <option value="Studio 5">Studio 5</option>
+                        <option value="Studio 6">Studio 6</option>
+                        <option value="Studio 7">Studio 7</option>
+                        <option value="Studio 8">Studio 8</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Device
+                      </label>
+                      <select
+                        value={editJadwalForm.device || ""}
+                        onChange={(e) => updateEditField("device", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      >
+                        <option value="">Tidak Pakai</option>
+                        <option value="Iphone XR Merah">Iphone XR Merah</option>
+                        <option value="Iphone XR Putih">Iphone XR Putih</option>
+                        <option value="Iphone XR Orange">Iphone XR Orange</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Status Jadwal *
+                      </label>
+                      <select
+                        value={editJadwalForm.status}
+                        onChange={(e) => updateEditField("status", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none font-bold"
+                      >
+                        <option value="TERJADWAL">TERJADWAL</option>
+                        <option value="PLOTING">PLOTING</option>
+                        <option value="ON AIR">ON AIR</option>
+                        <option value="SELESAI">SELESAI</option>
+                        <option value="BATAL">BATAL</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Row 4: Jam Mulai, Jam Selesai, File Pendukung Host, Catatan Host */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Jam Mulai *
+                        </label>
+                        <input
+                          type="time"
+                          value={editJadwalForm.jamMulaiLive}
+                          onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Jam Selesai *
+                        </label>
+                        <input
+                          type="time"
+                          value={editJadwalForm.jamSelesaiLive}
+                          onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          File Pendukung Host
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.filePendukungHost || ""}
+                          onChange={(e) => updateEditField("filePendukungHost", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Link dokumen Host..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Catatan Host
+                        </label>
+                        <textarea
+                          rows={1}
+                          value={editJadwalForm.catatanHost || ""}
+                          onChange={(e) => updateEditField("catatanHost", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Opsional..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 5: OTS Pendamping (Blue-tinted bar) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-b border-slate-100 py-5 bg-blue-50/30 -mx-5 px-5 sm:-mx-6 sm:px-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Cari Staff OTS (Pendamping)
+                      </label>
+                      <select
+                        value={editJadwalForm.otsKaryawanId || ""}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const o = otsStaff.find((x) => x.id === id);
+                          updateEditField("otsKaryawanId", id);
+                          updateEditField("otsId", o?.idKaryawan || "");
+                          updateEditField("otsNama", o?.namaLengkap || "");
+                        }}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                      >
+                        <option value="">Kosongkan jika tidak ada OTS...</option>
+                        {otsStaff.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.namaLengkap} ({o.idKaryawan})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          ID OTS
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.otsId || "-"}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none font-mono"
+                          readOnly
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          Nama OTS
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.otsNama || "-"}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                          readOnly
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 6: Judul Live, Promo Live, File OTS, Catatan OTS */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Judul Live
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.judulLive || ""}
+                          onChange={(e) => updateEditField("judulLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Judul streaming..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Promo Live
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={editJadwalForm.promoLive || ""}
+                          onChange={(e) => updateEditField("promoLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Detail promo..."
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          File Pendukung OTS
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.filePendukungOts || ""}
+                          onChange={(e) => updateEditField("filePendukungOts", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Paste link dokumen OTS..."
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                          Catatan OTS
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={editJadwalForm.catatanOts || ""}
+                          onChange={(e) => updateEditField("catatanOts", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                          placeholder="Instruksi untuk OTS..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* ========================================================= */
+                /* KONDISI B: FORMULIR IDENTIK INPUT OTS (KARYAWAN DIKUNCI)  */
+                /* ========================================================= */
+                <>
+                  {/* Row 1: Tanggal & Cabang Studio */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Tanggal Penugasan *
+                      </label>
+                      <FlatpickrPicker
+                        value={editJadwalForm.tanggal}
+                        placeholder="Pilih Tanggal..."
+                        options={{ mode: "single", dateFormat: "Y-m-d" }}
+                        onChange={(dateStr) => updateEditField("tanggal", dateStr)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Cabang Studio *
+                      </label>
+                      <select
+                        value={editJadwalForm.cabangStudio}
+                        onChange={(e) => updateEditField("cabangStudio", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                        required
+                      >
+                        <option value="Timoho">Timoho</option>
+                        <option value="Berbah">Berbah</option>
+                        <option value="Wiyoro">Wiyoro</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Row 2: Cari Staff OTS (DIKUNCI / LOCKED SESUAI ATURAN) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        <span className="flex items-center gap-1.5 text-slate-700">
+                          <i className="fa-solid fa-lock text-amber-600" />
+                          Cari Staff OTS (Dikunci)
+                        </span>
+                      </label>
+                      <input
+                        type="text"
+                        readOnly
+                        disabled
+                        value={`${editJadwalForm.otsNama} (${editJadwalForm.otsId})`}
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-600 rounded-lg px-4 py-2.5 text-sm outline-none cursor-not-allowed font-medium"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          ID OTS (Auto)
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.otsId}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none font-mono"
+                          readOnly
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+                          Nama OTS
+                        </label>
+                        <input
+                          type="text"
+                          value={editJadwalForm.otsNama}
+                          className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                          readOnly
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Row 3: Shift, Masuk, Keluar, Status, Catatan */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                      <div>
+                        <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
+                          Pilih Shift
+                        </label>
+                        <select
+                          value={editJadwalForm.shiftOts || ""}
+                          onChange={(e) => {
+                            const shift = e.target.value;
+                            const times = applyShiftOts(shift);
+                            updateEditField("shiftOts", shift);
+                            if (times.masuk) updateEditField("jamMulaiLive", times.masuk);
+                            if (times.keluar) updateEditField("jamSelesaiLive", times.keluar);
+                          }}
+                          className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        >
+                          <option value="">Kustom</option>
+                          <option value="07:00-15:00">Shift 1 (07:00-15:00)</option>
+                          <option value="15:00-23:00">Shift 2 (15:00-23:00)</option>
+                          <option value="23:00-07:00">Shift 3 (23:00-07:00)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
+                          Masuk *
+                        </label>
+                        <input
+                          type="time"
+                          value={editJadwalForm.jamMulaiLive}
+                          onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
+                          Keluar *
+                        </label>
+                        <input
+                          type="time"
+                          value={editJadwalForm.jamSelesaiLive}
+                          onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
+                          className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                        Status Jadwal *
+                      </label>
+                      <select
+                        value={editJadwalForm.status}
+                        onChange={(e) => updateEditField("status", e.target.value)}
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none font-bold"
+                      >
+                        <option value="TERJADWAL">TERJADWAL</option>
+                        <option value="ON_GOING">BERJALAN / ON GOING</option>
+                        <option value="SELESAI">SELESAI</option>
+                        <option value="BATAL">BATAL</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Catatan Pekerjaan */}
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                      Catatan Pekerjaan
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={editJadwalForm.catatanOts || ""}
+                      onChange={(e) => updateEditField("catatanOts", e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Instruksi tugas OTS..."
                     />
                   </div>
-                </div>
 
-                {/* Personel OTS */}
-                <div>
-                  <label className={labelCls}>Personel OTS</label>
-                  <select
-                    value={editJadwalForm.otsKaryawanId || ""}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const o = otsStaff.find((x) => x.id === id);
-                      updateEditField("otsKaryawanId", id);
-                      updateEditField("otsId", o?.idKaryawan || "");
-                      updateEditField("otsNama", o?.namaLengkap || "");
-                    }}
-                    className={selectCls}
-                  >
-                    <option value="">-- Pilih Personel OTS (Opsional) --</option>
-                    {otsStaff.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.namaLengkap} ({o.idKaryawan})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Cabang & Studio */}
-                <div>
-                  <label className={labelCls}>Cabang & Studio</label>
-                  <select
-                    value={`${editJadwalForm.cabangStudio}|${editJadwalForm.nomorStudio}`}
-                    onChange={(e) => {
-                      const [c, n] = e.target.value.split("|");
-                      updateEditField("cabangStudio", c);
-                      updateEditField("nomorStudio", n);
-                    }}
-                    className={selectCls}
-                  >
-                    {STUDIOS.map((s) => (
-                      <option key={s.name} value={`${s.cabang}|${s.no}`}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Device */}
-                <div>
-                  <label className={labelCls}>Device</label>
-                  <select
-                    value={editJadwalForm.device || "Tidak Pakai"}
-                    onChange={(e) => updateEditField("device", e.target.value)}
-                    className={selectCls}
-                  >
-                    <option value="Tidak Pakai">Tidak Pakai Device</option>
-                    <option value="Device 1">Device 1</option>
-                    <option value="Device 2">Device 2</option>
-                    <option value="Device 3">Device 3</option>
-                  </select>
-                </div>
-
-                {/* Jam Mulai */}
-                <div>
-                  <label className={labelCls}>Jam Mulai Live *</label>
-                  <input
-                    type="time"
-                    value={editJadwalForm.jamMulaiLive}
-                    onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Jam Selesai */}
-                <div>
-                  <label className={labelCls}>Jam Selesai Live *</label>
-                  <input
-                    type="time"
-                    value={editJadwalForm.jamSelesaiLive}
-                    onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Status */}
-                <div>
-                  <label className={labelCls}>Status Jadwal</label>
-                  <select
-                    value={editJadwalForm.status}
-                    onChange={(e) => updateEditField("status", e.target.value)}
-                    className={selectCls}
-                  >
-                    <option value="TERJADWAL">TERJADWAL</option>
-                    <option value="PLOTING">PLOTING</option>
-                    <option value="ON AIR">ON AIR / LIVE</option>
-                    <option value="SELESAI">SELESAI</option>
-                    <option value="BATAL">BATAL / DIBATALKAN</option>
-                  </select>
-                </div>
-
-                {/* Judul Live */}
-                <div>
-                  <label className={labelCls}>Judul Sesi Live</label>
-                  <input
-                    type="text"
-                    value={editJadwalForm.judulLive || ""}
-                    onChange={(e) => updateEditField("judulLive", e.target.value)}
-                    placeholder="e.g. Flash Sale 9.9"
-                    className={inputCls}
-                  />
-                </div>
-
-                {/* Promo */}
-                <div>
-                  <label className={labelCls}>Promo Live</label>
-                  <input
-                    type="text"
-                    value={editJadwalForm.promoLive || ""}
-                    onChange={(e) => updateEditField("promoLive", e.target.value)}
-                    placeholder="e.g. Diskon 50%"
-                    className={inputCls}
-                  />
-                </div>
-
-                {/* Catatan Host */}
-                <div>
-                  <label className={labelCls}>Catatan Host</label>
-                  <textarea
-                    rows={2}
-                    value={editJadwalForm.catatanHost || ""}
-                    onChange={(e) => updateEditField("catatanHost", e.target.value)}
-                    placeholder="Catatan untuk host..."
-                    className={inputCls}
-                  />
-                </div>
-              </div>
-            ) : (
-              /* --- FORMULIR RUBAH OTS --- */
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Tanggal */}
-                <div>
-                  <label className={labelCls}>Tanggal Kerja *</label>
-                  <FlatpickrPicker
-                    value={editJadwalForm.tanggal}
-                    placeholder="Pilih Tanggal..."
-                    options={{ mode: "single", dateFormat: "Y-m-d" }}
-                    onChange={(dateStr) => updateEditField("tanggal", dateStr)}
-                  />
-                </div>
-
-                {/* PERSONEL OTS (DIKUNCI / LOCKED SESUAI ATURAN) */}
-                <div>
-                  <label className={labelCls}>
-                    <span className="flex items-center gap-1">
-                      <i className="fa-solid fa-lock text-amber-600" />
-                      Personel OTS (Dikunci)
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      readOnly
-                      disabled
-                      value={`${editJadwalForm.otsNama || "–"} (${editJadwalForm.otsId || "–"})`}
-                      className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 cursor-not-allowed shadow-2xs"
-                    />
+                  {/* File Pendukung OTS (Dynamic inputs matching ref deploy) */}
+                  <div className="mt-5 pt-5 border-t border-slate-100">
+                    <div className="flex justify-between items-center mb-3">
+                      <label className="block text-sm font-semibold text-slate-700">
+                        File Pendukung
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setOtsFileList([...otsFileList, ""])}
+                        className="text-xs text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition flex items-center gap-1"
+                      >
+                        <i className="fa-solid fa-plus" />
+                        <span>Tambah Link</span>
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {otsFileList.map((fVal, fIdx) => (
+                        <div key={fIdx} className="flex gap-2">
+                          <input
+                            type="text"
+                            value={fVal}
+                            onChange={(e) => {
+                              const updated = [...otsFileList];
+                              updated[fIdx] = e.target.value;
+                              setOtsFileList(updated);
+                            }}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                            placeholder="Paste link file/dokumen di sini..."
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (otsFileList.length > 1) {
+                                setOtsFileList(otsFileList.filter((_, i) => i !== fIdx));
+                              } else {
+                                setOtsFileList([""]);
+                              }
+                            }}
+                            className="bg-red-50 text-red-500 hover:bg-red-100 px-3.5 rounded-lg transition"
+                          >
+                            <i className="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                </>
+              )}
 
-                {/* Cabang & Studio */}
-                <div>
-                  <label className={labelCls}>Cabang & Studio</label>
-                  <select
-                    value={`${editJadwalForm.cabangStudio}|${editJadwalForm.nomorStudio}`}
-                    onChange={(e) => {
-                      const [c, n] = e.target.value.split("|");
-                      updateEditField("cabangStudio", c);
-                      updateEditField("nomorStudio", n);
-                    }}
-                    className={selectCls}
-                  >
-                    {STUDIOS.map((s) => (
-                      <option key={s.name} value={`${s.cabang}|${s.no}`}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Shift Preset */}
-                <div>
-                  <label className={labelCls}>Preset Shift</label>
-                  <select
-                    value={editJadwalForm.shiftOts || ""}
-                    onChange={(e) => {
-                      const shift = e.target.value;
-                      const times = applyShiftOts(shift);
-                      updateEditField("shiftOts", shift);
-                      if (times.masuk) updateEditField("jamMulaiLive", times.masuk);
-                      if (times.keluar) updateEditField("jamSelesaiLive", times.keluar);
-                    }}
-                    className={selectCls}
-                  >
-                    <option value="">Kustom (Manual)</option>
-                    <option value="07:00-15:00">Shift Pagi (07:00 - 15:00)</option>
-                    <option value="15:00-23:00">Shift Siang (15:00 - 23:00)</option>
-                    <option value="23:00-07:00">Shift Malam (23:00 - 07:00)</option>
-                  </select>
-                </div>
-
-                {/* Jam Masuk */}
-                <div>
-                  <label className={labelCls}>Jam Masuk *</label>
-                  <input
-                    type="time"
-                    value={editJadwalForm.jamMulaiLive}
-                    onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Jam Keluar */}
-                <div>
-                  <label className={labelCls}>Jam Keluar *</label>
-                  <input
-                    type="time"
-                    value={editJadwalForm.jamSelesaiLive}
-                    onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Status */}
-                <div>
-                  <label className={labelCls}>Status Jadwal</label>
-                  <select
-                    value={editJadwalForm.status}
-                    onChange={(e) => updateEditField("status", e.target.value)}
-                    className={selectCls}
-                  >
-                    <option value="TERJADWAL">TERJADWAL</option>
-                    <option value="ON_GOING">BERJALAN / ON GOING</option>
-                    <option value="SELESAI">SELESAI</option>
-                    <option value="BATAL">BATAL / DIBATALKAN</option>
-                  </select>
-                </div>
-
-                {/* Catatan OTS */}
-                <div>
-                  <label className={labelCls}>Catatan Penugasan OTS</label>
-                  <textarea
-                    rows={2}
-                    value={editJadwalForm.catatanOts || ""}
-                    onChange={(e) => updateEditField("catatanOts", e.target.value)}
-                    placeholder="Catatan penugasan OTS..."
-                    className={inputCls}
-                  />
-                </div>
+              {/* Action Buttons: Bebas Crash & Simpan Perubahan */}
+              <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleCheckCrash}
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-bold transition shadow-md flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-shield-halved" /> Bebas Crash
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingEditJadwal}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm"
+                >
+                  <i className="fa-solid fa-cloud-arrow-up" />
+                  <span>{savingEditJadwal ? "Menyimpan..." : "Simpan Perubahan"}</span>
+                </button>
               </div>
-            )}
-
-            {/* Action Bar */}
-            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={handleCheckCrash}
-                className="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow-xs flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-shield-halved" /> Bebas Crash
-              </button>
-              <button
-                type="submit"
-                disabled={savingEditJadwal}
-                className="w-full sm:w-auto px-8 py-2.5 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-cloud-arrow-up" />
-                <span>{savingEditJadwal ? "Menyimpan Perubahan..." : "Simpan Perubahan Jadwal"}</span>
-              </button>
             </div>
           </form>
         </div>
       )}
 
       {/* ===================================================================== */}
-      {/* TABEL DI BAWAH SESUAI PILIHAN SUBTAB (ITEM 2)                         */}
+      {/* 3. TABEL MONITORING DI BAWAH (STREAMER vs OTS)                         */}
       {/* ===================================================================== */}
 
-      {/* KONDISI 1: JIKA SUBTAB JADWAL STREAMER DIPILIH -> TABEL JADWAL STREAMER */}
+      {/* JIKA SUBTAB JADWAL STREAMER DIPILIH -> TABEL JADWAL STREAMER */}
       {tipeRubah === "STREAMER" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mt-6">
-          {/* Header Title Bar */}
           <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h3 className="font-extrabold text-slate-800 text-sm flex items-center gap-2">
-                <i className="fa-solid fa-video text-[#941A0B]" />
+                <i className="fa-solid fa-video text-blue-600" />
                 <span>Daftar Jadwal Live Streaming (Streamer Dashboard)</span>
               </h3>
               <p className="text-[11px] text-slate-400">
-                Klik tombol <strong>Rubah Data</strong> pada baris jadwal untuk langsung memuat data ke formulir di atas
+                Klik tombol <strong>Rubah</strong> pada baris jadwal untuk langsung memuat data ke formulir di atas
               </p>
             </div>
             <span className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -890,7 +1122,9 @@ export function TabRubah({
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-start w-full">
               {/* BLOK 1: Filter Periode */}
               <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Periode Waktu</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Periode Waktu
+                </label>
                 <select
                   value={liveFilterPeriode}
                   onChange={(e) => {
@@ -919,7 +1153,9 @@ export function TabRubah({
 
               {/* BLOK 2: Rentang Jam */}
               <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Rentang Jam</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Rentang Jam
+                </label>
                 <select
                   value={liveFilterWaktuToggle}
                   onChange={(e) => setLiveFilterWaktuToggle(e.target.value as any)}
@@ -948,7 +1184,9 @@ export function TabRubah({
 
               {/* BLOK 3: Kolom Filter */}
               <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Kolom Pencarian</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Kolom Pencarian
+                </label>
                 <select
                   value={liveFilterCol}
                   onChange={(e) => setLiveFilterCol(e.target.value as any)}
@@ -964,7 +1202,9 @@ export function TabRubah({
 
               {/* BLOK 4: Input Pencarian */}
               <div className="flex flex-col gap-1.5 w-full">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Kata Kunci</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  Kata Kunci
+                </label>
                 <input
                   type="text"
                   value={liveFilterText}
@@ -1085,17 +1325,17 @@ export function TabRubah({
         </div>
       )}
 
-      {/* KONDISI 2: JIKA SUBTAB JADWAL OTS DIPILIH -> TABEL JADWAL OTS */}
+      {/* JIKA SUBTAB JADWAL OTS DIPILIH -> TABEL JADWAL OTS */}
       {tipeRubah === "OTS" && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden mt-6">
           <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h3 className="font-extrabold text-black text-sm flex items-center gap-2">
-                <i className="fa-solid fa-list-check text-[#941A0B]" />
+                <i className="fa-solid fa-headphones text-blue-600" />
                 <span>Tabel Monitoring Jadwal Kerja OTS (Staff Dashboard)</span>
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Klik tombol <strong>Rubah Data</strong> pada baris jadwal untuk langsung memuat data ke formulir di atas
+                Klik tombol <strong>Rubah</strong> pada baris jadwal untuk langsung memuat data ke formulir di atas
               </p>
             </div>
             <span className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
@@ -1312,7 +1552,7 @@ export function TabRubah({
               <button
                 type="button"
                 onClick={() => setModalCatatanOts(null)}
-                className="px-5 py-2 bg-[#941A0B] text-white rounded-xl text-xs font-bold"
+                className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
               >
                 Tutup
               </button>
@@ -1347,7 +1587,7 @@ export function TabRubah({
               <button
                 type="button"
                 onClick={() => setModalFileOts(null)}
-                className="px-5 py-2 bg-[#941A0B] text-white rounded-xl text-xs font-bold"
+                className="px-5 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold"
               >
                 Tutup
               </button>
