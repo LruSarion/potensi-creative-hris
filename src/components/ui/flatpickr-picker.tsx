@@ -68,6 +68,7 @@ export const FlatpickrPicker: React.FC<FlatpickrPickerProps> = ({
       disabled={disabled}
       required={required}
       readOnly
+      suppressHydrationWarning
     />
   );
 };
