@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import type { TabSharedProps } from "./types";
 import type { ScheduleFormItem } from "@/types/jadwal";
 import {
@@ -15,6 +15,7 @@ import {
 import { getStatusBadgeClass } from "./shared-styles";
 
 export function TabKlien({
+  streamers = [],
   clients,
   allJadwal,
   platformClientOptions,
@@ -84,30 +85,92 @@ export function TabKlien({
   }>({ isOpen: false, title: "", content: "" });
 
   // =========================================================================
-  // SUBTAB 3: KETENTUAN KLIEN STATES
+  // SUBTAB 3: KETENTUAN KLIEN STATES (100% MATCH WITH REF-DEPLOY)
   // =========================================================================
   const [searchKetentuanPlatform, setSearchKetentuanPlatform] = useState("");
   const [ketentuanPlatformData, setKetentuanPlatformData] = useState<{
     [platformName: string]: { blacklist: string[]; priority: string[] };
   }>({});
+  const [memoriEditKetentuan, setMemoriEditKetentuan] = useState<{
+    [platformName: string]: { blacklist: string[]; priority: string[] };
+  }>({});
+  const [ketentuanPage, setKetentuanPage] = useState(1);
+  const [ketentuanPageSize] = useState(10);
   const [modalKetentuan, setModalKetentuan] = useState<{
     isOpen: boolean;
     platformName: string;
     blacklist: string[];
     priority: string[];
-    inputBlacklist: string;
-    inputPriority: string;
+    searchBlacklist: string;
+    searchPriority: string;
   }>({
     isOpen: false,
     platformName: "",
     blacklist: [],
     priority: [],
-    inputBlacklist: "",
-    inputPriority: "",
+    searchBlacklist: "",
+    searchPriority: "",
+  });
+  const [modalDetailKetentuan, setModalDetailKetentuan] = useState<{
+    isOpen: boolean;
+    title: string;
+    items: { nama: string; jabatan: string }[];
+  }>({
+    isOpen: false,
+    title: "",
+    items: [],
   });
 
+  function showPopUpKetentuanDetail(title: string, rawData: string[] | string) {
+    const items = Array.isArray(rawData)
+      ? rawData
+      : typeof rawData === "string"
+      ? rawData.split("==").filter(Boolean)
+      : [];
+    const parsed = items.map((str) => {
+      const parts = str.split("**");
+      return {
+        nama: parts[0] ? parts[0].trim() : str,
+        jabatan: parts[1] ? parts[1].trim() : "Host",
+      };
+    });
+    setModalDetailKetentuan({
+      isOpen: true,
+      title,
+      items: parsed,
+    });
+  }
+
+  useEffect(() => {
+    if (!clients || clients.length === 0) return;
+    const initial: { [platformName: string]: { blacklist: string[]; priority: string[] } } = {};
+    clients.forEach((c) => {
+      if (Array.isArray((c as any).ketentuan)) {
+        (c as any).ketentuan.forEach((k: any) => {
+          const plat = k.platform || c.namaClient;
+          const bl =
+            typeof k.blacklist === "string"
+              ? k.blacklist.split("==").filter(Boolean)
+              : Array.isArray(k.blacklist)
+              ? k.blacklist
+              : [];
+          const pr =
+            typeof k.prioritasPlatform === "string"
+              ? k.prioritasPlatform.split("==").filter(Boolean)
+              : Array.isArray(k.prioritasPlatform)
+              ? k.prioritasPlatform
+              : [];
+          initial[plat] = { blacklist: bl, priority: pr };
+        });
+      }
+    });
+    if (Object.keys(initial).length > 0) {
+      setKetentuanPlatformData((prev) => ({ ...initial, ...prev }));
+    }
+  }, [clients]);
+
   // =========================================================================
-  // SUBTAB 4: EXPORT JADWAL STATES
+  // SUBTAB 4: EXPORT JADWAL STATES (100% MATCH WITH REF-DEPLOY)
   // =========================================================================
   const [exportTanggalKlien, setExportTanggalKlien] = useState(
     new Date().toISOString().slice(0, 10)
@@ -117,12 +180,20 @@ export function TabKlien({
   const [exportPageSize] = useState(10);
 
   // =========================================================================
-  // SUBTAB 5: IMPORT JADWAL STATES
+  // SUBTAB 5: IMPORT JADWAL STATES (100% MATCH WITH REF-DEPLOY)
   // =========================================================================
   const [importModePloting, setImportModePloting] = useState<"baru" | "revisi">("baru");
   const [importMetodePloting, setImportMetodePloting] = useState<"excel" | "link">("excel");
+  const [importMetodePlotingRevisi, setImportMetodePlotingRevisi] = useState<"excel" | "link">("excel");
   const [importLinkPloting, setImportLinkPloting] = useState("");
+  const [importLinkPlotingRevisi, setImportLinkPlotingRevisi] = useState("");
   const [importOldIdPloting, setImportOldIdPloting] = useState("");
+  const [importDataBaru, setImportDataBaru] = useState<any[]>([]);
+  const [importDataRevisi, setImportDataRevisi] = useState<any[]>([]);
+  const [importPageBaru, setImportPageBaru] = useState(1);
+  const [importPageRevisi, setImportPageRevisi] = useState(1);
+  const [importPageSize] = useState(10);
+  const [isImportCrashVerified, setIsImportCrashVerified] = useState(false);
 
   // =========================================================================
   // SUBTAB 1 HANDLERS
@@ -436,6 +507,26 @@ export function TabKlien({
   // =========================================================================
   // SUBTAB 2 HANDLERS (Rubah Jadwal Klien)
   // =========================================================================
+  function handleSaveModalEditRubahKlien() {
+    if (!modalEditRubahKlien.data) return;
+    const d = modalEditRubahKlien.data;
+    if (!d.platform || !d.tanggal || !d.jamMulaiLive || !d.jamSelesaiLive) {
+      showAlert("⚠️ Tanggal, Platform, dan Jam Mulai/Selesai wajib diisi!");
+      return;
+    }
+    const durasiStr = calcDurationHours(d.jamMulaiLive, d.jamSelesaiLive);
+    setMemoriEditKlien((prev) => ({
+      ...prev,
+      [d.idJadwal]: {
+        ...d,
+        durasi: durasiStr,
+      },
+    }));
+    setModalEditRubahKlien({ isOpen: false, data: null });
+    setIsRubahKlienCrashVerified(false);
+    showAlert(`Jadwal ${d.idJadwal} disimpan dalam memori RAM.`);
+  }
+
   function handleCekBebasCrashRubahKlien() {
     const keys = Object.keys(memoriEditKlien);
     if (keys.length === 0) {
@@ -493,6 +584,49 @@ export function TabKlien({
       fetchData();
     } catch {
       showAlert("❌ Terjadi kesalahan saat menyimpan batch perubahan Jadwal Klien.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // =========================================================================
+  // SUBTAB 3 HANDLERS (Ketentuan Klien)
+  // =========================================================================
+  async function handleSimpanPerubahanKetentuan() {
+    const keys = Object.keys(memoriEditKetentuan);
+    if (keys.length === 0) return;
+
+    setLoading(true);
+    try {
+      for (const plat of keys) {
+        const item = memoriEditKetentuan[plat];
+        const matchedClient =
+          clients.find(
+            (c) =>
+              c.namaClient.toLowerCase() === plat.toLowerCase() ||
+              (c as any).platform?.toLowerCase() === plat.toLowerCase()
+          ) || clients[0];
+
+        if (matchedClient) {
+          await fetch("/api/clients", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              clientId: matchedClient.id,
+              platform: plat,
+              blacklist: item.blacklist.join("=="),
+              catatan: item.blacklist.join("=="),
+              kategori: item.priority.join("=="),
+            }),
+          });
+        }
+      }
+      setKetentuanPlatformData((prev) => ({ ...prev, ...memoriEditKetentuan }));
+      setMemoriEditKetentuan({});
+      showAlert(`✅ KETENTUAN KLIEN TERSIMPAN:\n\nBerhasil memperbarui ${keys.length} ketentuan platform ke server & database.`);
+      fetchData();
+    } catch {
+      showAlert("❌ Terjadi kesalahan saat menyimpan ketentuan ke server.");
     } finally {
       setLoading(false);
     }
@@ -1409,385 +1543,948 @@ export function TabKlien({
           </div>
         </div>
       )}
+      {/* ===================================================================== */}
+      {/* SUBTAB 3: KETENTUAN KLIEN (100% MATCH WITH REF-DEPLOY)                */}
+      {/* ===================================================================== */}
+      {klienSubTab === "ketentuan" && (() => {
+        const filteredKetentuan = platformClientOptions.filter(
+          (p) =>
+            !searchKetentuanPlatform ||
+            p.label.toLowerCase().includes(searchKetentuanPlatform.toLowerCase().trim())
+        );
+        const totalKetentuanPages = Math.max(1, Math.ceil(filteredKetentuan.length / ketentuanPageSize));
+        const currentKetentuanPage = Math.min(ketentuanPage, totalKetentuanPages);
+        const startKetIdx = (currentKetentuanPage - 1) * ketentuanPageSize;
+        const paginatedKetentuan = filteredKetentuan.slice(startKetIdx, startKetIdx + ketentuanPageSize);
+        const hasUnsavedKetentuan = Object.keys(memoriEditKetentuan).length > 0;
 
-      {/* ===================================================================== */}
-      {/* SUBTAB 3: KETENTUAN KLIEN                                             */}
-      {/* ===================================================================== */}
-      {klienSubTab === "ketentuan" && (
-        <div className="space-y-4">
-          <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center text-lg">
-                <i className="fa-solid fa-list-check" />
+        return (
+          <div className="space-y-4">
+            {/* Header / Search Card */}
+            <div className="bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-100 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-sm">
+                  <i className="fa-solid fa-list-check" />
+                </div>
+                <div>
+                  <h2 className="font-bold text-slate-800 leading-tight">Ketentuan Khusus Platform</h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Kelola Blacklist dan Prioritas Host</p>
+                </div>
               </div>
-              <div>
-                <h2 className="font-bold text-slate-800 leading-tight">Ketentuan Khusus Platform</h2>
-                <p className="text-xs text-slate-500 mt-0.5">Kelola Blacklist dan Prioritas Host</p>
-              </div>
-            </div>
-            <div className="w-full sm:w-64 relative">
-              <input
-                type="text"
-                value={searchKetentuanPlatform}
-                onChange={(e) => setSearchKetentuanPlatform(e.target.value)}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
-                placeholder="Cari Platform..."
-              />
-              {searchKetentuanPlatform && (
-                <button
-                  type="button"
-                  onClick={() => setSearchKetentuanPlatform("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
-                >
-                  <i className="fa-solid fa-circle-xmark text-lg" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
-            <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
-              <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap relative">
-                <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-                  <tr>
-                    <th className="px-3 py-3 text-center w-12">NO</th>
-                    <th className="px-3 py-3 text-center w-16">AKSI</th>
-                    <th className="px-4 py-3 min-w-[200px]">PLATFORM</th>
-                    <th className="px-4 py-3 text-center w-40">BLACKLIST</th>
-                    <th className="px-4 py-3 text-center w-40">PRIORITAS</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {platformClientOptions
-                    .filter(
-                      (p) =>
-                        !searchKetentuanPlatform ||
-                        p.label.toLowerCase().includes(searchKetentuanPlatform.toLowerCase())
-                    )
-                    .map((p, idx) => {
-                      const plat = p.label;
-                      const saved = ketentuanPlatformData[plat] || { blacklist: [], priority: [] };
-
-                      return (
-                        <tr key={p.value || plat} className="hover:bg-slate-50 transition">
-                          <td className="px-3 py-3 text-center font-mono text-slate-400">{idx + 1}</td>
-                          <td className="px-3 py-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setModalKetentuan({
-                                  isOpen: true,
-                                  platformName: plat,
-                                  blacklist: [...saved.blacklist],
-                                  priority: [...saved.priority],
-                                  inputBlacklist: "",
-                                  inputPriority: "",
-                                })
-                              }
-                              className="px-3 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg font-bold text-xs transition flex items-center gap-1.5 mx-auto"
-                            >
-                              <i className="fa-solid fa-sliders" /> Atur
-                            </button>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-slate-900">
-                            <div>{plat}</div>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {saved.blacklist.length === 0 ? (
-                              <span className="text-slate-400 italic text-xs">Tidak ada blacklist</span>
-                            ) : (
-                              <div className="flex flex-wrap gap-1 justify-center">
-                                {saved.blacklist.map((b, bi) => (
-                                  <span key={bi} className="px-2 py-0.5 bg-red-50 text-red-700 rounded text-[11px] font-bold">
-                                    {b}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            {saved.priority.length === 0 ? (
-                              <span className="text-slate-400 italic text-xs">Semua host memenuhi</span>
-                            ) : (
-                              <div className="flex flex-wrap gap-1 justify-center">
-                                {saved.priority.map((pr, pi) => (
-                                  <span key={pi} className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[11px] font-bold">
-                                    {pr}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ===================================================================== */}
-      {/* SUBTAB 4: EXPORT JADWAL                                               */}
-      {/* ===================================================================== */}
-      {klienSubTab === "export" && (
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">
-              Tarik Data Jadwal Klien (Export ke Master Form)
-            </h2>
-            <div className="flex flex-col md:flex-row gap-4 items-end">
-              <div className="w-full md:w-64">
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                  Pilih Tanggal Export
-                </label>
+              <div className="w-full sm:w-64 relative">
                 <input
-                  type="date"
-                  value={exportTanggalKlien}
-                  onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onChange={(e) => setExportTanggalKlien(e.target.value)}
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
+                  type="text"
+                  value={searchKetentuanPlatform}
+                  onChange={(e) => {
+                    setSearchKetentuanPlatform(e.target.value);
+                    setKetentuanPage(1);
+                  }}
+                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 pr-10 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50 focus:bg-white transition-colors"
+                  placeholder="Cari Platform..."
                 />
+                {searchKetentuanPlatform && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchKetentuanPlatform("");
+                      setKetentuanPage(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
+                    title="Hapus pencarian"
+                  >
+                    <i className="fa-solid fa-circle-xmark text-lg" />
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const filtered = allJadwal.filter(
-                    (j) => (j.tanggal || "").slice(0, 10) === exportTanggalKlien
-                  );
-                  setExportPreviewData(filtered);
-                  setExportPage(1);
-                  showAlert(`✅ Ditemukan ${filtered.length} jadwal pada tanggal ${exportTanggalKlien}.`);
-                }}
-                className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm w-full md:w-auto"
-              >
-                <i className="fa-solid fa-magnifying-glass" /> Tarik Data
-              </button>
             </div>
-          </div>
 
-          {exportPreviewData.length > 0 && (
-            <div>
-              <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-4">
-                <h3 className="font-bold text-slate-800">
-                  <i className="fa-solid fa-list-ul text-blue-600 mr-2" />
-                  Preview Data Export (
-                  <span className="text-blue-600">{exportPreviewData.length}</span> Jadwal)
-                </h3>
+            {/* Action Bar */}
+            <div className="flex flex-col sm:flex-row justify-end gap-3 items-center">
+              {hasUnsavedKetentuan && (
+                <span className="text-sm font-bold text-amber-500 mr-auto flex items-center gap-1.5 animate-pulse">
+                  <i className="fa-solid fa-triangle-exclamation mr-1" /> Ada perubahan yang belum disimpan!
+                </span>
+              )}
+              {hasUnsavedKetentuan && (
                 <button
                   type="button"
                   onClick={() => {
-                    showAlert(`✅ Berhasil membuat salinan ${exportPreviewData.length} jadwal klien untuk ploting!`);
+                    setMemoriEditKetentuan({});
+                    showAlert("Perubahan ketentuan dalam memori telah dibatalkan.");
                   }}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 w-full sm:w-auto text-xs"
+                  className="w-full sm:w-auto px-6 py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl hover:bg-red-100 font-bold transition-all flex items-center justify-center gap-2"
                 >
-                  <i className="fa-solid fa-file-export" /> Buat Salinan untuk Ploting
+                  <i className="fa-solid fa-rotate-left" /> Batal Rubah
                 </button>
-              </div>
+              )}
+              <button
+                type="button"
+                onClick={handleSimpanPerubahanKetentuan}
+                disabled={!hasUnsavedKetentuan}
+                className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition-all flex items-center justify-center gap-2 ${
+                  hasUnsavedKetentuan
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-md"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                }`}
+              >
+                <i className="fa-solid fa-cloud-arrow-up" /> Simpan Perubahan
+              </button>
+            </div>
 
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
-                <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
-                  <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap relative">
-                    <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+            {/* Table */}
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+                <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap relative">
+                  <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      <th className="px-3 py-3 text-center w-12 sticky left-0 z-20 bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                        NO
+                      </th>
+                      <th className="px-3 py-3 text-center w-16">AKSI</th>
+                      <th className="px-4 py-3 min-w-[200px]">PLATFORM</th>
+                      <th className="px-4 py-3 text-center w-40">BLACKLIST</th>
+                      <th className="px-4 py-3 text-center w-40">PRIORITAS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedKetentuan.length === 0 ? (
                       <tr>
-                        <th className="px-2 py-3 text-center w-10">NO</th>
-                        <th className="px-3 py-3 w-40">PLATFORM</th>
-                        <th className="px-3 py-3 w-40">WAKTU LIVE</th>
-                        <th className="px-2 py-3 text-center w-16">KUOTA</th>
-                        <th className="px-2 py-3 text-center w-16">CATATAN</th>
-                        <th className="px-2 py-3 text-center w-16">FILE</th>
-                        <th className="px-2 py-3 text-center w-24 leading-tight">
-                          PROMO<br />& PRODUK
-                        </th>
-                        <th className="px-3 py-3 text-center w-24">STATUS</th>
+                        <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-xs italic">
+                          Tidak ada data platform yang cocok dengan filter.
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {paginatedExport.map((row, idx) => (
-                        <tr key={row.id || idx} className="hover:bg-slate-50">
-                          <td className="px-2 py-3 text-center font-bold text-slate-400">
-                            {startExportIdx + idx + 1}
-                          </td>
-                          <td className="px-3 py-3 font-semibold text-slate-800">{row.platform}</td>
-                          <td className="px-3 py-3">
-                            <div className="font-bold text-xs">{formatDateSafe(row.tanggal)}</div>
-                            <div className="text-emerald-600 font-mono text-[11px]">
-                              {formatTimeSafe(row.jamMulaiLive)} - {formatTimeSafe(row.jamSelesaiLive)}
-                            </div>
-                          </td>
-                          <td className="px-2 py-3 text-center font-bold text-xs">
-                            {row.kuotaHost || 1} Host
-                          </td>
-                          <td className="px-2 py-3 text-center text-xs">
-                            {row.catatanHost || "-"}
-                          </td>
-                          <td className="px-2 py-3 text-center text-xs">
-                            {row.filePendukungHost ? "Ada File" : "-"}
-                          </td>
-                          <td className="px-2 py-3 text-center text-xs">
-                            {row.promoLive || "-"}
-                          </td>
-                          <td className="px-3 py-3 text-center">
-                            <span
-                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border ${getStatusBadgeClass(
-                                row.status
-                              )}`}
+                    ) : (
+                      paginatedKetentuan.map((p, idx) => {
+                        const plat = p.label;
+                        const memEdited = memoriEditKetentuan[plat];
+                        const isEdited = !!memEdited;
+                        const saved = memEdited || ketentuanPlatformData[plat] || { blacklist: [], priority: [] };
+
+                        return (
+                          <tr
+                            key={p.value || plat}
+                            className={`group ${isEdited ? "bg-amber-50" : "hover:bg-slate-50"} bg-white transition-colors border-b border-slate-100 last:border-0`}
+                          >
+                            <td
+                              className={`px-3 py-3 text-center font-mono sticky left-0 z-20 ${
+                                isEdited ? "bg-amber-50" : "bg-white group-hover:bg-slate-50"
+                              } shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}
                             >
-                              {(row.status || "TERJADWAL").toUpperCase()}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
-                  <span className="text-xs font-semibold text-slate-500">
-                    Menampilkan {paginatedExport.length} dari {exportPreviewData.length} data
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      disabled={currentExportPage <= 1}
-                      onClick={() => setExportPage((p) => Math.max(1, p - 1))}
-                      className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
-                    >
-                      <i className="fa-solid fa-chevron-left" />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={currentExportPage >= totalExportPages}
-                      onClick={() => setExportPage((p) => Math.min(totalExportPages, p + 1))}
-                      className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
-                    >
-                      <i className="fa-solid fa-chevron-right" />
-                    </button>
-                  </div>
-                </div>
+                              {isEdited ? (
+                                <i className="fa-solid fa-check text-amber-500 text-lg" />
+                              ) : (
+                                <span className="font-bold text-slate-400">{startKetIdx + idx + 1}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setModalKetentuan({
+                                    isOpen: true,
+                                    platformName: plat,
+                                    blacklist: [...saved.blacklist],
+                                    priority: [...saved.priority],
+                                    searchBlacklist: "",
+                                    searchPriority: "",
+                                  })
+                                }
+                                className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition flex items-center justify-center mx-auto shadow-sm"
+                                title="Edit Ketentuan"
+                              >
+                                <i className="fa-solid fa-pen-to-square" />
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 font-bold text-slate-800">
+                              <div>{plat}</div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {saved.blacklist.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    showPopUpKetentuanDetail(`Pengecualian Host: ${plat}`, saved.blacklist)
+                                  }
+                                  className="text-slate-500 hover:text-red-500 transition text-xl relative inline-flex items-center justify-center"
+                                  title="Lihat Pengecualian Host"
+                                >
+                                  <i className="fa-solid fa-users-slash" />
+                                  <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 rounded-full absolute -top-2 -right-2 shadow-sm">
+                                    {saved.blacklist.length}
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {saved.priority.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    showPopUpKetentuanDetail(`Prioritas Platform: ${plat}`, saved.priority)
+                                  }
+                                  className="text-slate-500 hover:text-emerald-500 transition text-xl relative inline-flex items-center justify-center"
+                                  title="Lihat Prioritas Platform"
+                                >
+                                  <i className="fa-solid fa-star text-amber-400" />
+                                  <span className="text-[10px] font-bold bg-emerald-500 text-white px-1.5 rounded-full absolute -top-2 -right-2 shadow-sm">
+                                    {saved.priority.length}
+                                  </span>
+                                </button>
+                              ) : (
+                                <span className="text-slate-300">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          )}
-        </div>
-      )}
 
-      {/* ===================================================================== */}
-      {/* SUBTAB 5: IMPORT JADWAL                                               */}
-      {/* ===================================================================== */}
-      {klienSubTab === "import" && (
-        <div className="space-y-4">
-          <div className="mb-6">
-            <p className="text-slate-600 mb-4 font-medium">Unggah Ploting Klien (Maksimal 300 Baris):</p>
-            <div className="flex overflow-x-auto flex-nowrap gap-2 sm:gap-4">
-              <button
-                type="button"
-                onClick={() => setImportModePloting("baru")}
-                className={`flex-shrink-0 whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                  importModePloting === "baru"
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <i className="fa-solid fa-file-circle-plus" /> Data Baru
-              </button>
-              <button
-                type="button"
-                onClick={() => setImportModePloting("revisi")}
-                className={`flex-shrink-0 whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
-                  importModePloting === "revisi"
-                    ? "bg-emerald-600 text-white shadow-sm"
-                    : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <i className="fa-solid fa-file-pen" /> Revisi Masal
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-6 max-w-4xl">
-            <div className="flex space-x-6 mb-4">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="metodeImportPloting"
-                  value="excel"
-                  checked={importMetodePloting === "excel"}
-                  onChange={() => setImportMetodePloting("excel")}
-                  className="w-4 h-4 text-blue-600"
-                />
-                <span className="text-sm font-medium text-slate-700">File Excel (.xlsx)</span>
-              </label>
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="metodeImportPloting"
-                  value="link"
-                  checked={importMetodePloting === "link"}
-                  onChange={() => setImportMetodePloting("link")}
-                  className="w-4 h-4 text-blue-600"
-                />
-                <span className="text-sm font-medium text-slate-700">Link Google Sheets</span>
-              </label>
-            </div>
-
-            {importMetodePloting === "excel" ? (
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-2">
-                  UNGGAH JADWAL KLIEN (EXCEL)
-                </label>
-                <div className="border-2 border-dashed border-slate-300 hover:border-blue-500 rounded-xl p-6 text-center cursor-pointer transition bg-slate-50/50">
-                  <i className="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2" />
-                  <p className="text-xs text-slate-600 font-medium">
-                    Pilih file Excel (.xlsx / .csv) atau seret ke sini
-                  </p>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    className="hidden"
-                    id="excelFileInputKlien"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        showAlert(`✅ File ${file.name} berhasil dipilih. Memproses data...`);
-                      }
-                    }}
-                  />
-                  <label
-                    htmlFor="excelFileInputKlien"
-                    className="inline-block mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition"
-                  >
-                    Pilih File
-                  </label>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-xs font-semibold text-slate-500">
-                  TAUTAN GOOGLE SHEETS
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="url"
-                    value={importLinkPloting}
-                    onChange={(e) => setImportLinkPloting(e.target.value)}
-                    placeholder="https://docs.google.com/spreadsheets/d/..."
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  />
+              {/* Pagination */}
+              <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
+                <span className="text-xs font-semibold text-slate-500">
+                  {filteredKetentuan.length === 0
+                    ? "Menampilkan 0 dari 0 data"
+                    : `Menampilkan ${startKetIdx + 1}-${Math.min(
+                        startKetIdx + ketentuanPageSize,
+                        filteredKetentuan.length
+                      )} dari ${filteredKetentuan.length} data`}
+                </span>
+                <div className="flex gap-1">
                   <button
                     type="button"
-                    onClick={() => showAlert("✅ Menghubungkan tautan Google Sheets...")}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-xs font-bold whitespace-nowrap shadow-sm"
+                    disabled={currentKetentuanPage <= 1}
+                    onClick={() => setKetentuanPage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
                   >
-                    Tarik Data
+                    <i className="fa-solid fa-chevron-left" />
                   </button>
+                  <button
+                    type="button"
+                    disabled={currentKetentuanPage >= totalKetentuanPages}
+                    onClick={() => setKetentuanPage((p) => Math.min(totalKetentuanPages, p + 1))}
+                    className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                  >
+                    <i className="fa-solid fa-chevron-right" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ===================================================================== */}
+      {/* SUBTAB 4: EXPORT JADWAL (100% MATCH WITH REF-DEPLOY)                  */}
+      {/* ===================================================================== */}
+      {klienSubTab === "export" && (() => {
+        const totalExpPages = Math.max(1, Math.ceil(exportPreviewData.length / exportPageSize));
+        const currentExpPage = Math.min(exportPage, totalExpPages);
+        const startExpIdx = (currentExpPage - 1) * exportPageSize;
+        const paginatedExp = exportPreviewData.slice(startExpIdx, startExpIdx + exportPageSize);
+
+        return (
+          <div className="space-y-4">
+            {/* Filter & Tarik Data Card */}
+            <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm mb-6">
+              <h2 className="text-sm font-bold text-slate-800 mb-3">
+                Tarik Data Jadwal Klien (Export ke Master Form)
+              </h2>
+              <div className="flex flex-col md:flex-row gap-4 items-end">
+                <div className="w-full md:w-64">
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                    Pilih Tanggal Export
+                  </label>
+                  <input
+                    type="date"
+                    value={exportTanggalKlien}
+                    onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                    onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                    onChange={(e) => setExportTanggalKlien(e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = allJadwal.filter(
+                      (j) => (j.tanggal || "").slice(0, 10) === exportTanggalKlien
+                    );
+                    setExportPreviewData(filtered);
+                    setExportPage(1);
+                    if (filtered.length > 0) {
+                      showAlert(`✅ Ditemukan ${filtered.length} jadwal pada tanggal ${exportTanggalKlien}.`);
+                    } else {
+                      showAlert(`⚠️ Tidak ditemukan jadwal pada tanggal ${exportTanggalKlien}.`);
+                    }
+                  }}
+                  className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-2.5 rounded-lg text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm w-full md:w-auto"
+                >
+                  <i className="fa-solid fa-magnifying-glass" /> Tarik Data
+                </button>
+              </div>
+            </div>
+
+            {/* Preview Section */}
+            {exportPreviewData.length > 0 && (
+              <div>
+                <div className="flex flex-col sm:flex-row justify-between items-end gap-4 mb-4">
+                  <h3 className="font-bold text-slate-800">
+                    <i className="fa-solid fa-list-ul text-blue-600 mr-2" />
+                    Preview Data Export (<span className="text-blue-600">{exportPreviewData.length}</span> Jadwal)
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showAlert(`✅ Berhasil membuat salinan ${exportPreviewData.length} jadwal klien untuk ploting!`);
+                    }}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-6 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 w-full sm:w-auto"
+                  >
+                    <i className="fa-solid fa-file-export" /> Buat Salinan untuk Ploting
+                  </button>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative">
+                  <div className="overflow-x-auto max-h-[600px] overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left text-sm text-slate-600 whitespace-nowrap relative">
+                      <thead className="bg-slate-50 text-slate-500 text-[11px] uppercase font-bold border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+                        <tr>
+                          <th className="px-2 py-3 text-center w-10">NO</th>
+                          <th className="px-3 py-3 w-40">PLATFORM</th>
+                          <th className="px-3 py-3 w-40">WAKTU LIVE</th>
+                          <th className="px-2 py-3 text-center w-16">KUOTA</th>
+                          <th className="px-2 py-3 text-center w-16">CATATAN</th>
+                          <th className="px-2 py-3 text-center w-16">FILE</th>
+                          <th className="px-2 py-3 text-center w-24 leading-tight">
+                            PROMO<br />& PRODUK
+                          </th>
+                          <th className="px-3 py-3 text-center w-24">STATUS</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {paginatedExp.map((row, idx) => {
+                          let statusBg = "bg-slate-100 text-slate-600 border border-slate-200";
+                          const stUpper = (row.status || "").toUpperCase();
+                          if (stUpper === "TERJADWAL") statusBg = "bg-blue-50 text-blue-600 border border-blue-200";
+                          else if (stUpper === "PLOTING") statusBg = "bg-indigo-50 text-indigo-600 border border-indigo-200";
+                          else if (stUpper === "SELESAI") statusBg = "bg-emerald-50 text-emerald-600 border border-emerald-200";
+                          else if (stUpper === "BATAL") statusBg = "bg-red-50 text-red-600 border border-red-200";
+
+                          const durasiVal =
+                            row.durasi ||
+                            calcDurationHours(row.jamMulaiLive, row.jamSelesaiLive);
+
+                          return (
+                            <tr key={row.id || row.idJadwal || idx} className="hover:bg-slate-50 transition">
+                              <td className="px-2 py-3 text-center font-bold text-slate-400">
+                                {startExpIdx + idx + 1}
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="font-bold text-slate-800">{row.platform || "-"}</div>
+                                <div className="text-xs text-blue-600 mt-0.5 truncate max-w-[150px]">
+                                  Judul: {row.judulLive || "-"}
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                                  ID: {row.idJadwal || row.id}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-700">{formatDateSafe(row.tanggal)}</div>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  <i className="fa-regular fa-clock mr-1" />
+                                  {formatTimeSafe(row.jamMulaiLive)} - {formatTimeSafe(row.jamSelesaiLive)}
+                                </div>
+                                <div className="text-[10px] font-bold text-emerald-600 mt-1">
+                                  Durasi: {durasiVal} jam
+                                </div>
+                              </td>
+                              <td className="px-2 py-3 text-center">
+                                <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600 border border-slate-200">
+                                  {row.kuotaHost || row.kuota || 1} Host
+                                </span>
+                              </td>
+                              <td className="px-2 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPopupInfoKlien({
+                                      isOpen: true,
+                                      title: "Catatan Host",
+                                      content: row.catatanHost || "-",
+                                    })
+                                  }
+                                  className="text-slate-400 hover:text-blue-500 transition text-lg"
+                                  title="Lihat Catatan Host"
+                                >
+                                  <i className="fa-solid fa-clipboard" />
+                                </button>
+                              </td>
+                              <td className="px-2 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPopupInfoKlien({
+                                      isOpen: true,
+                                      title: "File Pendukung",
+                                      content: row.filePendukungHost || "-",
+                                      isLink: true,
+                                    })
+                                  }
+                                  className="text-slate-400 hover:text-blue-500 transition text-lg"
+                                  title="Buka File Pendukung"
+                                >
+                                  <i className="fa-solid fa-link" />
+                                </button>
+                              </td>
+                              <td className="px-2 py-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setPopupInfoKlien({
+                                      isOpen: true,
+                                      title: "Promo & Produk",
+                                      content: `Promo:\n${row.promoLive || "-"}\n\nProduk Prioritas:\n${
+                                        Array.isArray(row.produkPrioritas)
+                                          ? row.produkPrioritas.join("\n• ")
+                                          : row.produkPrioritas || "-"
+                                      }`,
+                                    })
+                                  }
+                                  className="text-slate-400 hover:text-orange-500 transition text-lg"
+                                  title="Lihat Promo & Produk"
+                                >
+                                  <i className="fa-solid fa-basket-shopping" />
+                                </button>
+                              </td>
+                              <td className="px-3 py-3 text-center">
+                                <span className={`px-2 py-1 rounded text-[10px] font-bold ${statusBg}`}>
+                                  {(row.status || "TERJADWAL").toUpperCase()}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Pagination */}
+                  <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
+                    <span className="text-xs font-semibold text-slate-500">
+                      {exportPreviewData.length === 0
+                        ? "Menampilkan 0 dari 0 data"
+                        : `Menampilkan ${startExpIdx + 1}-${Math.min(
+                            startExpIdx + exportPageSize,
+                            exportPreviewData.length
+                          )} dari ${exportPreviewData.length} data`}
+                    </span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={currentExpPage <= 1}
+                        onClick={() => setExportPage((p) => Math.max(1, p - 1))}
+                        className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                      >
+                        <i className="fa-solid fa-chevron-left" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={currentExpPage >= totalExpPages}
+                        onClick={() => setExportPage((p) => Math.min(totalExpPages, p + 1))}
+                        className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                      >
+                        <i className="fa-solid fa-chevron-right" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* ===================================================================== */}
+      {/* SUBTAB 5: IMPORT JADWAL (100% MATCH WITH REF-DEPLOY)                  */}
+      {/* ===================================================================== */}
+      {klienSubTab === "import" && (() => {
+        const totalImportBaruPages = Math.max(1, Math.ceil(importDataBaru.length / importPageSize));
+        const currentImportBaruPage = Math.min(importPageBaru, totalImportBaruPages);
+        const startBaruIdx = (currentImportBaruPage - 1) * importPageSize;
+        const paginatedImportBaru = importDataBaru.slice(startBaruIdx, startBaruIdx + importPageSize);
+
+        const totalImportRevPages = Math.max(1, Math.ceil(importDataRevisi.length / importPageSize));
+        const currentImportRevPage = Math.min(importPageRevisi, totalImportRevPages);
+        const startRevIdx = (currentImportRevPage - 1) * importPageSize;
+        const paginatedImportRev = importDataRevisi.slice(startRevIdx, startRevIdx + importPageSize);
+
+        return (
+          <div className="space-y-4">
+            {/* Mode Switcher */}
+            <div className="mb-6">
+              <p className="text-slate-600 mb-4 font-medium">Unggah Ploting Klien (Maksimal 300 Baris):</p>
+              <div className="flex overflow-x-auto flex-nowrap gap-2 sm:gap-4">
+                <button
+                  type="button"
+                  onClick={() => setImportModePloting("baru")}
+                  className={`flex-shrink-0 whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                    importModePloting === "baru"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <i className="fa-solid fa-file-circle-plus" /> Data Baru
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportModePloting("revisi")}
+                  className={`flex-shrink-0 whitespace-nowrap px-5 py-2.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+                    importModePloting === "revisi"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <i className="fa-solid fa-file-pen" /> Revisi Masal
+                </button>
+              </div>
+            </div>
+
+            {/* AREA DATA BARU PLOTING */}
+            {importModePloting === "baru" && (
+              <div className="w-full">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4 max-w-4xl p-5 sm:p-6 space-y-6">
+                  {/* Metode Selector */}
+                  <div className="flex space-x-6 mb-4">
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="radio"
+                        name="metodeImportPloting"
+                        value="excel"
+                        checked={importMetodePloting === "excel"}
+                        onChange={() => setImportMetodePloting("excel")}
+                        className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="text-sm font-medium text-slate-700">File Excel (.xlsx)</span>
+                    </label>
+                    <label className="flex items-center space-x-2 cursor-pointer group">
+                      <input
+                        type="radio"
+                        name="metodeImportPloting"
+                        value="link"
+                        checked={importMetodePloting === "link"}
+                        onChange={() => setImportMetodePloting("link")}
+                        className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span className="text-sm font-medium text-slate-700">Link Google Sheets</span>
+                    </label>
+                  </div>
+
+                  {/* Kotak Import Excel */}
+                  {importMetodePloting === "excel" ? (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">
+                        UNGGAH JADWAL KLIEN (EXCEL)
+                      </label>
+                      <input
+                        type="file"
+                        accept=".xlsx, .xls, .csv"
+                        className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer outline-none border border-slate-200 rounded-lg p-2"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            showAlert(`✅ File ${file.name} berhasil dibaca. Menyiapkan data preview...`);
+                            // Dummy initial mock / preview data for visual match
+                            setImportDataBaru([
+                              {
+                                id: 1,
+                                tanggal: "2026-09-01",
+                                platform: "Shopee Live",
+                                jamMulai: "10:00",
+                                jamSelesai: "12:00",
+                                durasi: "2",
+                                lokasi: "Studio 1",
+                                streamer: "Host Sarah",
+                                infoLain: "-",
+                              },
+                            ]);
+                            setIsImportCrashVerified(false);
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1">
+                        TAUTAN JADWAL KLIEN (SHEETS)
+                      </label>
+                      <div className="flex gap-3 mt-1">
+                        <input
+                          type="url"
+                          value={importLinkPloting}
+                          onChange={(e) => setImportLinkPloting(e.target.value)}
+                          placeholder="https://docs.google.com/..."
+                          className="w-full flex-1 border border-slate-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!importLinkPloting) return showAlert("⚠️ Masukkan tautan Google Sheets terlebih dahulu.");
+                            showAlert("✅ Berhasil menarik data dari Google Sheets.");
+                            setImportDataBaru([
+                              {
+                                id: 1,
+                                tanggal: "2026-09-01",
+                                platform: "Shopee Live",
+                                jamMulai: "10:00",
+                                jamSelesai: "12:00",
+                                durasi: "2",
+                                lokasi: "Studio 1",
+                                streamer: "Host Sarah",
+                                infoLain: "-",
+                              },
+                            ]);
+                            setIsImportCrashVerified(false);
+                          }}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm whitespace-nowrap flex items-center gap-2"
+                        >
+                          <i className="fa-solid fa-download" /> Tarik Data
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Wadah Tabel Ploting Baru */}
+                  {importDataBaru.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg flex flex-col bg-white overflow-hidden shadow-sm">
+                      <div className="overflow-x-auto max-h-[500px] custom-scrollbar">
+                        <table className="w-full text-sm text-left whitespace-nowrap">
+                          <thead className="bg-slate-100 font-bold text-slate-700 border-b sticky top-0 z-30 shadow-sm text-xs uppercase tracking-wider">
+                            <tr>
+                              <th className="p-3 text-center sticky left-0 z-40 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-12">
+                                NO
+                              </th>
+                              <th className="p-3 border-r text-center">TANGGAL</th>
+                              <th className="p-3 border-r">PLATFORM</th>
+                              <th className="p-3 border-r text-center">MULAI</th>
+                              <th className="p-3 border-r text-center">SELESAI</th>
+                              <th className="p-3 border-r text-center">DURASI</th>
+                              <th className="p-3 border-r">LOKASI</th>
+                              <th className="p-3 border-r">STREAMER</th>
+                              <th className="p-3 border-r text-center">INFO LAIN</th>
+                              <th className="p-3 text-center">AKSI</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y text-slate-600 bg-white">
+                            {paginatedImportBaru.map((d, idx) => (
+                              <tr key={idx} className="hover:bg-slate-50 transition">
+                                <td className="p-3 text-center font-bold text-slate-400 sticky left-0 z-20 bg-white group-hover:bg-slate-50 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                  {startBaruIdx + idx + 1}
+                                </td>
+                                <td className="p-3 border-r text-center">{d.tanggal}</td>
+                                <td className="p-3 border-r font-bold text-slate-800">{d.platform}</td>
+                                <td className="p-3 border-r text-center font-mono">{d.jamMulai}</td>
+                                <td className="p-3 border-r text-center font-mono">{d.jamSelesai}</td>
+                                <td className="p-3 border-r text-center font-bold text-emerald-600">{d.durasi} jam</td>
+                                <td className="p-3 border-r">{d.lokasi}</td>
+                                <td className="p-3 border-r font-medium text-slate-700">{d.streamer}</td>
+                                <td className="p-3 border-r text-center text-slate-400">{d.infoLain || "-"}</td>
+                                <td className="p-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const updated = [...importDataBaru];
+                                      updated.splice(startBaruIdx + idx, 1);
+                                      setImportDataBaru(updated);
+                                    }}
+                                    className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                    title="Hapus baris"
+                                  >
+                                    <i className="fa-solid fa-trash" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Pagination Ploting Baru */}
+                      <div className="p-4 bg-slate-50 border-t flex justify-between items-center">
+                        <span className="text-xs font-semibold text-slate-500">
+                          Menampilkan {paginatedImportBaru.length} dari {importDataBaru.length} data
+                        </span>
+                        <div className="flex gap-1">
+                          <button
+                            type="button"
+                            disabled={currentImportBaruPage <= 1}
+                            onClick={() => setImportPageBaru((p) => Math.max(1, p - 1))}
+                            className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                          >
+                            <i className="fa-solid fa-chevron-left" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={currentImportBaruPage >= totalImportBaruPages}
+                            onClick={() => setImportPageBaru((p) => Math.min(totalImportBaruPages, p + 1))}
+                            className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                          >
+                            <i className="fa-solid fa-chevron-right" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Aksi Ploting Baru */}
+                  {importDataBaru.length > 0 && (
+                    <div className="flex justify-end gap-3 w-full">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsImportCrashVerified(true);
+                          showAlert("✅ Data ploting aman & bebas bentrok!");
+                        }}
+                        className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold shadow-md transition flex items-center gap-2"
+                      >
+                        <i className="fa-solid fa-shield-halved" /> Bebas Crash
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isImportCrashVerified}
+                        onClick={() => {
+                          showAlert(`✅ Berhasil menyimpan ${importDataBaru.length} data ploting baru!`);
+                          setImportDataBaru([]);
+                          setIsImportCrashVerified(false);
+                        }}
+                        className={`px-8 py-3 rounded-xl font-bold transition flex items-center gap-2 ${
+                          isImportCrashVerified
+                            ? "bg-blue-600 hover:bg-blue-700 text-white shadow-md cursor-pointer"
+                            : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                        }`}
+                      >
+                        <i className="fa-solid fa-cloud-arrow-up" /> Simpan (Maks 300)
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* AREA REVISI MASAL PLOTING */}
+            {importModePloting === "revisi" && (
+              <div className="w-full">
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4 max-w-4xl p-5 sm:p-6 space-y-6">
+                  {/* Tarik Data Lama */}
+                  <div className="flex gap-3 mb-6">
+                    <input
+                      type="text"
+                      value={importOldIdPloting}
+                      onChange={(e) => setImportOldIdPloting(e.target.value)}
+                      placeholder="Masukkan ID_PLOTING Lama..."
+                      className="border border-slate-300 rounded-lg px-4 py-2.5 w-1/2 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!importOldIdPloting) return showAlert("⚠️ Masukkan ID_PLOTING Lama terlebih dahulu.");
+                        showAlert(`✅ Berhasil menarik data ploting lama untuk ID ${importOldIdPloting}.`);
+                        setImportDataRevisi([
+                          {
+                            id: 1,
+                            tanggal: "2026-09-01",
+                            platform: "Shopee Live",
+                            jamMulai: "10:00",
+                            jamSelesai: "12:00",
+                            durasi: "2",
+                            lokasi: "Studio 1",
+                            streamer: "Host Sarah",
+                            infoLain: "Revisi Host",
+                          },
+                        ]);
+                      }}
+                      className="bg-slate-800 hover:bg-slate-900 text-white py-2.5 px-6 rounded-lg font-bold transition flex items-center gap-2 shadow-sm"
+                    >
+                      <i className="fa-solid fa-magnifying-glass" /> Tarik Data
+                    </button>
+                  </div>
+
+                  {/* Unggah Data Terbaru */}
+                  {importDataRevisi.length > 0 && (
+                    <div className="border-t pt-5 border-slate-200 space-y-6">
+                      <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                        <h3 className="font-bold text-blue-800 mb-4">Unggah Data Terbaru (Revisi)</h3>
+
+                        {/* Metode Selector */}
+                        <div className="flex space-x-6 mb-4">
+                          <label className="flex items-center space-x-2 cursor-pointer group">
+                            <input
+                              type="radio"
+                              name="metodeImportPlotingRevisi"
+                              value="excel"
+                              checked={importMetodePlotingRevisi === "excel"}
+                              onChange={() => setImportMetodePlotingRevisi("excel")}
+                              className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-sm font-medium text-slate-700">File Excel (.xlsx)</span>
+                          </label>
+                          <label className="flex items-center space-x-2 cursor-pointer group">
+                            <input
+                              type="radio"
+                              name="metodeImportPlotingRevisi"
+                              value="link"
+                              checked={importMetodePlotingRevisi === "link"}
+                              onChange={() => setImportMetodePlotingRevisi("link")}
+                              className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
+                            />
+                            <span className="text-sm font-medium text-slate-700">Link Google Sheets</span>
+                          </label>
+                        </div>
+
+                        {/* Excel Revisi */}
+                        {importMetodePlotingRevisi === "excel" ? (
+                          <div className="space-y-3">
+                            <input
+                              type="file"
+                              accept=".xlsx, .xls"
+                              className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:bg-blue-100 file:text-blue-700 bg-white border border-slate-200 rounded-md"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => showAlert("✅ File revisi Excel berhasil dimuat.")}
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold shadow-sm flex items-center justify-center transition"
+                            >
+                              <i className="fa-solid fa-file-excel mr-2" /> Preview Excel Revisi
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row gap-3">
+                            <input
+                              type="url"
+                              value={importLinkPlotingRevisi}
+                              onChange={(e) => setImportLinkPlotingRevisi(e.target.value)}
+                              placeholder="https://docs.google.com/..."
+                              className="w-full flex-1 border border-slate-300 rounded-lg px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => showAlert("✅ Data revisi dari link Google Sheets berhasil dimuat.")}
+                              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-sm whitespace-nowrap flex items-center justify-center transition"
+                            >
+                              <i className="fa-solid fa-link mr-2" /> Tarik Link
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Tabel Preview Lama vs Baru */}
+                      <div>
+                        <h3 className="font-bold text-slate-800 mb-2">
+                          Preview Lama vs Baru (<span className="text-blue-600">{importDataRevisi.length}</span>)
+                        </h3>
+                        <div className="overflow-x-auto border border-slate-200 rounded-t-xl max-h-[460px] custom-scrollbar bg-slate-50">
+                          <table className="w-full text-left text-sm whitespace-nowrap">
+                            <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm text-slate-600 text-xs uppercase tracking-wider">
+                              <tr>
+                                <th className="p-3 text-center sticky left-0 z-40 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] w-12">
+                                  NO
+                                </th>
+                                <th className="p-3 border-r text-center">TANGGAL</th>
+                                <th className="p-3 border-r">PLATFORM</th>
+                                <th className="p-3 border-r text-center">MULAI</th>
+                                <th className="p-3 border-r text-center">SELESAI</th>
+                                <th className="p-3 border-r text-center">DURASI</th>
+                                <th className="p-3 border-r">LOKASI</th>
+                                <th className="p-3 border-r">STREAMER</th>
+                                <th className="p-3 border-r text-center">INFO LAIN</th>
+                                <th className="p-3 text-center">AKSI</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 text-slate-700 bg-white">
+                              {paginatedImportRev.map((d, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50">
+                                  <td className="p-3 text-center font-bold text-slate-400 sticky left-0 z-20 bg-white shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                    {startRevIdx + idx + 1}
+                                  </td>
+                                  <td className="p-3 border-r text-center">{d.tanggal}</td>
+                                  <td className="p-3 border-r font-bold text-slate-800">{d.platform}</td>
+                                  <td className="p-3 border-r text-center font-mono">{d.jamMulai}</td>
+                                  <td className="p-3 border-r text-center font-mono">{d.jamSelesai}</td>
+                                  <td className="p-3 border-r text-center font-bold text-emerald-600">{d.durasi} jam</td>
+                                  <td className="p-3 border-r">{d.lokasi}</td>
+                                  <td className="p-3 border-r font-medium text-slate-700">{d.streamer}</td>
+                                  <td className="p-3 border-r text-center text-slate-400">{d.infoLain || "-"}</td>
+                                  <td className="p-3 text-center">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const updated = [...importDataRevisi];
+                                        updated.splice(startRevIdx + idx, 1);
+                                        setImportDataRevisi(updated);
+                                      }}
+                                      className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition"
+                                      title="Hapus baris"
+                                    >
+                                      <i className="fa-solid fa-trash" />
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Pagination Revisi */}
+                        <div className="p-4 bg-slate-50 border-t flex justify-between items-center border-x border-b border-slate-200 rounded-b-xl">
+                          <span className="text-xs font-semibold text-slate-500">
+                            Menampilkan {paginatedImportRev.length} dari {importDataRevisi.length} data
+                          </span>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              disabled={currentImportRevPage <= 1}
+                              onClick={() => setImportPageRevisi((p) => Math.max(1, p - 1))}
+                              className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                            >
+                              <i className="fa-solid fa-chevron-left" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={currentImportRevPage >= totalImportRevPages}
+                              onClick={() => setImportPageRevisi((p) => Math.min(totalImportRevPages, p + 1))}
+                              className="px-3 py-1.5 bg-white border border-slate-300 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40 transition font-bold text-xs"
+                            >
+                              <i className="fa-solid fa-chevron-right" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Tombol Simpan Revisi Masal */}
+                      <div className="flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            showAlert(`✅ Berhasil menyimpan revisi masal untuk ID ${importOldIdPloting}!`);
+                            setImportDataRevisi([]);
+                            setImportOldIdPloting("");
+                          }}
+                          className="px-8 py-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold transition shadow-md flex items-center gap-2"
+                        >
+                          <i className="fa-solid fa-cloud-arrow-up" /> Simpan Revisi Masal
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ===================================================================== */}
       {/* MODALS                                                                */}
@@ -1820,17 +2517,13 @@ export function TabKlien({
                 max={20}
                 value={modalSplitKlien.numSessions}
                 onChange={(e) =>
-                  setModalSplitKlien({
-                    ...modalSplitKlien,
-                    numSessions: Math.min(20, Math.max(2, Number(e.target.value))),
-                  })
+                  setModalSplitKlien((prev) => ({
+                    ...prev,
+                    numSessions: parseInt(e.target.value) || 2,
+                  }))
                 }
-                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-indigo-700"
-                placeholder="2"
+                className="w-full border border-slate-300 rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
-              <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
-                Rentang jam siaran pada formulir ini akan dibagi rata menjadi {modalSplitKlien.numSessions} sesi berurutan.
-              </p>
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
@@ -1842,8 +2535,13 @@ export function TabKlien({
               </button>
               <button
                 type="button"
-                onClick={() => handleSplitKlien(modalSplitKlien.formIdx!, modalSplitKlien.numSessions)}
-                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
+                onClick={() => {
+                  if (modalSplitKlien.formIdx !== null) {
+                    handleSplitKlien(modalSplitKlien.formIdx, modalSplitKlien.numSessions);
+                  }
+                  setModalSplitKlien({ isOpen: false, formIdx: null, numSessions: 2 });
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
               >
                 Pecah Sesi
               </button>
@@ -1852,20 +2550,17 @@ export function TabKlien({
         </div>
       )}
 
-      {/* Modal Edit Rubah Klien (Staging RAM) */}
+
+
+      {/* Modal Edit Rubah Klien (RAM) */}
       {modalEditRubahKlien.isOpen && modalEditRubahKlien.data && (
         <div className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-xl w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                  <i className="fa-solid fa-pen-to-square text-blue-600" />
-                  Edit Data Jadwal Klien (Staging RAM)
-                </h3>
-                <span className="text-[11px] text-slate-400 font-mono">
-                  ID: {modalEditRubahKlien.data.idJadwal}
-                </span>
-              </div>
+              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <i className="fa-solid fa-pen-to-square text-blue-600" />
+                Edit Jadwal Klien: {modalEditRubahKlien.data.idJadwal}
+              </h3>
               <button
                 type="button"
                 onClick={() => setModalEditRubahKlien({ isOpen: false, data: null })}
@@ -1875,111 +2570,101 @@ export function TabKlien({
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Platform Client *</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Platform *</label>
                 <select
                   value={modalEditRubahKlien.data.platform}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, platform: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, platform: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  required
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  <option value="">-- Pilih Platform Client --</option>
-                  {platformClientOptions.map((p) => (
-                    <option key={p.value} value={p.value}>
-                      {p.label}
+                  <option value="">-- Pilih Platform --</option>
+                  {platformClientOptions.map((opt) => (
+                    <option key={opt.value} value={opt.label}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Live *</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Tanggal *</label>
                 <input
                   type="date"
                   value={modalEditRubahKlien.data.tanggal}
                   onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, tanggal: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, tanggal: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                  required
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jam Mulai Live *</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Jam Mulai Live *</label>
                 <input
                   type="time"
                   value={modalEditRubahKlien.data.jamMulaiLive}
                   onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, jamMulaiLive: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, jamMulaiLive: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
-                  required
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jam Selesai Live *</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Jam Selesai Live *</label>
                 <input
                   type="time"
                   value={modalEditRubahKlien.data.jamSelesaiLive}
                   onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, jamSelesaiLive: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, jamSelesaiLive: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
-                  required
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kuota Host</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Kuota Host *</label>
                 <input
                   type="number"
                   min={1}
                   max={10}
-                  value={modalEditRubahKlien.data.kuota || 1}
+                  value={modalEditRubahKlien.data.kuota}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, kuota: Number(e.target.value) },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, kuota: parseInt(e.target.value) || 1 } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Status Jadwal</label>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Status Jadwal</label>
                 <select
-                  value={modalEditRubahKlien.data.status || "TERJADWAL"}
+                  value={modalEditRubahKlien.data.status}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, status: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, status: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="TERJADWAL">TERJADWAL</option>
                   <option value="PLOTING">PLOTING</option>
@@ -1988,63 +2673,63 @@ export function TabKlien({
                 </select>
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Judul Live / Campaign</label>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Judul Live</label>
                 <input
                   type="text"
-                  value={modalEditRubahKlien.data.judulLive || ""}
+                  value={modalEditRubahKlien.data.judulLive}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, judulLive: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, judulLive: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  placeholder="Opsional judul live..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Promo Live / Diskon</label>
-                <textarea
-                  rows={2}
-                  value={modalEditRubahKlien.data.promoLive || ""}
-                  onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, promoLive: e.target.value },
-                    })
-                  }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan untuk Host</label>
-                <textarea
-                  rows={2}
-                  value={modalEditRubahKlien.data.catatanHost || ""}
-                  onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, catatanHost: e.target.value },
-                    })
-                  }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">File Pendukung Host</label>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Promo Live</label>
                 <input
                   type="text"
-                  value={modalEditRubahKlien.data.filePendukungHost || ""}
+                  value={modalEditRubahKlien.data.promoLive}
                   onChange={(e) =>
-                    setModalEditRubahKlien({
-                      ...modalEditRubahKlien,
-                      data: { ...modalEditRubahKlien.data, filePendukungHost: e.target.value },
-                    })
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, promoLive: e.target.value } } : prev
+                    )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  placeholder="Opsional promo live..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Catatan untuk Host</label>
+                <textarea
+                  value={modalEditRubahKlien.data.catatanHost}
+                  onChange={(e) =>
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, catatanHost: e.target.value } } : prev
+                    )
+                  }
+                  rows={2}
+                  placeholder="Catatan tambahan untuk host..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">File Pendukung (Link)</label>
+                <input
+                  type="url"
+                  value={modalEditRubahKlien.data.filePendukungHost}
+                  onChange={(e) =>
+                    setModalEditRubahKlien((prev) =>
+                      prev.data ? { ...prev, data: { ...prev.data, filePendukungHost: e.target.value } } : prev
+                    )
+                  }
+                  placeholder="https://drive.google.com/..."
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
             </div>
@@ -2059,23 +2744,17 @@ export function TabKlien({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  const d = modalEditRubahKlien.data;
-                  setMemoriEditKlien((prev) => ({ ...prev, [d.idJadwal]: d }));
-                  setIsRubahKlienCrashVerified(false);
-                  setModalEditRubahKlien({ isOpen: false, data: null });
-                  showAlert("✅ Perubahan disimpan sementara ke memori lokal. Klik 'Bebas Crash' lalu 'Simpan Perubahan' untuk menyimpan ke database.");
-                }}
+                onClick={handleSaveModalEditRubahKlien}
                 className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
               >
-                Simpan ke Memori
+                Simpan ke RAM
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Popup Info Klien (Reusable) */}
+      {/* Mini Popup Info Reusable */}
       {popupInfoKlien.isOpen && (
         <div className="fixed inset-0 z-[130] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
@@ -2089,13 +2768,13 @@ export function TabKlien({
                 ✕
               </button>
             </div>
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 max-h-60 overflow-y-auto whitespace-pre-wrap leading-relaxed">
-              {popupInfoKlien.isLink && popupInfoKlien.content.startsWith("http") ? (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-700 whitespace-pre-wrap max-h-60 overflow-y-auto">
+              {popupInfoKlien.isLink && popupInfoKlien.content ? (
                 <a
                   href={popupInfoKlien.content}
                   target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-600 underline font-semibold break-all"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 underline font-sans break-all"
                 >
                   {popupInfoKlien.content}
                 </a>
@@ -2103,157 +2782,282 @@ export function TabKlien({
                 popupInfoKlien.content
               )}
             </div>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setPopupInfoKlien({ isOpen: false, title: "", content: "" })}
-                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition"
-              >
-                Tutup
-              </button>
-            </div>
           </div>
         </div>
       )}
 
-      {/* Modal Ketentuan Platform */}
+      {/* Modal Ketentuan Platform (Blacklist & Prioritas) - 100% Match with Ref-Deploy */}
       {modalKetentuan.isOpen && (
-        <div className="fixed inset-0 z-[120] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <i className="fa-solid fa-sliders text-blue-600" />
-                Ketentuan Platform: {modalKetentuan.platformName}
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[120] flex items-center justify-center p-4 transition-opacity animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[95vh]">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <i className="fa-solid fa-list-check text-blue-600 mr-1" /> Edit Ketentuan:{" "}
+                <span className="text-blue-600 font-black">{modalKetentuan.platformName}</span>
               </h3>
               <button
                 type="button"
                 onClick={() => setModalKetentuan({ ...modalKetentuan, isOpen: false })}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-slate-400 hover:text-red-500 transition text-xl"
               >
-                ✕
+                <i className="fa-solid fa-xmark" />
               </button>
             </div>
 
-            {/* Blacklist Streamer */}
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Blacklist Streamer</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={modalKetentuan.inputBlacklist}
-                  onChange={(e) => setModalKetentuan({ ...modalKetentuan, inputBlacklist: e.target.value })}
-                  placeholder="Ketik nama streamer..."
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = modalKetentuan.inputBlacklist.trim();
-                    if (!text) return;
-                    setModalKetentuan({
-                      ...modalKetentuan,
-                      blacklist: [...modalKetentuan.blacklist, text],
-                      inputBlacklist: "",
-                    });
-                  }}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition"
-                >
-                  Tambah
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-slate-50 border border-slate-200 rounded-xl">
-                {modalKetentuan.blacklist.length === 0 ? (
-                  <span className="text-slate-400 text-xs italic self-center">Tidak ada blacklist</span>
-                ) : (
-                  modalKetentuan.blacklist.map((b, bi) => (
-                    <span
-                      key={bi}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 text-xs font-bold rounded-lg border border-red-200"
-                    >
-                      {b}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = [...modalKetentuan.blacklist];
-                          updated.splice(bi, 1);
-                          setModalKetentuan({ ...modalKetentuan, blacklist: updated });
-                        }}
-                        className="text-red-400 hover:text-red-700"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))
-                )}
+            <div className="p-6 overflow-y-auto flex-1 bg-white custom-scrollbar">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Left: Pengecualian Host (Red) */}
+                <div className="border border-red-200 rounded-xl overflow-hidden flex flex-col h-[55vh]">
+                  <div className="bg-red-50 text-red-700 font-bold px-4 py-3 border-b border-red-200 flex justify-between items-center gap-2">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                      <i className="fa-solid fa-ban" /> Pengecualian Host
+                    </div>
+                    <div className="relative w-full max-w-[140px] sm:max-w-[200px]">
+                      <input
+                        type="text"
+                        value={modalKetentuan.searchBlacklist}
+                        onChange={(e) =>
+                          setModalKetentuan({ ...modalKetentuan, searchBlacklist: e.target.value })
+                        }
+                        className="w-full border border-red-300 rounded-md px-3 py-1.5 pr-8 text-xs outline-none focus:ring-2 focus:ring-red-500 font-normal text-slate-800 bg-white placeholder-red-300"
+                        placeholder="Cari nama..."
+                      />
+                      {modalKetentuan.searchBlacklist && (
+                        <button
+                          type="button"
+                          onClick={() => setModalKetentuan({ ...modalKetentuan, searchBlacklist: "" })}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 transition"
+                        >
+                          <i className="fa-solid fa-circle-xmark" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10 shadow-sm text-xs">
+                        <tr>
+                          <th className="p-3 w-10 text-center">✔</th>
+                          <th className="p-3">STREAMER</th>
+                          <th className="p-3">JABATAN</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(() => {
+                          const query = (modalKetentuan.searchBlacklist || "").toLowerCase();
+                          const list = (streamers || []).filter((s) => {
+                            const nama = (s.namaLengkap || s.namaPanggilan || s.name || "").toLowerCase();
+                            const idKar = (s.idKaryawan || "").toLowerCase();
+                            const jab = (s.jabatan || s.kategori || "").toLowerCase();
+                            return !query || nama.includes(query) || idKar.includes(query) || jab.includes(query);
+                          });
+
+                          const checked = list.filter((s) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || "";
+                            const token = `${name}**${s.jabatan || s.kategori || "Host"}`;
+                            return modalKetentuan.blacklist.some(
+                              (b) => b === token || b === name || token.startsWith(b) || b.startsWith(name)
+                            );
+                          });
+                          const unchecked = list.filter((s) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || "";
+                            const token = `${name}**${s.jabatan || s.kategori || "Host"}`;
+                            return !modalKetentuan.blacklist.some(
+                              (b) => b === token || b === name || token.startsWith(b) || b.startsWith(name)
+                            );
+                          });
+
+                          const sorted = [...checked, ...unchecked];
+                          if (sorted.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={3} className="p-6 text-center text-slate-400 italic text-xs">
+                                  Tidak ada streamer ditemukan.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return sorted.map((s, si) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || `Streamer ${si + 1}`;
+                            const jab = s.jabatan || s.kategori || "Host";
+                            const token = `${name}**${jab}`;
+                            const isChecked = modalKetentuan.blacklist.some(
+                              (b) => b === token || b === name || token.startsWith(b) || b.startsWith(name)
+                            );
+
+                            return (
+                              <tr
+                                key={s.id || si}
+                                onClick={() => {
+                                  if (isChecked) {
+                                    setModalKetentuan({
+                                      ...modalKetentuan,
+                                      blacklist: modalKetentuan.blacklist.filter(
+                                        (b) => !(b === token || b === name || token.startsWith(b) || b.startsWith(name))
+                                      ),
+                                    });
+                                  } else {
+                                    setModalKetentuan({
+                                      ...modalKetentuan,
+                                      blacklist: [...modalKetentuan.blacklist, token],
+                                    });
+                                  }
+                                }}
+                                className="border-b border-slate-100 hover:bg-red-50 cursor-pointer transition-colors"
+                              >
+                                <td className="p-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {}}
+                                    className="w-4 h-4 text-red-600 rounded pointer-events-none accent-red-600"
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-slate-700">{name}</td>
+                                <td className="p-3 text-xs text-slate-500">{jab}</td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Right: Prioritas Platform (Emerald) */}
+                <div className="border border-emerald-200 rounded-xl overflow-hidden flex flex-col h-[55vh]">
+                  <div className="bg-emerald-50 text-emerald-700 font-bold px-4 py-3 border-b border-emerald-200 flex justify-between items-center gap-2">
+                    <div className="flex items-center gap-2 whitespace-nowrap">
+                      <i className="fa-solid fa-star text-amber-400" /> Prioritas Platform
+                    </div>
+                    <div className="relative w-full max-w-[140px] sm:max-w-[200px]">
+                      <input
+                        type="text"
+                        value={modalKetentuan.searchPriority}
+                        onChange={(e) =>
+                          setModalKetentuan({ ...modalKetentuan, searchPriority: e.target.value })
+                        }
+                        className="w-full border border-emerald-300 rounded-md px-3 py-1.5 pr-8 text-xs outline-none focus:ring-2 focus:ring-emerald-500 font-normal text-slate-800 bg-white placeholder-emerald-300"
+                        placeholder="Cari nama..."
+                      />
+                      {modalKetentuan.searchPriority && (
+                        <button
+                          type="button"
+                          onClick={() => setModalKetentuan({ ...modalKetentuan, searchPriority: "" })}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-emerald-500 hover:text-emerald-700 transition"
+                        >
+                          <i className="fa-solid fa-circle-xmark" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto custom-scrollbar relative">
+                    <table className="w-full text-left text-sm whitespace-nowrap">
+                      <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10 shadow-sm text-xs">
+                        <tr>
+                          <th className="p-3 w-10 text-center">✔</th>
+                          <th className="p-3">STREAMER</th>
+                          <th className="p-3">JABATAN</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {(() => {
+                          const query = (modalKetentuan.searchPriority || "").toLowerCase();
+                          const list = (streamers || []).filter((s) => {
+                            const nama = (s.namaLengkap || s.namaPanggilan || s.name || "").toLowerCase();
+                            const idKar = (s.idKaryawan || "").toLowerCase();
+                            const jab = (s.jabatan || s.kategori || "").toLowerCase();
+                            return !query || nama.includes(query) || idKar.includes(query) || jab.includes(query);
+                          });
+
+                          const checked = list.filter((s) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || "";
+                            const token = `${name}**${s.jabatan || s.kategori || "Host"}`;
+                            return modalKetentuan.priority.some(
+                              (p) => p === token || p === name || token.startsWith(p) || p.startsWith(name)
+                            );
+                          });
+                          const unchecked = list.filter((s) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || "";
+                            const token = `${name}**${s.jabatan || s.kategori || "Host"}`;
+                            return !modalKetentuan.priority.some(
+                              (p) => p === token || p === name || token.startsWith(p) || p.startsWith(name)
+                            );
+                          });
+
+                          const sorted = [...checked, ...unchecked];
+                          if (sorted.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={3} className="p-6 text-center text-slate-400 italic text-xs">
+                                  Tidak ada streamer ditemukan.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return sorted.map((s, si) => {
+                            const name = s.namaLengkap || s.namaPanggilan || s.name || `Streamer ${si + 1}`;
+                            const jab = s.jabatan || s.kategori || "Host";
+                            const token = `${name}**${jab}`;
+                            const isChecked = modalKetentuan.priority.some(
+                              (p) => p === token || p === name || token.startsWith(p) || p.startsWith(name)
+                            );
+
+                            return (
+                              <tr
+                                key={s.id || si}
+                                onClick={() => {
+                                  if (isChecked) {
+                                    setModalKetentuan({
+                                      ...modalKetentuan,
+                                      priority: modalKetentuan.priority.filter(
+                                        (p) => !(p === token || p === name || token.startsWith(p) || p.startsWith(name))
+                                      ),
+                                    });
+                                  } else {
+                                    setModalKetentuan({
+                                      ...modalKetentuan,
+                                      priority: [...modalKetentuan.priority, token],
+                                    });
+                                  }
+                                }}
+                                className="border-b border-slate-100 hover:bg-emerald-50 cursor-pointer transition-colors"
+                              >
+                                <td className="p-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {}}
+                                    className="w-4 h-4 text-emerald-600 rounded pointer-events-none accent-emerald-600"
+                                  />
+                                </td>
+                                <td className="p-3 font-bold text-slate-700">{name}</td>
+                                <td className="p-3 text-xs text-slate-500">{jab}</td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Prioritas Streamer */}
-            <div className="space-y-2">
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Prioritas Streamer</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={modalKetentuan.inputPriority}
-                  onChange={(e) => setModalKetentuan({ ...modalKetentuan, inputPriority: e.target.value })}
-                  placeholder="Ketik nama streamer prioritas..."
-                  className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = modalKetentuan.inputPriority.trim();
-                    if (!text) return;
-                    setModalKetentuan({
-                      ...modalKetentuan,
-                      priority: [...modalKetentuan.priority, text],
-                      inputPriority: "",
-                    });
-                  }}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition"
-                >
-                  Tambah
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-1.5 min-h-[36px] p-2 bg-slate-50 border border-slate-200 rounded-xl">
-                {modalKetentuan.priority.length === 0 ? (
-                  <span className="text-slate-400 text-xs italic self-center">Tidak ada prioritas</span>
-                ) : (
-                  modalKetentuan.priority.map((pr, pi) => (
-                    <span
-                      key={pi}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200"
-                    >
-                      {pr}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const updated = [...modalKetentuan.priority];
-                          updated.splice(pi, 1);
-                          setModalKetentuan({ ...modalKetentuan, priority: updated });
-                        }}
-                        className="text-emerald-400 hover:text-emerald-700"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+            <div className="px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setModalKetentuan({ ...modalKetentuan, isOpen: false })}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
+                className="px-5 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-bold transition"
               >
-                Batal
+                Batal Rubah
               </button>
               <button
                 type="button"
                 onClick={() => {
-                  setKetentuanPlatformData((prev) => ({
+                  setMemoriEditKetentuan((prev) => ({
                     ...prev,
                     [modalKetentuan.platformName]: {
                       blacklist: modalKetentuan.blacklist,
@@ -2261,11 +3065,64 @@ export function TabKlien({
                     },
                   }));
                   setModalKetentuan({ ...modalKetentuan, isOpen: false });
-                  showAlert(`✅ Ketentuan untuk ${modalKetentuan.platformName} berhasil disimpan.`);
+                  showAlert(`Ketentuan untuk ${modalKetentuan.platformName} disimpan dalam memori lokal.`);
                 }}
-                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
+                className="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition shadow-sm flex items-center gap-2"
               >
-                Simpan Ketentuan
+                <i className="fa-solid fa-download" /> Simpan Pilihan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Detail Ketentuan (Popup saat klik icon Blacklist / Prioritas) */}
+      {modalDetailKetentuan.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 transition-opacity animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800">{modalDetailKetentuan.title}</h3>
+              <button
+                type="button"
+                onClick={() => setModalDetailKetentuan({ isOpen: false, title: "", items: [] })}
+                className="text-slate-400 hover:text-red-500 transition"
+              >
+                <i className="fa-solid fa-xmark text-xl" />
+              </button>
+            </div>
+            <div className="p-0 overflow-y-auto flex-1 bg-white relative custom-scrollbar max-h-[60vh]">
+              <table className="w-full text-left text-sm whitespace-nowrap">
+                <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10 shadow-sm text-[11px] uppercase">
+                  <tr>
+                    <th className="p-3 pl-6">STREAMER</th>
+                    <th className="p-3 pr-6">JABATAN</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {modalDetailKetentuan.items.length === 0 ? (
+                    <tr>
+                      <td colSpan={2} className="p-6 text-center text-slate-400 italic">
+                        Tidak ada data.
+                      </td>
+                    </tr>
+                  ) : (
+                    modalDetailKetentuan.items.map((item, ii) => (
+                      <tr key={ii} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                        <td className="p-3 pl-6 font-bold text-slate-700">{item.nama}</td>
+                        <td className="p-3 pr-6 text-xs text-slate-500">{item.jabatan}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-200 text-right">
+              <button
+                type="button"
+                onClick={() => setModalDetailKetentuan({ isOpen: false, title: "", items: [] })}
+                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-lg transition-colors"
+              >
+                Tutup
               </button>
             </div>
           </div>

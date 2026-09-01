@@ -324,31 +324,37 @@ export default function TabLms() {
 
               return (
                 <div key={lesson.id} className="p-6 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center font-bold text-xs">
-                      {lIdx + 1}
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 rounded-lg bg-red-50 text-[#941A0B] border border-red-100 flex items-center justify-center font-bold text-xs">
+                        {lIdx + 1}
+                      </div>
+                      <h3 className="font-bold text-slate-900 text-sm">{lesson.title}</h3>
                     </div>
-                    <h3 className="font-bold text-slate-900 text-sm">{lesson.title}</h3>
+                    {lesson.videoDuration ? (
+                      <span className="text-[11px] font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full flex items-center gap-1.5 shrink-0 border border-slate-200">
+                        <i className="fa-solid fa-circle-play text-red-600 text-[11px]" />
+                        <span>Video • {Math.round(lesson.videoDuration / 60)} mnt</span>
+                      </span>
+                    ) : null}
                   </div>
 
                   {lesson.videoId ? (
-                    <div className="rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-sm">
-                      <VideoLessonPlayer
-                        lesson={{
-                          id: lesson.id,
-                          title: lesson.title,
-                          videoId: lesson.videoId,
-                          videoDuration: lesson.videoDuration ?? null,
-                          content: lesson.content ?? null,
-                        }}
-                        enrollmentId={activeEnroll.id}
-                        questions={hasTimedQuestions ? lessonQuestions : []}
-                        onSubmitted={loadCourses}
-                        onAnswerRecorded={(qId, ans) => {
-                          setAnswers((prev) => ({ ...prev, [qId]: ans }));
-                        }}
-                      />
-                    </div>
+                    <VideoLessonPlayer
+                      lesson={{
+                        id: lesson.id,
+                        title: lesson.title,
+                        videoId: lesson.videoId,
+                        videoDuration: lesson.videoDuration ?? null,
+                        content: lesson.content ?? null,
+                      }}
+                      enrollmentId={activeEnroll.id}
+                      questions={hasTimedQuestions ? lessonQuestions : []}
+                      onSubmitted={loadCourses}
+                      onAnswerRecorded={(qId, ans) => {
+                        setAnswers((prev) => ({ ...prev, [qId]: ans }));
+                      }}
+                    />
                   ) : null}
 
                   {lesson.content && (

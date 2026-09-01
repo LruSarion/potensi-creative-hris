@@ -32,6 +32,7 @@ type YTPlayer = {
   playVideo: () => void;
   seekTo: (seconds: number, allowSeekAhead: boolean) => void;
   getPlayerState: () => number;
+  destroy?: () => void;
 };
 
 const POLL_MS = 250;
@@ -44,7 +45,6 @@ function formatTime(sec: number): string {
 }
 
 export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onSubmitted, onAnswerRecorded }: VideoLessonProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const [activeEvent, setActiveEvent] = useState<VideoQuestion | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -111,18 +111,64 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     return null;
   }
 
+  const cleanVideoId = (lesson.videoId || "").trim();
+  const iframeId = `yt-player-${lesson.id}`;
+
   useEffect(() => {
-    if (!lesson.videoId || typeof window === "undefined") return;
-    const container = containerRef.current;
-    if (!container) return;
+    if (!cleanVideoId || typeof window === "undefined") return;
 
     let cancelled = false;
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    tag.async = true;
+
+    // Inject YouTube IFrame API if not already present
     if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      tag.async = true;
       document.head.appendChild(tag);
     }
+
+    // Attach to the rendered iframe once the YT API is loaded
+    let attempts = 0;
+    const attachInterval = setInterval(() => {
+      if (cancelled || attempts > 60) {
+        clearInterval(attachInterval);
+        return;
+      }
+      attempts++;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const YT = (window as any).YT;
+      const iframeEl = document.getElementById(iframeId);
+      if (YT?.Player && iframeEl) {
+        clearInterval(attachInterval);
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          playerRef.current = new YT.Player(iframeId, {
+            events: {
+              onReady: () => {
+                try {
+                  const dur = playerRef.current?.getDuration() ?? lesson.videoDuration ?? 0;
+                  if (dur > 0) setVideoDuration(dur);
+                } catch {
+                  setVideoDuration(lesson.videoDuration ?? 0);
+                }
+              },
+              onStateChange: (e: { data: number }) => {
+                // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+                if (e.data === 1) setIsPlaying(true);
+                else if (e.data === 2) setIsPlaying(false);
+                else if (e.data === 0) {
+                  setIsPlaying(false);
+                  reportWatch(durationRef.current || 99999, true);
+                }
+              },
+            },
+          });
+        } catch (e) {
+          console.warn("YouTube API attach:", e);
+        }
+      }
+    }, 200);
 
     const poll = setInterval(() => {
       if (cancelled) return;
@@ -143,61 +189,19 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
       }
     }, POLL_MS);
 
-    const onApiReady = () => {
-      if (cancelled || !container) return;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const YT = (window as any).YT;
-        if (!YT?.Player) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        playerRef.current = new YT.Player(container, {
-          videoId: lesson.videoId,
-          playerVars: { rel: 0, modestbranding: 1, playsinline: 1, origin: typeof window !== "undefined" ? window.location.origin : undefined },
-          events: {
-            onReady: () => {
-              try {
-                const dur = playerRef.current?.getDuration() ?? lesson.videoDuration ?? 0;
-                if (dur > 0) setVideoDuration(dur);
-              } catch {
-                setVideoDuration(lesson.videoDuration ?? 0);
-              }
-            },
-            onStateChange: (e: { data: number }) => {
-              // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
-              if (e.data === 1) setIsPlaying(true);
-              else if (e.data === 2) setIsPlaying(false);
-              else if (e.data === 0) {
-                setIsPlaying(false);
-                reportWatch(durationRef.current || 99999, true);
-              }
-            },
-          },
-        });
-      } catch {
-        // API init failed
-      }
-    };
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (typeof (window as any).YT?.Player !== "undefined") {
-      onApiReady();
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (window as any).onYouTubeIframeAPIReady = onApiReady;
-    }
-
     return () => {
       cancelled = true;
+      clearInterval(attachInterval);
       clearInterval(poll);
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (window as any).onYouTubeIframeAPIReady = undefined;
+        playerRef.current?.destroy?.();
       } catch {
         // ignore
       }
+      playerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lesson.videoId, lesson.id]);
+  }, [cleanVideoId, lesson.id]);
 
   function handleAnswerSubmit() {
     if (!activeEvent) return;
@@ -257,7 +261,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     }
   }
 
-  if (!lesson.videoId) {
+  if (!cleanVideoId) {
     return (
       <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-600">
         <p className="font-bold text-slate-900 mb-1">{lesson.title}</p>
@@ -270,64 +274,75 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
   const watchPct = videoDuration > 0 ? Math.min(100, Math.round((watchSeconds / videoDuration) * 100)) : 0;
 
   return (
-    <div className="space-y-4">
-      {/* Video Container */}
-      <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-black shadow-sm">
-        <div ref={containerRef} className="w-full aspect-video" />
+    <div className="space-y-3">
+      {/* Unified Video & Player Card */}
+      <div className="rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+        {/* Video Screen */}
+        <div className="relative w-full aspect-video bg-black flex items-center justify-center overflow-hidden">
+          <iframe
+            id={iframeId}
+            key={cleanVideoId}
+            src={`https://www.youtube.com/embed/${cleanVideoId}?enablejsapi=1&rel=0&modestbranding=1&playsinline=1`}
+            title={lesson.title}
+            className="w-full h-full border-0 absolute inset-0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
 
-        {/* Live Cue Points Bar underneath video */}
-        {timedQuestions.length > 0 && videoDuration > 0 && (
-          <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-800/80">
-            {timedQuestions.map((q) => {
-              const posPct = Math.min(100, Math.max(0, ((q.eventTime ?? 0) / videoDuration) * 100));
-              const isAnswered = Boolean(answers[q.id]);
-              return (
-                <div
-                  key={q.id}
-                  style={{ left: `${posPct}%` }}
-                  title={`Soal @ ${formatTime(q.eventTime ?? 0)}: ${q.question}`}
-                  className={`absolute -top-1 w-3 h-3 -ml-1.5 rounded-full border-2 border-white shadow transition-transform hover:scale-125 ${
-                    isAnswered ? "bg-emerald-500" : "bg-purple-600 animate-pulse"
-                  }`}
-                />
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Progress & Checkpoint Overview */}
-      <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 border border-slate-200 rounded-xl p-3">
-        <div className="flex items-center gap-4">
-          <span className="text-slate-600 flex items-center gap-1.5 font-medium">
-            <i className="fa-solid fa-play text-blue-600" />
-            Waktu: <strong className="font-mono text-slate-800">{formatTime(watchSeconds)}</strong> / {formatTime(videoDuration)} ({watchPct}%)
-          </span>
-          {timedQuestions.length > 0 && (
-            <span className="text-slate-600 flex items-center gap-1.5 font-medium">
-              <i className="fa-solid fa-circle-question text-purple-600" />
-              Soal: <strong className="text-purple-700">{answeredCount}/{timedQuestions.length} Terjawab</strong>
-            </span>
+          {/* Live Cue Points Bar underneath video */}
+          {timedQuestions.length > 0 && videoDuration > 0 && (
+            <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-800/80 pointer-events-none z-10">
+              {timedQuestions.map((q) => {
+                const posPct = Math.min(100, Math.max(0, ((q.eventTime ?? 0) / videoDuration) * 100));
+                const isAnswered = Boolean(answers[q.id]);
+                return (
+                  <div
+                    key={q.id}
+                    style={{ left: `${posPct}%` }}
+                    title={`Soal @ ${formatTime(q.eventTime ?? 0)}: ${q.question}`}
+                    className={`absolute -top-1 w-3 h-3 -ml-1.5 rounded-full border-2 border-white shadow transition-transform hover:scale-125 ${
+                      isAnswered ? "bg-emerald-500" : "bg-purple-600 animate-pulse"
+                    }`}
+                  />
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {timedQuestions.length > 0 && !submitted && (
-          <div className="flex items-center gap-1.5">
-            {timedQuestions.map((q, idx) => (
-              <span
-                key={q.id}
-                title={`Soal ${idx + 1} @ ${formatTime(q.eventTime ?? 0)}`}
-                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] border transition ${
-                  answers[q.id]
-                    ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                    : "bg-white text-slate-400 border-slate-200"
-                }`}
-              >
-                {answers[q.id] ? "✓" : idx + 1}
+        {/* Progress & Checkpoint Overview - Directly attached with no gap */}
+        <div className="flex flex-wrap items-center justify-between gap-3 text-xs bg-slate-50 border-t border-slate-200 px-4 py-2.5">
+          <div className="flex items-center gap-4">
+            <span className="text-slate-700 flex items-center gap-1.5 font-medium">
+              <i className="fa-solid fa-play text-red-600 text-[11px]" />
+              Waktu: <strong className="font-mono text-slate-900">{formatTime(watchSeconds)}</strong> / {formatTime(videoDuration)} ({watchPct}%)
+            </span>
+            {timedQuestions.length > 0 && (
+              <span className="text-slate-600 flex items-center gap-1.5 font-medium">
+                <i className="fa-solid fa-circle-question text-purple-600 text-[11px]" />
+                Soal: <strong className="text-purple-700">{answeredCount}/{timedQuestions.length} Terjawab</strong>
               </span>
-            ))}
+            )}
           </div>
-        )}
+
+          {timedQuestions.length > 0 && !submitted && (
+            <div className="flex items-center gap-1.5">
+              {timedQuestions.map((q, idx) => (
+                <span
+                  key={q.id}
+                  title={`Soal ${idx + 1} @ ${formatTime(q.eventTime ?? 0)}`}
+                  className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] border transition ${
+                    answers[q.id]
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                      : "bg-white text-slate-400 border-slate-200"
+                  }`}
+                >
+                  {answers[q.id] ? "✓" : idx + 1}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ACTIVE TIMED QUESTION MODAL OVERLAY */}

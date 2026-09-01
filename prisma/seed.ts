@@ -114,18 +114,21 @@ async function main() {
 
   // --- LMS Courses & Modules & Questions ---
   const course = await prisma.course.upsert({
-    where: { id: "course-onboarding-01" },
+    where: { id: "course-host-academy" },
     update: {
-      title: "Mastering Hard-Selling & Flash Sale Pitching",
+      title: "Akademi Host Live Stream Potensi (Sertifikasi Profesional)",
+      description:
+        "Kurikulum komprehensif pelatihan Host Live Streaming profesional mencakup mindset, olah vokal, teknik selling skill, interaksi penonton, kepatuhan platform (TikTok & Shopee), dan evaluasi performa.",
       status: "ACTIVE",
       tenantId: agency.id,
       isCertification: true,
       clientId: client.id,
     },
     create: {
-      id: "course-onboarding-01",
-      title: "Mastering Hard-Selling & Flash Sale Pitching",
-      description: "Panduan komprehensif teknik opening 30 detik pertama, demo produk interaktif, dan cara mendongkrak GMV di Shopee Live & TikTok Shop.",
+      id: "course-host-academy",
+      title: "Akademi Host Live Stream Potensi (Sertifikasi Profesional)",
+      description:
+        "Kurikulum komprehensif pelatihan Host Live Streaming profesional mencakup mindset, olah vokal, teknik selling skill, interaksi penonton, kepatuhan platform (TikTok & Shopee), dan evaluasi performa.",
       status: "ACTIVE",
       tenantId: agency.id,
       isCertification: true,
@@ -133,55 +136,563 @@ async function main() {
     },
   });
 
-  const mod1 = await prisma.module.upsert({
-    where: { id: "mod-01" },
-    update: { title: "Opening Hook & Formula Flash Sale", courseId: course.id, order: 1, passingScore: 80 },
-    create: {
-      id: "mod-01",
-      courseId: course.id,
-      title: "Opening Hook & Formula Flash Sale",
+  const babList = [
+    {
+      id: "mod-bab-01",
+      title: "BAB 1 — Mindset & Profil Host (75 menit)",
       order: 1,
+      passingScore: 75,
+      lessons: [
+        {
+          id: "les-01-01",
+          title: "Apa itu Host Live Stream & Peluang Karir",
+          order: 1,
+          videoId: "jvdyF7nzlMk",
+          videoDuration: 15 * 60,
+          content:
+            "Tujuan Pembelajaran: Memahami profesi dan prospek karir host live stream.\n\nDalam materi ini, Anda akan mempelajari:\n- Definisi dan peran strategis Host Live Stream dalam industri live commerce modern.\n- Peluang karir dari pemula hingga Top Tier Streamer.\n- Struktur kompensasi, komisi, dan potensi pertumbuhan industri siaran langsung.",
+        },
+        {
+          id: "les-01-02",
+          title: "Karakter & Kepribadian Host",
+          order: 2,
+          videoId: "W9c5oIzEo3k",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Mengenal sifat-sifat host yang disukai penonton.\n\nDalam materi ini, Anda akan mempelajari:\n- Membangun energi positif dan keramahan di depan kamera.\n- Empati dan kehangatan saat berinteraksi dengan penonton.\n- Menjaga antusiasme dan stamina mental selama berjam-jam siaran.",
+        },
+        {
+          id: "les-01-03",
+          title: "Membangun Personal Branding",
+          order: 3,
+          videoId: "Xm3sRIR8S4Y",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Mampu merancang identitas unik sebagai host.\n\nDalam materi ini, Anda akan mempelajari:\n- Menentukan ciri khas unik (USP - Unique Selling Proposition).\n- Tagline, jargon sapaan khas, dan signature greeting.\n- Konsistensi gaya visual, busana, dan persona publik.",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-01-01",
+          question:
+            "Apa peran utama seorang Host Live Stream profesional selain mempromosikan produk?",
+          options: [
+            "A. Menjaga retensi dan membangun hubungan emosional dengan penonton",
+            "B. Hanya berbicara tanpa henti",
+            "C. Menunggu penonton bertanya",
+            "D. Membaca teks deskripsi produk saja",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-01-02",
+          question:
+            "Mengapa personal branding sangat krusial bagi seorang live streamer?",
+          options: [
+            "A. Agar terlihat keren di kamera",
+            "B. Agar penonton mengenali ciri khas unik dan mudah mengingat host saat siaran berikutnya",
+            "C. Supaya bisa menjual barang mahal saja",
+            "D. Agar tidak perlu menyapa penonton",
+          ],
+          correctAnswer: "B",
+        },
+        {
+          id: "q-01-03",
+          question:
+            "Sifat kepribadian utama apa yang paling menentukan kenyamanan audiens saat menonton siaran live?",
+          options: [
+            "A. Antusiasme yang tulus, keramahan, dan respon interaktif yang hangat",
+            "B. Bicara dengan nada datar",
+            "C. Cuek terhadap komentar penonton",
+            "D. Menampilkan wajah tanpa ekspresi",
+          ],
+          correctAnswer: "A",
+        },
+      ],
+    },
+    {
+      id: "mod-bab-02",
+      title: "BAB 2 — Komunikasi & Vokal (75 menit)",
+      order: 2,
+      passingScore: 75,
+      lessons: [
+        {
+          id: "les-02-01",
+          title: "Teknik Berbicara Percaya Diri",
+          order: 1,
+          videoId: "AKATZ04mAb0",
+          videoDuration: 22 * 60,
+          content:
+            "Tujuan Pembelajaran: Praktek vokal dan kepercayaan diri di kamera.\n\nDalam materi ini, Anda akan mempelajari:\n- Menghilangkan rasa gugup dan demam panggung.\n- Teknik eye-contact dengan lensa kamera secara natural.\n- Olah napas diafragma untuk menopang stamina bicara.",
+        },
+        {
+          id: "les-02-02",
+          title: "Olah Vokal: Intonasi & Artikulasi",
+          order: 2,
+          videoId: "kNVcN0lX0jA",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Meningkatkan kualitas suara dan kejelasan bicara.\n\nDalam materi ini, Anda akan mempelajari:\n- Artikulasi vokal A-I-U-E-O yang jelas dan tegas.\n- Variasi intonasi (pitch variation) untuk menghindari suara monoton.\n- Penekanan kata kunci promosi (power words).",
+        },
+        {
+          id: "les-02-03",
+          title: "Bahasa Tubuh & Ekspresi",
+          order: 3,
+          videoId: "UWtdwHH2hjg",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Memahami gestur dan ekspresi yang menarik penonton.\n\nDalam materi ini, Anda akan mempelajari:\n- Penggunaan bahasa tubuh dinamis di area framing kamera.\n- Ekspresi wajah mikro yang menyampaikan ketulusan dan antusiasme.\n- Postur tubuh percaya diri saat berdiri maupun duduk.",
+        },
+        {
+          id: "les-02-04",
+          title: "Cara Menyapa Penonton",
+          order: 4,
+          videoId: "e8d8Wn2SL7Q",
+          videoDuration: 15 * 60,
+          content:
+            "Tujuan Pembelajaran: Membangun kehangatan sejak penonton masuk.\n\nDalam materi ini, Anda akan mempelajari:\n- Formula 3 detik pertama menyapa penonton baru.\n- Teknik menyebut username secara natural dan ramah.\n- Menciptakan kesan selamat datang yang membuat penonton betah.",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-02-01",
+          question:
+            "Kemana arah pandangan mata yang benar saat siaran live agar penonton merasa ditatap secara langsung?",
+          options: [
+            "A. Menatap lensa kamera",
+            "B. Menatap layar kolom komentar terus menerus",
+            "C. Menatap cermin di belakang kamera",
+            "D. Menatap langit-langit studio",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-02-02",
+          question:
+            "Mengapa intonasi bicara seorang host harus bervariasi (tidak monoton)?",
+          options: [
+            "A. Agar penonton tidak bosan dan pesan poin penting produk tersampaikan kuat",
+            "B. Agar suara terdengar lebih keras",
+            "C. Agar host cepat lelah",
+            "D. Tidak ada pengaruhnya",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-02-03",
+          question:
+            "Formula sapaan apa yang paling efektif saat penonton baru memasuki room siaran?",
+          options: [
+            "A. Menyebut username penonton dengan ramah dan mengarahkan ke promo terkini",
+            "B. Meminta penonton langsung transfer uang",
+            "C. Mengabaikan penonton sampai jumlahnya banyak",
+            "D. Menegur penonton yang tidak berkomentar",
+          ],
+          correctAnswer: "A",
+        },
+      ],
+    },
+    {
+      id: "mod-bab-03",
+      title: "BAB 3 — Selling Skill (138 menit)",
+      order: 3,
       passingScore: 80,
+      lessons: [
+        {
+          id: "les-03-01",
+          title: "Psikologi Pembeli",
+          order: 1,
+          videoId: "RxH_vSyEx4U",
+          videoDuration: 25 * 60,
+          content:
+            "Tujuan Pembelajaran: Memahami motivasi dan trigger pembelian penonton.\n\nDalam materi ini, Anda akan mempelajari:\n- Faktor emosional vs rasional dalam keputusan belanja impulsif.\n- Mengidentifikasi pain point dan keinginan mendalam audiens.\n- Mengubah penonton pasif (window shopper) menjadi pembeli aktif.",
+        },
+        {
+          id: "les-03-02",
+          title: "Product Knowledge",
+          order: 2,
+          videoId: "DQvU6WmBBe0",
+          videoDuration: 22 * 60,
+          content:
+            "Tujuan Pembelajaran: Menyampaikan informasi produk secara meyakinkan.\n\nDalam materi ini, Anda akan mempelajari:\n- Membedah Features, Advantages, dan Benefits (FAB framework).\n- Menghafal spesifikasi bahan, ukuran, cara pakai, dan varian.\n- Menghubungkan fitur produk dengan solusi nyata masalah pelanggan.",
+        },
+        {
+          id: "les-03-03",
+          title: "Presentasi Produk",
+          order: 3,
+          videoId: "iHu6O8JpViA",
+          videoDuration: 28 * 60,
+          content:
+            "Tujuan Pembelajaran: Teknik demo produk yang menarik dan mengundang beli.\n\nDalam materi ini, Anda akan mempelajari:\n- Teknik demo langsung di depan kamera (texture test, swatch, try on).\n- Menggunakan sensory words untuk membangkitkan imajinasi penonton.\n- Zoom visual dan angle pencahayaan terbaik produk.",
+        },
+        {
+          id: "les-03-04",
+          title: "Teknik FOMO",
+          order: 4,
+          videoId: "vbyoU8WP7EQ",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Menciptakan urgensi dan kelangkaan yang etis.\n\nDalam materi ini, Anda akan mempelajari:\n- Mengkomunikasikan batasan stok dan batasan waktu flash sale.\n- Countdown voucher diskon khusus siaran live.\n- Menciptakan momentum rebutan keranjang secara positif.",
+        },
+        {
+          id: "les-03-05",
+          title: "Handling Objection",
+          order: 5,
+          videoId: "W9c5oIzEo3k",
+          videoDuration: 25 * 60,
+          content:
+            "Tujuan Pembelajaran: Menjawab keberatan penonton dengan percaya diri.\n\nDalam materi ini, Anda akan mempelajari:\n- Menangani keberatan harga (price objection) dengan value breakdown.\n- Menjawab keraguan keaslian, garansi, dan kecocokan produk.\n- Teknik framing perbandingan cerdas tanpa merendahkan kompetitor.",
+        },
+        {
+          id: "les-03-06",
+          title: "Call to Action Efektif",
+          order: 6,
+          videoId: "RxH_vSyEx4U",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Mendorong penonton mengklik keranjang pembelian.\n\nDalam materi ini, Anda akan mempelajari:\n- Struktur kalimat Call to Action (CTA) yang tegas dan persuasif.\n- Panduan checkout langkah-demi-langkah bagi penonton baru.\n- Arah klaim voucher ongkir gratis dan metode pembayaran instan.",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-03-01",
+          question:
+            "Apa perbedaan antara Fitur (Feature) dan Manfaat (Benefit) produk saat dipresentasikan?",
+          options: [
+            "A. Fitur menjelaskan spesifikasi teknis barang, sedangkan Benefit menjelaskan keuntungan nyata yang dirasakan pembeli",
+            "B. Keduanya adalah hal yang sama persis",
+            "C. Fitur selalu berupa harga produk",
+            "D. Benefit hanya untuk produk kecantikan",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-03-02",
+          question:
+            "Bagaimana cara etis menerapkan teknik FOMO (Fear of Missing Out) di live streaming?",
+          options: [
+            "A. Menginformasikan stok voucher promo spesial live yang tersisa sedikit secara akurat",
+            "B. Membohongi penonton bahwa toko akan tutup",
+            "C. Memaksa penonton membeli tanpa penjelasan",
+            "D. Menjelekkan produk pesaing",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-03-03",
+          question:
+            "Ketika penonton berkomentar 'Kak harganya kemahalan', respon terbaik host adalah:",
+          options: [
+            "A. Mengapresiasi penonton lalu menjelaskan value, kualitas bahan, dan bonus promo yang membuat harga tersebut sangat hemat",
+            "B. Meminta penonton pergi ke toko lain",
+            "C. Mengabaikan komentar tersebut",
+            "D. Menurunkan harga sendiri tanpa izin brand",
+          ],
+          correctAnswer: "A",
+        },
+      ],
     },
-  });
+    {
+      id: "mod-bab-04",
+      title: "BAB 4 — Engagement & Interaksi (80 menit)",
+      order: 4,
+      passingScore: 75,
+      lessons: [
+        {
+          id: "les-04-01",
+          title: "Membangun Interaksi Aktif",
+          order: 1,
+          videoId: "vbyoU8WP7EQ",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Teknik menghidupkan kolom komentar.\n\nDalam materi ini, Anda akan mempelajari:\n- Melontarkan pertanyaan pemantik komentar yang mudah dijawab.\n- Polling preferensi warna/varian produk secara real-time.\n- Menghargai feedback penonton dan membangun atmosfer komunitas.",
+        },
+        {
+          id: "les-04-02",
+          title: "Giveaway & Game Viral",
+          order: 2,
+          videoId: "iHu6O8JpViA",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Merancang sesi interaktif yang meningkatkan viewer.\n\nDalam materi ini, Anda akan mempelajari:\n- Merancang kuis kilat berhadiah voucher.\n- Game tap-tap layar dan target like challenge.\n- Menjaga transparansi dan kepatuhan aturan giveaway platform.",
+        },
+        {
+          id: "les-04-03",
+          title: "Mengelola Komentar Negatif",
+          order: 3,
+          videoId: "AKATZ04mAb0",
+          videoDuration: 22 * 60,
+          content:
+            "Tujuan Pembelajaran: Menghadapi toxic viewer secara profesional.\n\nDalam materi ini, Anda akan mempelajari:\n- Pengendalian emosi saat menghadapi provokasi atau komentar negatif.\n- Teknik de-eskalasi dan membalikkan suasana menjadi positif.\n- SOP koordinasi dengan tim OTS/Moderator untuk filtering komentar.",
+        },
+        {
+          id: "les-04-04",
+          title: "Strategi Retensi Penonton",
+          order: 4,
+          videoId: "W9c5oIzEo3k",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Menjaga penonton tetap di live hingga akhir.\n\nDalam materi ini, Anda akan mempelajari:\n- Teaser penawaran misteri di menit-menit krusial siaran.\n- Looping struktur presentasi agar penonton baru tidak tertinggal.\n- Menjaga energi vokal dan variasi aktivitas studio.",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-04-01",
+          question:
+            "Mengapa interaksi di kolom komentar sangat penting bagi algoritma platform live stream?",
+          options: [
+            "A. Menandakan siaran menarik dan berkualitas tinggi sehingga platform merekomendasikannya ke lebih banyak penonton di FYP/Feeds",
+            "B. Hanya untuk mengisi waktu luang",
+            "C. Agar host tidak berbicara sendirian",
+            "D. Tidak ada hubungannya dengan algoritma",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-04-02",
+          question:
+            "Sikap terbaik host saat mendapatkan komentar pedas atau provokatif adalah:",
+          options: [
+            "A. Tetap tenang, tidak terpancing emosi, tanggapi dengan sopan atau serahkan moderasi ke OTS/Admin",
+            "B. Membalas menghujat penonton tersebut",
+            "C. Menangis di depan kamera",
+            "D. Langsung mematikan siaran live",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-04-03",
+          question:
+            "Teknik 'Teaser Looping' dalam menjaga retensi penonton artinya:",
+          options: [
+            "A. Membocorkan bahwa promo flash sale terbesar akan dibuka sebentar lagi di menit tertentu",
+            "B. Mengulang lagu yang sama terus menerus",
+            "C. Mengulang kata sapaan tanpa jeda",
+            "D. Memutar video rekaman ulang",
+          ],
+          correctAnswer: "A",
+        },
+      ],
+    },
+    {
+      id: "mod-bab-05",
+      title: "BAB 5 — Peraturan Platform (78 menit)",
+      order: 5,
+      passingScore: 80,
+      lessons: [
+        {
+          id: "les-05-01",
+          title: "Aturan TikTok Live",
+          order: 1,
+          videoId: "iHu6O8JpViA",
+          videoDuration: 25 * 60,
+          content:
+            "Tujuan Pembelajaran: Memahami kebijakan dan larangan di TikTok.\n\nDalam materi ini, Anda akan mempelajari:\n- Community Guidelines TikTok Shop & TikTok Live.\n- Larangan kemunculan anak di bawah umur tanpa pengawasan.\n- Kebijakan strike point, banned sementara, dan penalti shadowban.",
+        },
+        {
+          id: "les-05-02",
+          title: "Aturan Shopee Live",
+          order: 2,
+          videoId: "DQvU6WmBBe0",
+          videoDuration: 20 * 60,
+          content:
+            "Tujuan Pembelajaran: Memahami kebijakan dan larangan di Shopee.\n\nDalam materi ini, Anda akan mempelajari:\n- Kebijakan operasional Shopee Live Streaming.\n- Larangan siaran rekaman (looping video) dan unattended streaming.\n- Kesesuaian display produk dengan daftar etalase keranjang oranye.",
+        },
+        {
+          id: "les-05-03",
+          title: "Kata-kata Terlarang",
+          order: 3,
+          videoId: "RxH_vSyEx4U",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Menghafal kata/frasa yang memicu penalti platform.\n\nDalam materi ini, Anda akan mempelajari:\n- Kata-kata klaim absolut ('terbaik di dunia', '100% sembuh instan').\n- Larangan menyebutkan nomor WhatsApp, transfer bank, atau platform kompetitor.\n- Menghindari kata-kata berkonotasi sensorik/vulgar.",
+        },
+        {
+          id: "les-05-04",
+          title: "Etika Siaran",
+          order: 4,
+          videoId: "jvdyF7nzlMk",
+          videoDuration: 15 * 60,
+          content:
+            "Tujuan Pembelajaran: Standar penampilan dan konten yang sesuai.\n\nDalam materi ini, Anda akan mempelajari:\n- Standar dress code sopan dan profesional sesuai brand guideline.\n- Larangan merokok, vape, atau aktivitas berbahaya saat siaran.\n- Kepatuhan hak cipta musik latar (BGM copyright).",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-05-01",
+          question:
+            "Tindakan mana di bawah ini yang dapat menyebabkan siaran TikTok Shop langsung di-banned atau terkena pelanggaran berat?",
+          options: [
+            "A. Mengarahkan transaksi penonton ke WhatsApp/transfer bank pribadi di luar keranjang resmi",
+            "B. Menjelaskan bahan produk dengan detail",
+            "C. Memberikan voucher diskon resmi",
+            "D. Menyapa penonton yang baru join",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-05-02",
+          question:
+            "Mengapa siaran 'Unattended Live' (kamera ditinggal kosong tanpa aktivitas host) dilarang di Shopee Live & TikTok?",
+          options: [
+            "A. Melanggar standar kualitas konten siaran langsung dan merusak pengalaman pengguna platform",
+            "B. Karena kamera menjadi panas",
+            "C. Karena studio memakan listrik",
+            "D. Boleh dilakukan kapan saja",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-05-03",
+          question:
+            "Kata atau klaim manakah yang terlarang diucapkan saat mempromosikan produk kecantikan/kesehatan?",
+          options: [
+            "A. 'Dijamin pasti sembuh 100% dalam 1 hari' (Overclaiming)",
+            "B. 'Membantu melembabkan kulit'",
+            "C. 'Telah terdaftar resmi di BPOM'",
+            "D. 'Gunakan secara teratur untuk hasil maksimal'",
+          ],
+          correctAnswer: "A",
+        },
+      ],
+    },
+    {
+      id: "mod-bab-06",
+      title: "BAB 6 — Performa & Evaluasi (40 menit)",
+      order: 6,
+      passingScore: 80,
+      lessons: [
+        {
+          id: "les-06-01",
+          title: "Membaca Metrik Live",
+          order: 1,
+          videoId: "vbyoU8WP7EQ",
+          videoDuration: 22 * 60,
+          content:
+            "Tujuan Pembelajaran: Interpretasi GMV, CVR, viewer count.\n\nDalam materi ini, Anda akan mempelajari:\n- Gross Merchandise Value (GMV) dan Conversion Rate (CVR).\n- Click-Through Rate (CTR) produk keranjang.\n- Menganalisis grafik Average Watch Time dan Peak Concurrent Viewers (PCU).",
+        },
+        {
+          id: "les-06-02",
+          title: "Cara Evaluasi Diri",
+          order: 2,
+          videoId: "Xm3sRIR8S4Y",
+          videoDuration: 18 * 60,
+          content:
+            "Tujuan Pembelajaran: Metode self-review setelah setiap sesi siaran.\n\nDalam materi ini, Anda akan mempelajari:\n- Membedah rekaman siaran (playback analysis) secara berkala.\n- Mengidentifikasi menit-menit penurunan penonton dan penyebabnya.\n- Mencatat keberhasilan promosi produk dan menyusun action plan sesi berikutnya.",
+        },
+        {
+          id: "les-06-03",
+          title: "Ujian Akhir Sertifikasi Host Profesional",
+          order: 3,
+          videoId: null,
+          videoDuration: 0,
+          content:
+            "Tujuan Pembelajaran: Ujian komprehensif — nilai minimum 80 untuk lulus sertifikasi profesi Host Live Streamer Potensi Creative.",
+        },
+      ],
+      quizzes: [
+        {
+          id: "q-06-01",
+          question:
+            "Metrik 'Conversion Rate (CVR)' dalam siaran live stream mengukur:",
+          options: [
+            "A. Persentase penonton yang memutuskan membeli dibanding total penonton yang masuk/klik produk",
+            "B. Jumlah follower baru yang follow toko",
+            "C. Jumlah durasi siaran dalam jam",
+            "D. Kecepatan internet studio",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-06-02",
+          question:
+            "Jika grafik analitik menunjukkan penonton drop drastis pada menit ke-40, langkah evaluasi yang paling tepat adalah:",
+          options: [
+            "A. Mengecek rekaman menit ke-40 untuk mengevaluasi apakah energi host turun, topik membosankan, atau ada jeda bicara terlalu lama",
+            "B. Menyalahkan koneksi internet",
+            "C. Menghentikan jualan produk tersebut",
+            "D. Menghapus akun",
+          ],
+          correctAnswer: "A",
+        },
+        {
+          id: "q-06-03",
+          question:
+            "Kombinasi 3 pilar utama keberhasilan seorang Host Live Stream profesional adalah:",
+          options: [
+            "A. Mindset tangguh, Penguasaan Selling & Komunikasi, serta Disiplin mematuhi Regulasi Platform",
+            "B. Hanya modal tampang dan suara keras",
+            "C. Kamera mahal tanpa persiapan produk",
+            "D. Banyak giveaway tanpa menjelaskan jualan",
+          ],
+          correctAnswer: "A",
+        },
+      ],
+    },
+  ];
 
-  await prisma.lesson.upsert({
-    where: { id: "les-01" },
-    update: { title: "30 Detik Pertama Siaran Live", moduleId: mod1.id, order: 1 },
-    create: {
-      id: "les-01",
-      moduleId: mod1.id,
-      title: "30 Detik Pertama Siaran Live",
-      order: 1,
-      content: `1. Greeting & Callout: Sapa penonton yang baru join dan sebut nama mereka.\n2. Spill Promo Utama: Umumkan promo terbesar hari ini.\n3. Call to Action (CTA): Arahkan klik keranjang kuning/oranye.`,
-    },
-  });
+  for (const bab of babList) {
+    const mod = await prisma.module.upsert({
+      where: { id: bab.id },
+      update: {
+        title: bab.title,
+        courseId: course.id,
+        order: bab.order,
+        passingScore: bab.passingScore,
+      },
+      create: {
+        id: bab.id,
+        courseId: course.id,
+        title: bab.title,
+        order: bab.order,
+        passingScore: bab.passingScore,
+      },
+    });
 
-  await prisma.quizQuestion.upsert({
-    where: { id: "q-01" },
-    update: { question: "Apa hal terpenting yang harus dilakukan host di 30 detik pertama saat siaran live dimulai?", moduleId: mod1.id },
-    create: {
-      id: "q-01",
-      moduleId: mod1.id,
-      type: "MCQ",
-      question: "Apa hal terpenting yang harus dilakukan host di 30 detik pertama saat siaran live dimulai?",
-      options: ["A. Menunggu 10 menit", "B. Menyapa penonton dan langsung mengumumkan voucher promo utama di keranjang"],
-      correctAnswer: "B",
-    },
-  });
+    for (const les of bab.lessons) {
+      await prisma.lesson.upsert({
+        where: { id: les.id },
+        update: {
+          title: les.title,
+          moduleId: mod.id,
+          order: les.order,
+          videoId: (les as any).videoId ?? null,
+          videoDuration: les.videoDuration,
+          content: les.content,
+        },
+        create: {
+          id: les.id,
+          moduleId: mod.id,
+          title: les.title,
+          order: les.order,
+          videoId: (les as any).videoId ?? null,
+          videoDuration: les.videoDuration,
+          content: les.content,
+        },
+      });
+    }
 
-  await prisma.quizQuestion.upsert({
-    where: { id: "q-02" },
-    update: { question: "Berapa menit jeda istirahat minimum antar sesi siaran live (Token Jeda SOP)?", moduleId: mod1.id },
-    create: {
-      id: "q-02",
-      moduleId: mod1.id,
-      type: "MCQ",
-      question: "Berapa menit jeda istirahat minimum antar sesi siaran live (Token Jeda SOP)?",
-      options: ["A. 10 Menit", "B. 30 Menit"],
-      correctAnswer: "B",
-    },
-  });
+    for (const q of bab.quizzes) {
+      await prisma.quizQuestion.upsert({
+        where: { id: q.id },
+        update: {
+          question: q.question,
+          moduleId: mod.id,
+          type: "MCQ",
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+        },
+        create: {
+          id: q.id,
+          moduleId: mod.id,
+          type: "MCQ",
+          question: q.question,
+          options: q.options,
+          correctAnswer: q.correctAnswer,
+        },
+      });
+    }
+  }
 
   // Enroll demo streamer PCS002
   const streamerKaryawan = await prisma.karyawan.findUnique({ where: { idKaryawan: "PCS002" } });

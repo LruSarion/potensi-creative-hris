@@ -9,12 +9,11 @@ import {
 } from "@/lib/utils/schedule-helpers";
 import { calcDurationHours } from "@/lib/utils/date-format";
 import FlatpickrPicker from "@/components/ui/flatpickr-picker";
-import { inputCls, selectCls, labelCls } from "./shared-styles";
 
 export function TabMarketplace({
-  streamers,
-  clients,
-  platformClientOptions,
+  streamers = [],
+  clients = [],
+  platformClientOptions = [],
   fetchData,
   showAlert,
   setModalCrashData,
@@ -59,6 +58,16 @@ export function TabMarketplace({
   const [success, setSuccess] = useState("");
 
   // =========================================================================
+  // HELPER: HITUNG JAM SELESAI OTOMATIS (+2 JAM)
+  // =========================================================================
+  function calculateEndTime(startVal: string): string {
+    if (!startVal) return "";
+    const [h, m] = startVal.split(":").map(Number);
+    const endH = (h + 2) % 24;
+    return `${String(endH).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
+  }
+
+  // =========================================================================
   // FORM ACTIONS
   // =========================================================================
   function handleAddForm() {
@@ -95,7 +104,7 @@ export function TabMarketplace({
 
   function handleRemoveForm(id: number) {
     if (marketplaceForms.length <= 1) {
-      showAlert("⚠️ Minimal 1 formulir pengajuan.");
+      showAlert("Minimal 1 form pengajuan.");
       return;
     }
     setMarketplaceForms((prev) => prev.filter((f) => f.id !== id));
@@ -114,16 +123,30 @@ export function TabMarketplace({
     setMarketplaceForms((prev) => {
       const updated = [...prev];
       const item = { ...updated[idx], [field]: value };
-      if (field === "jamMulaiLive" || field === "jamSelesaiLive") {
-        if (item.jamMulaiLive && item.jamSelesaiLive) {
-          item.durasi = calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+
+      if (field === "jamMulaiLive") {
+        if (value && !item.jamSelesaiLive) {
+          item.jamSelesaiLive = calculateEndTime(value);
+        }
+        if (value && item.jamSelesaiLive) {
+          item.durasi = calcDurationHours(value, item.jamSelesaiLive);
         } else {
           item.durasi = "0";
         }
       }
+
+      if (field === "jamSelesaiLive") {
+        if (item.jamMulaiLive && value) {
+          item.durasi = calcDurationHours(item.jamMulaiLive, value);
+        } else {
+          item.durasi = "0";
+        }
+      }
+
       if (field === "tanggal" && value) {
         item.idJadwal = generateNewScheduleId("MKT", value);
       }
+
       updated[idx] = item;
       return updated;
     });
@@ -177,7 +200,7 @@ export function TabMarketplace({
     if (!val) return;
     const cur = (marketplaceForms[idx].targetHost as string[]) || [];
     if (cur.includes(val)) {
-      showAlert("⚠️ Host ini sudah ditambahkan.");
+      showAlert("⚠️ Host ini sudah ada di daftar eksklusif pada form ini.");
       return;
     }
     updateFormField(idx, "targetHost", [...cur, val]);
@@ -195,7 +218,7 @@ export function TabMarketplace({
     if (!val) return;
     const cur = (marketplaceForms[idx].blacklistHost as string[]) || [];
     if (cur.includes(val)) {
-      showAlert("⚠️ Host ini sudah ada di blacklist.");
+      showAlert("⚠️ Host ini sudah ada di daftar pengecualian pada form ini.");
       return;
     }
     updateFormField(idx, "blacklistHost", [...cur, val]);
@@ -216,6 +239,15 @@ export function TabMarketplace({
     const endVal = master.jamSelesaiLive;
     if (!startVal || !endVal) {
       showAlert("⚠️ Isi Jam Mulai & Selesai terlebih dahulu.");
+      return;
+    }
+
+    if (marketplaceForms.length + (numSessions - 1) > 20) {
+      showAlert(
+        `⚠️ Batas maksimal adalah 20 form. Anda hanya bisa menambah ${
+          20 - marketplaceForms.length
+        } sesi lagi.`
+      );
       return;
     }
 
@@ -279,7 +311,9 @@ export function TabMarketplace({
     for (let i = 0; i < marketplaceForms.length; i++) {
       const f = marketplaceForms[i];
       if (!f.platform || !f.tanggal || !f.jamMulaiLive || !f.jamSelesaiLive) {
-        showAlert(`⚠️ Form #${i + 1}: Platform, Tanggal, Jam Mulai, dan Jam Selesai wajib diisi!`);
+        showAlert(
+          `⚠️ VALIDASI GAGAL:\nKolom wajib pada Form Marketplace #${i + 1} belum Anda isi.`
+        );
         return;
       }
     }
@@ -331,7 +365,7 @@ export function TabMarketplace({
       setModalCrashData({
         isOpen: true,
         isSafe: false,
-        title: `Ditemukan ${conflicts.length} Jadwal Marketplace Bentrok!`,
+        title: `Ditemukan ${conflicts.length} Pengajuan Bentrok!`,
         conflicts,
       });
     } else {
@@ -339,7 +373,7 @@ export function TabMarketplace({
       setModalCrashData({
         isOpen: true,
         isSafe: true,
-        title: "Formulir Marketplace Aman & Bebas Bentrok!",
+        title: "Pengajuan Aman & Bebas Bentrok!",
         conflicts: [],
       });
     }
@@ -352,7 +386,9 @@ export function TabMarketplace({
     setSuccess("");
 
     if (!isMarketplaceCrashVerified) {
-      showAlert("⚠️ Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu!");
+      showAlert(
+        "⚠️ Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu untuk memastikan tidak ada tabrakan jadwal!"
+      );
       return;
     }
 
@@ -392,10 +428,10 @@ export function TabMarketplace({
             ? item.produkPrioritas.join("**")
             : item.produkPrioritas || null,
           targetHost: Array.isArray(item.targetHost)
-            ? item.targetHost.join(", ")
+            ? item.targetHost.join("**")
             : item.targetHost || null,
           blacklistHost: Array.isArray(item.blacklistHost)
-            ? item.blacklistHost.join(", ")
+            ? item.blacklistHost.join("**")
             : item.blacklistHost || null,
           status: "TERJADWAL",
         };
@@ -407,7 +443,12 @@ export function TabMarketplace({
         });
       }
 
-      setSuccess(`✅ Berhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`);
+      setSuccess(
+        `✅ BERHASIL:\nBerhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`
+      );
+      showAlert(
+        `✅ BERHASIL:\nBerhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`
+      );
       setIsMarketplaceCrashVerified(false);
       setMarketplaceForms([
         {
@@ -433,16 +474,24 @@ export function TabMarketplace({
       fetchData();
     } catch {
       setError("Gagal mengirimkan pengajuan marketplace.");
+      showAlert("❌ GAGAL: Terjadi kesalahan saat mengirim pengajuan marketplace.");
     } finally {
       setLoading(false);
     }
   }
 
+  // Generate datalist streamer options
+  const streamerOptions = (streamers || []).map((s) => {
+    const nama = s.namaLengkap || s.namaPanggilan || s.name || "";
+    const idKar = s.idKaryawan || "";
+    return `${idKar} | ${nama}`;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="mb-2">
-        <h2 className="text-lg font-bold text-slate-800 mb-1">
+      <div className="mb-6">
+        <h2 className="text-lg font-bold text-slate-800 mb-2">
           Pengajuan Jadwal Live (Marketplace)
         </h2>
         <p className="text-slate-500 text-sm">
@@ -463,484 +512,507 @@ export function TabMarketplace({
 
       {/* FORM MASTER */}
       <form onSubmit={submitMarketplaceSchedules} className="space-y-4">
-        {marketplaceForms.map((item, idx) => {
-          const headTitle =
-            item.platform && item.tanggal
-              ? `${item.platform} | ${item.tanggal} | ${item.jamMulaiLive} - ${item.jamSelesaiLive}`
-              : "Jadwal Pengajuan Baru";
+        <div className="space-y-4">
+          {marketplaceForms.map((item, idx) => {
+            let tanggalFormatted = "Tgl";
+            if (item.tanggal) {
+              const p = item.tanggal.split("-");
+              if (p.length === 3) tanggalFormatted = `${p[2]}/${p[1]}/${p[0]}`;
+            }
+            const jamMulai = item.jamMulaiLive || "--:--";
+            const jamSelesai = item.jamSelesaiLive || "--:--";
 
-          return (
-            <div
-              key={item.id}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4"
-            >
-              {/* Card Header */}
+            return (
               <div
-                className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
-                onClick={() => toggleCollapse(idx)}
+                key={item.id}
+                className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4"
               >
-                <div className="flex items-center gap-3">
-                  <div className="bg-[#941A0B] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
-                    #{idx + 1}
-                  </div>
-                  <h3 className="font-bold text-slate-800 text-sm leading-tight">
-                    {headTitle}
-                  </h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveForm(item.id);
-                    }}
-                    className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
-                    title="Hapus Form"
-                  >
-                    <i className="fa-solid fa-trash" />
-                  </button>
-                  <button
-                    type="button"
-                    className="text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
-                  >
-                    <i
-                      className={`fa-solid ${
-                        item.isCollapsed ? "fa-chevron-down" : "fa-chevron-up"
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {/* Card Body */}
-              {!item.isCollapsed && (
-                <div className="p-5 sm:p-6 space-y-6 block">
-                  {/* SEKSI 1: INFORMASI JADWAL */}
-                  <div className="bg-slate-50 border border-slate-100 p-4 sm:p-5 rounded-xl space-y-4 sm:space-y-5">
-                    <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
-                      <i className="fa-solid fa-clock text-blue-500" /> Informasi Jadwal
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Platform *
-                        </label>
-                        <select
-                          value={item.platform}
-                          onChange={(e) => {
-                            const sel = e.target.value;
-                            const matched = platformClientOptions.find(
-                              (p) => p.value === sel
-                            );
-                            updateFormField(idx, "platform", sel);
-                            if (matched?.clientId) {
-                              updateFormField(idx, "clientId", matched.clientId);
-                            }
-                          }}
-                          className={selectCls}
-                          required
-                        >
-                          <option value="">-- Pilih Platform Client --</option>
-                          {platformClientOptions.map((p) => (
-                            <option key={p.value} value={p.value}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Tanggal Live *
-                        </label>
-                        <FlatpickrPicker
-                          value={item.tanggal}
-                          placeholder="Pilih Tanggal..."
-                          options={{ mode: "single", dateFormat: "Y-m-d" }}
-                          onChange={(dateStr) => updateFormField(idx, "tanggal", dateStr)}
-                        />
-                      </div>
+                {/* Card Header */}
+                <div
+                  className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
+                  onClick={() => toggleCollapse(idx)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="bg-[#941A0B] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                      #{idx + 1}
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Jam Mulai *
-                        </label>
-                        <input
-                          type="time"
-                          value={item.jamMulaiLive}
-                          onChange={(e) =>
-                            updateFormField(idx, "jamMulaiLive", e.target.value)
-                          }
-                          className={inputCls}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Jam Selesai *
-                        </label>
-                        <input
-                          type="time"
-                          value={item.jamSelesaiLive}
-                          onChange={(e) =>
-                            updateFormField(idx, "jamSelesaiLive", e.target.value)
-                          }
-                          className={inputCls}
-                          required
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Kuota Host *
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={10}
-                          value={item.kuota || 1}
-                          onChange={(e) =>
-                            updateFormField(idx, "kuota", Number(e.target.value))
-                          }
-                          className={inputCls}
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* SEKSI 2: DETAIL PENJUALAN */}
-                  <div className="bg-slate-50 border border-slate-100 p-4 sm:p-5 rounded-xl space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2 border-b border-slate-200 pb-3">
-                      <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                        <i className="fa-solid fa-bullseye text-blue-500" /> Detail Penjualan
-                      </h3>
-                      {idx > 0 && (
-                        <div className="bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                          <label className="flex items-center gap-2 text-xs text-blue-700 font-bold cursor-pointer">
-                            <input
-                              type="checkbox"
-                              onChange={(e) => {
-                                if (e.target.checked) handleCopyFromTop(idx, "detail");
-                              }}
-                              className="w-4 h-4 rounded text-blue-600"
-                            />{" "}
-                            Samakan dgn Form Teratas
-                          </label>
-                        </div>
+                    <div>
+                      {item.platform ? (
+                        <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                          {item.platform}
+                          <br />
+                          <span className="text-[11px] font-normal text-slate-500 mt-0.5 inline-block">
+                            {tanggalFormatted} | {jamMulai} - {jamSelesai}
+                          </span>
+                        </h3>
+                      ) : (
+                        <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                          Jadwal Pengajuan Baru
+                        </h3>
                       )}
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveForm(item.id);
+                      }}
+                      className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
+                      title="Hapus Form"
+                    >
+                      <i className="fa-solid fa-trash" />
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[#941A0B] bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                    >
+                      <i
+                        className={`fa-solid ${
+                          item.isCollapsed ? "fa-chevron-down" : "fa-chevron-up"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </div>
 
-                    <div className="space-y-4 sm:space-y-5 block">
+                {/* Card Body */}
+                {!item.isCollapsed && (
+                  <div className="p-5 sm:p-6 space-y-6 block">
+                    {/* SEKSI 1: INFORMASI JADWAL */}
+                    <div className="bg-slate-50 border border-slate-100 p-4 sm:p-5 rounded-xl space-y-4 sm:space-y-5">
+                      <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                        <i className="fa-solid fa-clock text-[#941A0B]" /> Informasi Jadwal
+                      </h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
                         <div>
                           <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                            Judul Live / Campaign
+                            Platform *
                           </label>
-                          <input
-                            type="text"
-                            value={item.judulLive || ""}
-                            onChange={(e) =>
-                              updateFormField(idx, "judulLive", e.target.value)
-                            }
-                            placeholder="Contoh: Payday Sale 9.9..."
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                            Promo Live / Diskon
-                          </label>
-                          <textarea
-                            rows={1}
-                            value={item.promoLive || ""}
-                            onChange={(e) =>
-                              updateFormField(idx, "promoLive", e.target.value)
-                            }
-                            placeholder="Contoh: Beli 1 Gratis 1..."
-                            className={inputCls}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                            File Pendukung Host
-                          </label>
-                          <input
-                            type="text"
-                            value={item.filePendukungHost || ""}
-                            onChange={(e) =>
-                              updateFormField(idx, "filePendukungHost", e.target.value)
-                            }
-                            placeholder="Link dokumen / brief Host..."
-                            className={inputCls}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                            File Pendukung OTS
-                          </label>
-                          <input
-                            type="text"
-                            value={item.filePendukungOts || ""}
-                            onChange={(e) =>
-                              updateFormField(idx, "filePendukungOts", e.target.value)
-                            }
-                            placeholder="Link dokumen / brief OTS..."
-                            className={inputCls}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Produk Prioritas */}
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">
-                          Produk Prioritas
-                        </label>
-                        <p className="text-xs text-slate-500 mb-2">
-                          Pilih produk utama yang akan di-highlight saat live streaming.
-                        </p>
-                        <div className="flex gap-2 mb-2">
-                          <input
-                            type="text"
-                            value={inputProduk[item.id] || ""}
-                            onChange={(e) =>
-                              setInputProduk({
-                                ...inputProduk,
-                                [item.id]: e.target.value,
-                              })
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                e.preventDefault();
-                                handleAddProdukChip(item.id, idx);
+                          <select
+                            value={item.platform}
+                            onChange={(e) => {
+                              const sel = e.target.value;
+                              const matched = platformClientOptions.find(
+                                (p) => p.value === sel
+                              );
+                              updateFormField(idx, "platform", sel);
+                              if (matched?.clientId) {
+                                updateFormField(idx, "clientId", matched.clientId);
                               }
                             }}
-                            placeholder="Ketik nama produk lalu klik Tambah..."
-                            className={inputCls}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] bg-white outline-none"
+                            required
+                          >
+                            <option value="">-- Pilih Platform Client --</option>
+                            {platformClientOptions.map((p) => (
+                              <option key={p.value} value={p.value}>
+                                {p.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                            Tanggal Live *
+                          </label>
+                          <FlatpickrPicker
+                            value={item.tanggal}
+                            placeholder="Pilih Tanggal..."
+                            options={{ mode: "single", dateFormat: "Y-m-d" }}
+                            onChange={(dateStr) => updateFormField(idx, "tanggal", dateStr)}
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none cursor-pointer bg-white"
                           />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                            Jam Mulai *
+                          </label>
+                          <input
+                            type="text"
+                            value={item.jamMulaiLive}
+                            onChange={(e) =>
+                              updateFormField(idx, "jamMulaiLive", e.target.value)
+                            }
+                            placeholder="Contoh: 10:00"
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white font-mono"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                            Jam Selesai *
+                          </label>
+                          <input
+                            type="text"
+                            value={item.jamSelesaiLive}
+                            onChange={(e) =>
+                              updateFormField(idx, "jamSelesaiLive", e.target.value)
+                            }
+                            placeholder="Contoh: 12:00"
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white font-mono"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                            Kuota Host *
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={10}
+                            value={item.kuota ?? 1}
+                            onChange={(e) =>
+                              updateFormField(idx, "kuota", Number(e.target.value))
+                            }
+                            placeholder="Contoh: 1"
+                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white font-bold"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEKSI 2: DETAIL PENJUALAN */}
+                    <div className="bg-slate-50 border border-slate-100 p-4 sm:p-5 rounded-xl space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2 border-b border-slate-200 pb-3">
+                        <h3 className="text-xs sm:text-sm font-bold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <i className="fa-solid fa-bullseye text-[#941A0B]" /> Detail Penjualan
+                        </h3>
+                        {idx > 0 && (
+                          <div className="bg-red-50 px-3 py-1.5 rounded-lg border border-red-100">
+                            <label className="flex items-center gap-2 text-xs text-[#941A0B] font-bold cursor-pointer">
+                              <input
+                                type="checkbox"
+                                onChange={(e) => {
+                                  if (e.target.checked) handleCopyFromTop(idx, "detail");
+                                }}
+                                className="w-4 h-4 rounded text-[#941A0B] focus:ring-[#941A0B] accent-[#941A0B]"
+                              />{" "}
+                              Samakan dgn Form Teratas
+                            </label>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-4 sm:space-y-5 block">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                              Judul Live / Campaign
+                            </label>
+                            <input
+                              type="text"
+                              value={item.judulLive || ""}
+                              onChange={(e) =>
+                                updateFormField(idx, "judulLive", e.target.value)
+                              }
+                              placeholder="Contoh: Payday Sale..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                              Promo Live / Diskon
+                            </label>
+                            <textarea
+                              rows={1}
+                              value={item.promoLive || ""}
+                              onChange={(e) =>
+                                updateFormField(idx, "promoLive", e.target.value)
+                              }
+                              placeholder="Contoh: Beli 1 Gratis 1..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                              File Pendukung Host
+                            </label>
+                            <input
+                              type="text"
+                              value={item.filePendukungHost || ""}
+                              onChange={(e) =>
+                                updateFormField(idx, "filePendukungHost", e.target.value)
+                              }
+                              placeholder="Link dokumen/brief Host..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                              File Pendukung OTS
+                            </label>
+                            <input
+                              type="text"
+                              value={item.filePendukungOts || ""}
+                              onChange={(e) =>
+                                updateFormField(idx, "filePendukungOts", e.target.value)
+                              }
+                              placeholder="Link dokumen/brief OTS..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Produk Prioritas */}
+                        <div>
+                          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+                            Produk Prioritas
+                          </label>
+                          <p className="text-xs text-slate-500 mb-2">
+                            Pilih produk utama yang akan di-highlight.
+                          </p>
+                          <div className="flex gap-2 mb-2">
+                            <input
+                              type="text"
+                              value={inputProduk[item.id] || ""}
+                              onChange={(e) =>
+                                setInputProduk({
+                                  ...inputProduk,
+                                  [item.id]: e.target.value,
+                                })
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  handleAddProdukChip(item.id, idx);
+                                }
+                              }}
+                              placeholder="Ketik nama produk..."
+                              className="w-full flex-1 border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => handleAddProdukChip(item.id, idx)}
+                              className="bg-[#941A0B] hover:bg-[#7a1509] text-white px-5 py-2.5 rounded-lg text-sm font-bold transition whitespace-nowrap shadow-sm"
+                            >
+                              Tambah
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-lg min-h-[50px]">
+                            {((item.produkPrioritas as string[]) || []).length === 0 ? (
+                              <span className="text-xs text-slate-400 italic flex items-center h-full px-2">
+                                Belum ada produk prioritas.
+                              </span>
+                            ) : (
+                              ((item.produkPrioritas as string[]) || []).map((p, pi) => (
+                                <div
+                                  key={pi}
+                                  className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-800 px-3 py-2 rounded-lg text-xs font-bold w-full"
+                                >
+                                  <span className="whitespace-normal leading-relaxed flex-1">
+                                    <i className="fa-solid fa-box-open mr-1 mt-0.5 text-red-600" /> {p}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveProdukChip(idx, pi)}
+                                    className="text-red-500 hover:text-red-900 bg-red-100 hover:bg-red-200 rounded-full w-5 h-5 flex items-center justify-center transition flex-shrink-0 mt-0.5"
+                                  >
+                                    <i className="fa-solid fa-xmark text-xs" />
+                                  </button>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* SEKSI 3: TARGET HOST & BLACKLIST */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* Target Host Eksklusif (Emerald) */}
+                      <div className="bg-emerald-50/50 border border-emerald-100 p-4 sm:p-5 rounded-xl">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3 border-b border-emerald-200 pb-3">
+                          <h3 className="text-xs sm:text-sm font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-2">
+                            <i className="fa-solid fa-user-check text-emerald-500" /> Target Host Eksklusif
+                          </h3>
+                          {idx > 0 && (
+                            <div className="bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
+                              <label className="flex items-center gap-2 text-xs text-emerald-700 font-bold cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  onChange={(e) => {
+                                    if (e.target.checked)
+                                      handleCopyFromTop(idx, "target");
+                                  }}
+                                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 accent-emerald-600"
+                                />{" "}
+                                Samakan
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-slate-500 mb-4">
+                          Jika diisi, jadwal ini <b className="text-emerald-700">hanya</b> akan muncul untuk Host yang dipilih ini saja.
+                        </p>
+                        <div className="flex gap-2 mb-3">
+                          <div className="flex-1">
+                            <input
+                              list="listHostMarketplace"
+                              type="text"
+                              value={inputTargetHost[item.id] || ""}
+                              onChange={(e) =>
+                                setInputTargetHost({
+                                  ...inputTargetHost,
+                                  [item.id]: e.target.value,
+                                })
+                              }
+                              placeholder="Ketik nama Host..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 outline-none bg-white"
+                            />
+                          </div>
                           <button
                             type="button"
-                            onClick={() => handleAddProdukChip(item.id, idx)}
-                            className="bg-[#941A0B] hover:bg-[#7a1509] text-white px-5 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap"
+                            onClick={() => handleAddTargetHostChip(item.id, idx)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition whitespace-nowrap shadow-sm"
                           >
                             Tambah
                           </button>
                         </div>
-                        <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-xl min-h-[48px]">
-                          {((item.produkPrioritas as string[]) || []).length === 0 ? (
-                            <span className="text-slate-400 text-xs italic self-center">
-                              Belum ada produk prioritas ditambahkan
+                        <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-lg min-h-[50px]">
+                          {((item.targetHost as string[]) || []).length === 0 ? (
+                            <span className="text-xs text-slate-400 italic flex items-center h-full px-2">
+                              Belum ada host eksklusif (Jadwal Terbuka Umum).
                             </span>
                           ) : (
-                            ((item.produkPrioritas as string[]) || []).map((p, pi) => (
-                              <span
-                                key={pi}
-                                className="inline-flex items-center gap-1.5 px-3 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700"
-                              >
-                                {p}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveProdukChip(idx, pi)}
-                                  className="text-red-400 hover:text-red-700"
+                            ((item.targetHost as string[]) || []).map((th, thi) => {
+                              const namaHost = th.includes("|") ? th.split("|")[1].trim() : th;
+                              return (
+                                <div
+                                  key={thi}
+                                  className="flex items-center gap-2 bg-emerald-100 border border-emerald-200 text-emerald-800 px-3 py-1.5 rounded-full text-xs font-bold"
                                 >
-                                  ✕
-                                </button>
-                              </span>
-                            ))
+                                  <span>
+                                    <i className="fa-solid fa-user-check mr-1" /> {namaHost}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveTargetHostChip(idx, thi)}
+                                    className="text-emerald-600 hover:text-emerald-900 bg-emerald-200 hover:bg-emerald-300 rounded-full w-5 h-5 flex items-center justify-center transition"
+                                  >
+                                    <i className="fa-solid fa-xmark text-xs" />
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Pengecualian Host (Blacklist - Red) */}
+                      <div className="bg-red-50/50 border border-red-100 p-4 sm:p-5 rounded-xl">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3 border-b border-red-200 pb-3">
+                          <h3 className="text-xs sm:text-sm font-bold text-red-700 uppercase tracking-wider flex items-center gap-2">
+                            <i className="fa-solid fa-ban text-red-500" /> Pengecualian Host (Blacklist)
+                          </h3>
+                          {idx > 0 && (
+                            <div className="bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
+                              <label className="flex items-center gap-2 text-xs text-red-700 font-bold cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  onChange={(e) => {
+                                    if (e.target.checked)
+                                      handleCopyFromTop(idx, "blacklist");
+                                  }}
+                                  className="w-4 h-4 rounded text-red-600 focus:ring-red-500 accent-red-600"
+                                />{" "}
+                                Samakan
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-slate-500 mb-4">
+                          Host yang dimasukkan ke sini tidak akan bisa melihat jadwal Anda.
+                        </p>
+                        <div className="flex gap-2 mb-3">
+                          <div className="flex-1">
+                            <input
+                              list="listHostMarketplace"
+                              type="text"
+                              value={inputBlacklistHost[item.id] || ""}
+                              onChange={(e) =>
+                                setInputBlacklistHost({
+                                  ...inputBlacklistHost,
+                                  [item.id]: e.target.value,
+                                })
+                              }
+                              placeholder="Ketik nama Host..."
+                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddBlacklistHostChip(item.id, idx)}
+                            className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold transition whitespace-nowrap shadow-sm"
+                          >
+                            Tambah
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-lg min-h-[50px]">
+                          {((item.blacklistHost as string[]) || []).length === 0 ? (
+                            <span className="text-xs text-slate-400 italic flex items-center h-full px-2">
+                              Belum ada host yang dikecualikan.
+                            </span>
+                          ) : (
+                            ((item.blacklistHost as string[]) || []).map((bh, bhi) => {
+                              const namaHost = bh.includes("|") ? bh.split("|")[1].trim() : bh;
+                              return (
+                                <div
+                                  key={bhi}
+                                  className="flex items-center gap-2 bg-red-100 border border-red-200 text-red-700 px-3 py-1.5 rounded-full text-xs font-bold"
+                                >
+                                  <span>
+                                    <i className="fa-solid fa-user-slash mr-1" /> {namaHost}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveBlacklistHostChip(idx, bhi)}
+                                    className="text-red-500 hover:text-red-800 bg-red-200 hover:bg-red-300 rounded-full w-5 h-5 flex items-center justify-center transition"
+                                  >
+                                    <i className="fa-solid fa-xmark text-xs" />
+                                  </button>
+                                </div>
+                              );
+                            })
                           )}
                         </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* SEKSI 3: TARGET HOST & BLACKLIST */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Target Host Eksklusif */}
-                    <div className="bg-emerald-50/50 border border-emerald-100 p-4 sm:p-5 rounded-xl">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3 border-b border-emerald-200 pb-3">
-                        <h3 className="text-xs sm:text-sm font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-2">
-                          <i className="fa-solid fa-user-check text-emerald-500" /> Target Host Eksklusif
-                        </h3>
-                        {idx > 0 && (
-                          <div className="bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-200">
-                            <label className="flex items-center gap-2 text-xs text-emerald-700 font-bold cursor-pointer">
-                              <input
-                                type="checkbox"
-                                onChange={(e) => {
-                                  if (e.target.checked)
-                                    handleCopyFromTop(idx, "target");
-                                }}
-                                className="w-4 h-4 rounded text-emerald-600"
-                              />{" "}
-                              Samakan
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-[11px] sm:text-xs text-slate-500 mb-3">
-                        Jika diisi, jadwal ini <strong className="text-emerald-700">hanya</strong> akan muncul untuk Host yang dipilih ini saja.
-                      </p>
-                      <div className="flex gap-2 mb-3">
-                        <select
-                          value={inputTargetHost[item.id] || ""}
-                          onChange={(e) =>
-                            setInputTargetHost({
-                              ...inputTargetHost,
-                              [item.id]: e.target.value,
-                            })
-                          }
-                          className={selectCls}
-                        >
-                          <option value="">-- Pilih Nama Streamer --</option>
-                          {streamers.map((s) => (
-                            <option
-                              key={s.id}
-                              value={`${s.namaLengkap} (${s.idKaryawan})`}
-                            >
-                              {s.namaLengkap} ({s.idKaryawan})
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => handleAddTargetHostChip(item.id, idx)}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap"
-                        >
-                          Tambah
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-xl min-h-[48px]">
-                        {((item.targetHost as string[]) || []).length === 0 ? (
-                          <span className="text-slate-400 text-xs italic self-center">
-                            Tidak ada target host eksklusif
-                          </span>
-                        ) : (
-                          ((item.targetHost as string[]) || []).map((th, thi) => (
-                            <span
-                              key={thi}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-xs font-bold"
-                            >
-                              {th}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTargetHostChip(idx, thi)}
-                                className="text-emerald-500 hover:text-emerald-800"
-                              >
-                                ✕
-                              </button>
-                            </span>
-                          ))
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Pengecualian Host (Blacklist) */}
-                    <div className="bg-red-50/50 border border-red-100 p-4 sm:p-5 rounded-xl">
-                      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-3 border-b border-red-200 pb-3">
-                        <h3 className="text-xs sm:text-sm font-bold text-red-700 uppercase tracking-wider flex items-center gap-2">
-                          <i className="fa-solid fa-ban text-red-500" /> Pengecualian Host (Blacklist)
-                        </h3>
-                        {idx > 0 && (
-                          <div className="bg-red-100 px-3 py-1.5 rounded-lg border border-red-200">
-                            <label className="flex items-center gap-2 text-xs text-red-700 font-bold cursor-pointer">
-                              <input
-                                type="checkbox"
-                                onChange={(e) => {
-                                  if (e.target.checked)
-                                    handleCopyFromTop(idx, "blacklist");
-                                }}
-                                className="w-4 h-4 rounded text-red-600"
-                              />{" "}
-                              Samakan
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                      <p className="text-[11px] sm:text-xs text-slate-500 mb-3">
-                        Host yang dimasukkan ke sini tidak akan dapat melihat jadwal ini.
-                      </p>
-                      <div className="flex gap-2 mb-3">
-                        <select
-                          value={inputBlacklistHost[item.id] || ""}
-                          onChange={(e) =>
-                            setInputBlacklistHost({
-                              ...inputBlacklistHost,
-                              [item.id]: e.target.value,
-                            })
-                          }
-                          className={selectCls}
-                        >
-                          <option value="">-- Pilih Nama Streamer --</option>
-                          {streamers.map((s) => (
-                            <option
-                              key={s.id}
-                              value={`${s.namaLengkap} (${s.idKaryawan})`}
-                            >
-                              {s.namaLengkap} ({s.idKaryawan})
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => handleAddBlacklistHostChip(item.id, idx)}
-                          className="bg-red-600 hover:bg-red-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition whitespace-nowrap"
-                        >
-                          Tambah
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-2 p-3 bg-white border border-slate-200 rounded-xl min-h-[48px]">
-                        {((item.blacklistHost as string[]) || []).length === 0 ? (
-                          <span className="text-slate-400 text-xs italic self-center">
-                            Tidak ada host yang di-blacklist
-                          </span>
-                        ) : (
-                          ((item.blacklistHost as string[]) || []).map((bh, bhi) => (
-                            <span
-                              key={bhi}
-                              className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 text-red-800 border border-red-300 rounded-lg text-xs font-bold"
-                            >
-                              {bh}
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveBlacklistHostChip(idx, bhi)}
-                                className="text-red-500 hover:text-red-800"
-                              >
-                                ✕
-                              </button>
-                            </span>
-                          ))
-                        )}
-                      </div>
+                    {/* SEKSI 4: TOMBOL PECAH SESI */}
+                    <div className="pt-3 mt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setModalSplit({ isOpen: true, formIdx: idx, numSessions: 2 })
+                        }
+                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-md"
+                      >
+                        <i className="fa-solid fa-scissors" /> Pecah Form Ini Menjadi Beberapa Sesi Berurutan
+                      </button>
                     </div>
                   </div>
-
-                  {/* SEKSI 4: TOMBOL PECAH SESI */}
-                  <div className="pt-3 mt-4 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setModalSplit({ isOpen: true, formIdx: idx, numSessions: 2 })
-                      }
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-md"
-                    >
-                      <i className="fa-solid fa-scissors" /> Pecah Form Ini Menjadi Beberapa Sesi Berurutan
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </div>
 
         {/* BOTTOM ACTION BAR */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 mt-6">
           <button
             type="button"
             onClick={handleAddForm}
-            className="w-full sm:w-auto px-6 py-3 bg-red-50 text-[#941A0B] rounded-xl hover:bg-red-100 font-bold transition flex items-center justify-center gap-2 text-xs border border-red-200"
+            className="w-full sm:w-auto text-[#941A0B] bg-red-50 hover:bg-red-100 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm border border-red-200"
           >
             <i className="fa-solid fa-plus" /> Tambah Jadwal (Maks 20)
           </button>
@@ -949,17 +1021,17 @@ export function TabMarketplace({
             <button
               type="button"
               onClick={checkBebasCrashMarketplace}
-              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
+              className="w-full sm:w-auto px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-bold transition-all shadow-md flex items-center justify-center gap-2 text-sm"
             >
               <i className="fa-solid fa-shield-halved" /> Bebas Crash
             </button>
             <button
               type="submit"
               disabled={loading || !isMarketplaceCrashVerified}
-              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-xs text-white ${
+              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm text-white ${
                 isMarketplaceCrashVerified && !loading
                   ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                  : "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-200"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
               }`}
             >
               <i className="fa-solid fa-paper-plane" />
@@ -969,52 +1041,75 @@ export function TabMarketplace({
         </div>
       </form>
 
-      {/* Modal Split Sesi Marketplace */}
+      {/* Datalist Host Helper */}
+      <datalist id="listHostMarketplace">
+        {streamerOptions.map((opt, i) => (
+          <option key={i} value={opt} />
+        ))}
+      </datalist>
+
+      {/* Modal Split Sesi Marketplace (100% Match with Ref-Deploy modalSplitSesi) */}
       {modalSplit.isOpen && modalSplit.formIdx !== null && (
-        <div className="fixed inset-0 z-[999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-            <h3 className="font-extrabold text-slate-800 text-sm">
-              Pecah Sesi Live Marketplace Berurutan
-            </h3>
-            <p className="text-xs text-slate-500">
-              Formulir pengajuan akan otomatis dibagi menjadi beberapa sesi dengan durasi yang sama.
-            </p>
-            <div>
-              <label className={labelCls}>Jumlah Sesi</label>
-              <select
-                value={modalSplit.numSessions}
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-[90%] max-w-sm p-6 sm:p-8 animate-in zoom-in-95">
+            <div className="text-center mb-6">
+              <div className="w-14 h-14 rounded-full bg-indigo-50 border-4 border-indigo-100 text-indigo-600 flex items-center justify-center mx-auto mb-4 text-2xl shadow-sm">
+                <i className="fa-solid fa-scissors" />
+              </div>
+              <h3 className="text-xl font-black text-slate-800">Pecah Jadwal</h3>
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                Jadwal ini berdurasi panjang. Ingin dipecah menjadi berapa sesi berurutan?
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <input
+                type="number"
+                min={2}
+                max={20}
+                value={modalSplit.numSessions || ""}
                 onChange={(e) =>
                   setModalSplit({
                     ...modalSplit,
                     numSessions: Number(e.target.value),
                   })
                 }
-                className={selectCls}
-              >
-                <option value={2}>2 Sesi</option>
-                <option value={3}>3 Sesi</option>
-                <option value={4}>4 Sesi</option>
-                <option value={5}>5 Sesi</option>
-              </select>
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSplitMarketplace(
+                      modalSplit.formIdx!,
+                      modalSplit.numSessions || 2
+                    );
+                  }
+                }}
+                className="w-full border-2 border-slate-200 rounded-xl px-4 py-3.5 text-center text-xl font-bold text-indigo-700 focus:border-indigo-500 focus:ring-0 outline-none transition-colors"
+                placeholder="Ketik angka (Misal: 2)"
+                autoFocus
+              />
             </div>
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+
+            <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() =>
                   setModalSplit({ isOpen: false, formIdx: null, numSessions: 2 })
                 }
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold"
+                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl transition-all text-sm"
               >
                 Batal
               </button>
               <button
                 type="button"
                 onClick={() =>
-                  handleSplitMarketplace(modalSplit.formIdx!, modalSplit.numSessions)
+                  handleSplitMarketplace(
+                    modalSplit.formIdx!,
+                    modalSplit.numSessions || 2
+                  )
                 }
-                className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold"
+                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md shadow-indigo-200 transition-all text-sm"
               >
-                Pecah Sekarang
+                Proses Sesi
               </button>
             </div>
           </div>
