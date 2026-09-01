@@ -498,36 +498,107 @@ export function TabKlien({
     }
   }
 
-  // Filter for Subtab 2: Rubah Klien Table
+  // Filter for Subtab 2: Rubah Klien Table (100% Match with ref-deploy)
   const filteredKlienSchedules = useMemo(() => {
-    return allJadwal.filter((j) => {
-      // 1. Status Filter
-      if (filterStatusKlien && (j.status || "").toUpperCase() !== filterStatusKlien.toUpperCase()) {
-        return false;
+    let filterTglAwal = "";
+    let filterTglAkhir = "";
+
+    const today = new Date();
+    const formatDateStr = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    if (filterPeriodeKlien === "default") {
+      const minD = new Date(today);
+      minD.setDate(today.getDate() - 7);
+      const maxD = new Date(today);
+      maxD.setDate(today.getDate() + 35);
+      filterTglAwal = formatDateStr(minD);
+      filterTglAkhir = formatDateStr(maxD);
+    } else if (filterPeriodeKlien === "hari_ini") {
+      filterTglAwal = formatDateStr(today);
+      filterTglAkhir = formatDateStr(today);
+    } else if (filterPeriodeKlien === "7_belakang") {
+      const minD = new Date(today);
+      minD.setDate(today.getDate() - 7);
+      filterTglAwal = formatDateStr(minD);
+      filterTglAkhir = formatDateStr(today);
+    } else if (filterPeriodeKlien === "7_depan") {
+      const maxD = new Date(today);
+      maxD.setDate(today.getDate() + 7);
+      filterTglAwal = formatDateStr(today);
+      filterTglAkhir = formatDateStr(maxD);
+    } else if (filterPeriodeKlien === "35_depan") {
+      const maxD = new Date(today);
+      maxD.setDate(today.getDate() + 35);
+      filterTglAwal = formatDateStr(today);
+      filterTglAkhir = formatDateStr(maxD);
+    } else if (filterPeriodeKlien === "tanggal") {
+      if (filterTglSatuKlien) {
+        filterTglAwal = filterTglSatuKlien;
+        filterTglAkhir = filterTglSatuKlien;
       }
-      // 2. Platform Filter
-      if (filterPlatformKlien.trim()) {
-        const q = filterPlatformKlien.toLowerCase().trim();
-        const match =
-          j.platform?.toLowerCase().includes(q) ||
-          j.client?.namaClient?.toLowerCase().includes(q);
-        if (!match) return false;
+    } else if (filterPeriodeKlien === "kustom") {
+      if (filterTglMulaiKlien) filterTglAwal = filterTglMulaiKlien;
+      if (filterTglSelesaiKlien) filterTglAkhir = filterTglSelesaiKlien;
+    }
+
+    const filtered = allJadwal.filter((j) => {
+      const idKey = j.idJadwal || j.id;
+      const activeRow = memoriEditKlien[idKey] || j;
+
+      const tglData = (activeRow.tanggal || "").slice(0, 10);
+      const platformData = String(activeRow.platform || j.client?.namaClient || "").toLowerCase();
+      const statusData = String(activeRow.status || "").toUpperCase();
+
+      // 1. Evaluasi Sinkronisasi Waktu
+      let masukPeriode = true;
+      if (filterTglAwal && filterTglAkhir) {
+        masukPeriode = tglData >= filterTglAwal && tglData <= filterTglAkhir;
       }
-      // 3. Periode Filter
-      if (filterPeriodeKlien !== "default" && j.tanggal) {
-        const tglStr = j.tanggal.slice(0, 10);
-        const todayStr = new Date().toISOString().slice(0, 10);
-        if (filterPeriodeKlien === "hari_ini" && tglStr !== todayStr) return false;
-        if (filterPeriodeKlien === "tanggal" && filterTglSatuKlien && tglStr !== filterTglSatuKlien) return false;
-        if (filterPeriodeKlien === "kustom") {
-          if (filterTglMulaiKlien && tglStr < filterTglMulaiKlien) return false;
-          if (filterTglSelesaiKlien && tglStr > filterTglSelesaiKlien) return false;
-        }
-      }
-      return true;
+
+      // 2. Evaluasi Status
+      const passStatus = !filterStatusKlien || statusData === filterStatusKlien.toUpperCase();
+
+      // 3. Evaluasi Platform
+      const masukPlatform =
+        !filterPlatformKlien || platformData.includes(filterPlatformKlien.toLowerCase().trim());
+
+      return masukPeriode && passStatus && masukPlatform;
     });
+
+    // Pengurutan persis ref-deploy:
+    // 1. Sedang diedit diletakkan teratas
+    // 2. Tanggal terlama ke terbaru (Ascending)
+    // 3. Nama Platform (A-Z)
+    // 4. Jam Mulai Paling Awal (00:00 - 23:00)
+    filtered.sort((a, b) => {
+      const idA = a.idJadwal || a.id;
+      const idB = b.idJadwal || b.id;
+      const isAEdit = memoriEditKlien[idA] ? 1 : 0;
+      const isBEdit = memoriEditKlien[idB] ? 1 : 0;
+      if (isBEdit !== isAEdit) return isBEdit - isAEdit;
+
+      const tglA = (a.tanggal || "").slice(0, 10);
+      const tglB = (b.tanggal || "").slice(0, 10);
+      if (tglA !== tglB) return tglA.localeCompare(tglB);
+
+      const platA = a.platform || "";
+      const platB = b.platform || "";
+      if (platA !== platB) return platA.localeCompare(platB);
+
+      const jamA = a.jamMulaiLive || "";
+      const jamB = b.jamMulaiLive || "";
+      return jamA.localeCompare(jamB);
+    });
+
+    return filtered;
   }, [
     allJadwal,
+    memoriEditKlien,
     filterStatusKlien,
     filterPlatformKlien,
     filterPeriodeKlien,
@@ -939,7 +1010,7 @@ export function TabKlien({
       )}
 
       {/* ===================================================================== */}
-      {/* SUBTAB 2: RUBAH JADWAL KLIEN                                          */}
+      {/* SUBTAB 2: RUBAH JADWAL KLIEN (100% MATCH WITH REF-DEPLOY)             */}
       {/* ===================================================================== */}
       {klienSubTab === "rubah" && (
         <div className="space-y-4">
@@ -952,11 +1023,17 @@ export function TabKlien({
                 </label>
                 <select
                   value={filterPeriodeKlien}
-                  onChange={(e) => setFilterPeriodeKlien(e.target.value)}
+                  onChange={(e) => {
+                    setFilterPeriodeKlien(e.target.value);
+                    setRubahKlienPage(1);
+                  }}
                   className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-medium"
                 >
                   <option value="default">DATA (-7 s/d +35 Hari)</option>
                   <option value="hari_ini">Hari Ini</option>
+                  <option value="7_belakang">7 Hari Ke Belakang</option>
+                  <option value="7_depan">7 Hari Ke Depan</option>
+                  <option value="35_depan">35 Hari Ke Depan</option>
                   <option value="tanggal">Tentukan Tanggal</option>
                   <option value="kustom">Kustom Periode</option>
                 </select>
@@ -964,8 +1041,14 @@ export function TabKlien({
                   <input
                     type="date"
                     value={filterTglSatuKlien}
-                    onChange={(e) => setFilterTglSatuKlien(e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-2"
+                    onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                    onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                    onChange={(e) => {
+                      setFilterTglSatuKlien(e.target.value);
+                      setRubahKlienPage(1);
+                    }}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none mt-2 cursor-pointer bg-white"
+                    placeholder="Pilih Tanggal"
                   />
                 )}
                 {filterPeriodeKlien === "kustom" && (
@@ -973,16 +1056,26 @@ export function TabKlien({
                     <input
                       type="date"
                       value={filterTglMulaiKlien}
-                      onChange={(e) => setFilterTglMulaiKlien(e.target.value)}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => {
+                        setFilterTglMulaiKlien(e.target.value);
+                        setRubahKlienPage(1);
+                      }}
                       placeholder="Mulai"
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
                     />
                     <input
                       type="date"
                       value={filterTglSelesaiKlien}
-                      onChange={(e) => setFilterTglSelesaiKlien(e.target.value)}
+                      onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
+                      onChange={(e) => {
+                        setFilterTglSelesaiKlien(e.target.value);
+                        setRubahKlienPage(1);
+                      }}
                       placeholder="Selesai"
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
                     />
                   </div>
                 )}
@@ -1026,8 +1119,12 @@ export function TabKlien({
                   {filterPlatformKlien && (
                     <button
                       type="button"
-                      onClick={() => setFilterPlatformKlien("")}
+                      onClick={() => {
+                        setFilterPlatformKlien("");
+                        setRubahKlienPage(1);
+                      }}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-500 transition"
+                      title="Hapus filter platform"
                     >
                       <i className="fa-solid fa-circle-xmark text-lg" />
                     </button>
@@ -1041,7 +1138,7 @@ export function TabKlien({
           <div className="flex flex-col sm:flex-row justify-end gap-3 items-center">
             {Object.keys(memoriEditKlien).length > 0 && (
               <span className="text-sm font-bold text-amber-500 mr-auto flex items-center gap-1.5 animate-pulse">
-                <i className="fa-solid fa-triangle-exclamation" /> Ada {Object.keys(memoriEditKlien).length} perubahan yang belum disimpan!
+                <i className="fa-solid fa-triangle-exclamation mr-1" /> Ada perubahan yang belum disimpan!
               </span>
             )}
             {Object.keys(memoriEditKlien).length > 0 && (
@@ -1106,7 +1203,7 @@ export function TabKlien({
                   {paginatedRubah.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="px-4 py-8 text-center text-slate-400 text-xs italic">
-                        Tidak ada data jadwal klien yang cocok dengan filter.
+                        Data tidak ditemukan.
                       </td>
                     </tr>
                   ) : (
@@ -1116,13 +1213,34 @@ export function TabKlien({
                       const displayRow = edited || row;
                       const isEdited = !!edited;
 
+                      let statusBg = "bg-slate-100 text-slate-600 border border-slate-200";
+                      const stUpper = (displayRow.status || "").toUpperCase();
+                      if (stUpper === "TERJADWAL") statusBg = "bg-blue-50 text-blue-600 border border-blue-200";
+                      else if (stUpper === "PLOTING") statusBg = "bg-indigo-50 text-indigo-600 border border-indigo-200";
+                      else if (stUpper === "SELESAI") statusBg = "bg-emerald-50 text-emerald-600 border border-emerald-200";
+                      else if (stUpper === "BATAL") statusBg = "bg-red-50 text-red-600 border border-red-200";
+
+                      const durasiVal =
+                        displayRow.durasi ||
+                        calcDurationHours(displayRow.jamMulaiLive, displayRow.jamSelesaiLive);
+
                       return (
                         <tr
                           key={idKey || idx}
-                          className={`hover:bg-slate-50 transition ${isEdited ? "bg-amber-50/60" : ""}`}
+                          className={`group ${isEdited ? "bg-amber-50" : "hover:bg-slate-50"} bg-white transition-colors border-b border-slate-100 last:border-0`}
                         >
-                          <td className="px-2 py-3 text-center font-bold text-slate-400 sticky left-0 bg-white z-20">
-                            {startRubahIdx + idx + 1}
+                          <td
+                            className={`px-2 py-3 text-center sticky left-0 z-20 ${
+                              isEdited ? "bg-amber-50" : "bg-white group-hover:bg-slate-50"
+                            } shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]`}
+                          >
+                            {isEdited ? (
+                              <i className="fa-solid fa-check text-amber-500 text-lg" />
+                            ) : (
+                              <span className="font-bold text-slate-400">
+                                {startRubahIdx + idx + 1}
+                              </span>
+                            )}
                           </td>
                           <td className="px-2 py-3 text-center">
                             <button
@@ -1145,97 +1263,91 @@ export function TabKlien({
                                   },
                                 })
                               }
-                              className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition"
+                              className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white transition flex items-center justify-center mx-auto shadow-sm"
                               title="Edit Data Jadwal"
                             >
                               <i className="fa-solid fa-pen-to-square" />
                             </button>
                           </td>
-                          <td className="px-3 py-3 font-semibold text-slate-800">
-                            <div>{displayRow.platform}</div>
-                            {displayRow.judulLive && (
-                              <div className="text-[11px] text-slate-400 font-normal truncate max-w-[160px]">
-                                {displayRow.judulLive}
-                              </div>
-                            )}
-                          </td>
                           <td className="px-3 py-3">
-                            <div className="font-bold text-xs">{formatDateSafe(displayRow.tanggal)}</div>
-                            <div className="text-emerald-600 font-mono text-[11px]">
-                              {formatTimeSafe(displayRow.jamMulaiLive)} - {formatTimeSafe(displayRow.jamSelesaiLive)}
+                            <div className="font-bold text-slate-800">{displayRow.platform || "-"}</div>
+                            <div className="text-xs text-blue-600 mt-0.5 truncate max-w-[150px]">
+                              Judul: {displayRow.judulLive || "-"}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                              ID: {displayRow.idJadwal || displayRow.id}
                             </div>
                           </td>
-                          <td className="px-2 py-3 text-center font-bold text-xs">
-                            {displayRow.kuotaHost || displayRow.kuota || 1} Host
+                          <td className="px-3 py-3">
+                            <div className="font-semibold text-slate-700">{formatDateSafe(displayRow.tanggal)}</div>
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              <i className="fa-regular fa-clock mr-1" />
+                              {formatTimeSafe(displayRow.jamMulaiLive)} - {formatTimeSafe(displayRow.jamSelesaiLive)}
+                            </div>
+                            <div className="text-[10px] font-bold text-emerald-600 mt-1">
+                              Durasi: {durasiVal} jam
+                            </div>
                           </td>
                           <td className="px-2 py-3 text-center">
-                            {displayRow.catatanHost ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPopupInfoKlien({
-                                    isOpen: true,
-                                    title: `Catatan Host - ${displayRow.idJadwal}`,
-                                    content: displayRow.catatanHost,
-                                  })
-                                }
-                                className="px-2 py-1 bg-amber-50 text-amber-700 rounded text-xs font-bold hover:bg-amber-100"
-                              >
-                                Lihat
-                              </button>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
+                            <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600 border border-slate-200">
+                              {displayRow.kuotaHost || displayRow.kuota || 1} Host
+                            </span>
                           </td>
                           <td className="px-2 py-3 text-center">
-                            {displayRow.filePendukungHost ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPopupInfoKlien({
-                                    isOpen: true,
-                                    title: `File Pendukung Host - ${displayRow.idJadwal}`,
-                                    content: displayRow.filePendukungHost,
-                                    isLink: true,
-                                  })
-                                }
-                                className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold hover:bg-blue-100"
-                              >
-                                Drive
-                              </button>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPopupInfoKlien({
+                                  isOpen: true,
+                                  title: "Catatan Host",
+                                  content: displayRow.catatanHost || "-",
+                                })
+                              }
+                              className="text-slate-400 hover:text-blue-500 transition text-lg"
+                              title="Lihat Catatan Host"
+                            >
+                              <i className="fa-solid fa-clipboard" />
+                            </button>
                           </td>
                           <td className="px-2 py-3 text-center">
-                            {displayRow.promoLive || displayRow.produkPrioritas ? (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setPopupInfoKlien({
-                                    isOpen: true,
-                                    title: `Promo & Produk Prioritas - ${displayRow.idJadwal}`,
-                                    content: `PROMO:\n${displayRow.promoLive || "-"}\n\nPRODUK PRIORITAS:\n${
-                                      Array.isArray(displayRow.produkPrioritas)
-                                        ? displayRow.produkPrioritas.join("\n• ")
-                                        : displayRow.produkPrioritas || "-"
-                                    }`,
-                                  })
-                                }
-                                className="px-2 py-1 bg-indigo-50 text-indigo-700 rounded text-xs font-bold hover:bg-indigo-100"
-                              >
-                                Detail
-                              </button>
-                            ) : (
-                              <span className="text-slate-300">-</span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPopupInfoKlien({
+                                  isOpen: true,
+                                  title: "File Pendukung",
+                                  content: displayRow.filePendukungHost || "-",
+                                  isLink: true,
+                                })
+                              }
+                              className="text-slate-400 hover:text-blue-500 transition text-lg"
+                              title="Buka File Pendukung"
+                            >
+                              <i className="fa-solid fa-link" />
+                            </button>
+                          </td>
+                          <td className="px-2 py-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setPopupInfoKlien({
+                                  isOpen: true,
+                                  title: "Promo & Produk",
+                                  content: `Promo:\n${displayRow.promoLive || "-"}\n\nProduk Prioritas:\n${
+                                    Array.isArray(displayRow.produkPrioritas)
+                                      ? displayRow.produkPrioritas.join("\n• ")
+                                      : displayRow.produkPrioritas || "-"
+                                  }`,
+                                })
+                              }
+                              className="text-slate-400 hover:text-orange-500 transition text-lg"
+                              title="Lihat Promo & Produk Prioritas"
+                            >
+                              <i className="fa-solid fa-basket-shopping" />
+                            </button>
                           </td>
                           <td className="px-3 py-3 text-center">
-                            <span
-                              className={`px-2 py-1 text-[10px] font-bold rounded-lg border ${getStatusBadgeClass(
-                                displayRow.status
-                              )}`}
-                            >
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold ${statusBg}`}>
                               {(displayRow.status || "TERJADWAL").toUpperCase()}
                             </span>
                           </td>
@@ -1245,17 +1357,16 @@ export function TabKlien({
                               onClick={() =>
                                 setPopupInfoKlien({
                                   isOpen: true,
-                                  title: `Info Ploting - ${displayRow.idJadwal}`,
-                                  content: `STREAMER ASSIGNED:\n${
-                                    displayRow.streamer?.nama || displayRow.streamerNama || "Belum diploting"
-                                  }\n\nOTS ASSIGNED:\n${
-                                    displayRow.ots?.nama || displayRow.otsNama || "Belum diploting"
+                                  title: "Info Ploting",
+                                  content: `Spreadsheet:\n${displayRow.linkPloting || "-"}\n\nUser Export Terakhir:\n${
+                                    displayRow.userExport || "-"
                                   }`,
                                 })
                               }
-                              className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-bold hover:bg-slate-200"
+                              className="text-slate-400 hover:text-indigo-500 transition text-lg"
+                              title="Lihat Info Ploting"
                             >
-                              Info
+                              <i className="fa-solid fa-circle-info" />
                             </button>
                           </td>
                         </tr>
@@ -1269,7 +1380,12 @@ export function TabKlien({
             {/* Pagination */}
             <div className="bg-slate-50 px-4 py-3 border-t border-slate-200 flex justify-between items-center">
               <span className="text-xs font-semibold text-slate-500">
-                Menampilkan {paginatedRubah.length} dari {filteredKlienSchedules.length} data
+                {filteredKlienSchedules.length === 0
+                  ? "Menampilkan 0 dari 0 data"
+                  : `Menampilkan ${startRubahIdx + 1}-${Math.min(
+                      startRubahIdx + rubahKlienPageSize,
+                      filteredKlienSchedules.length
+                    )} dari ${filteredKlienSchedules.length} data`}
               </span>
               <div className="flex gap-1">
                 <button
