@@ -27,6 +27,18 @@ export const MENU_ITEMS: NavItem[] = [
     roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"],
   },
   {
+    href: "/lms",
+    label: "LMS Akademi",
+    icon: "fa-solid fa-graduation-cap",
+    roles: ["STREAMER", "TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STAFF", "OTS"],
+  },
+  {
+    href: "/marketplace",
+    label: "Marketplace",
+    icon: "fa-solid fa-store",
+    roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"],
+  },
+  {
     href: "/staff-dashboard",
     label: "Staff Dashboard",
     icon: "fa-solid fa-id-badge",

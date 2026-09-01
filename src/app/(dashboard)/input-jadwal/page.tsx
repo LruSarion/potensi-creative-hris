@@ -93,7 +93,7 @@ export default function InputJadwalPage() {
             onClick={() => setMainTab(tab.id)}
             className={`px-4 py-2.5 rounded-xl text-sm font-bold transition flex items-center gap-2 border ${
               mainTab === tab.id
-                ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                ? "bg-[#941A0B] text-white border-[#941A0B] shadow-md"
                 : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
             }`}
           >

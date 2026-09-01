@@ -223,7 +223,7 @@ export function TabOts({
     }
   }
 
-  // Filtered OTS schedules for monitoring table
+  // Filtered OTS schedules for monitoring table (Matching Staff Dashboard -> Tab Jadwal)
   const otsSchedules = allJadwal.filter((j) => {
     const isOtsSchedule =
       j.idJadwal?.startsWith("OTS") ||
@@ -231,28 +231,57 @@ export function TabOts({
       j.tipeRole === "OTS";
     if (!isOtsSchedule) return false;
 
-    // Filter waktu
-    const today = new Date().toISOString().slice(0, 10);
-    const jDate = (j.tanggal || "").slice(0, 10);
-    if (otsFilterWaktu === "hari_ini" && jDate !== today) return false;
-    if (otsFilterWaktu === "akan_datang" && jDate < today) return false;
-    if (otsFilterWaktu === "lewat" && jDate >= today) return false;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
 
-    // Filter kategori status
-    if (otsFilterKategori !== "all") {
-      const st = (j.status || "").toUpperCase();
-      if (st !== otsFilterKategori.toUpperCase()) return false;
+    // 1. Filter Periode Waktu
+    if (otsFilterWaktu !== "all" && j.tanggal) {
+      const itemDate = new Date(j.tanggal);
+      itemDate.setHours(0, 0, 0, 0);
+      const diffDays = Math.round((itemDate.getTime() - now.getTime()) / (1000 * 3600 * 24));
+
+      if (otsFilterWaktu === "today" && diffDays !== 0) return false;
+      if (otsFilterWaktu === "last7" && (diffDays < -7 || diffDays > 0)) return false;
+      if (otsFilterWaktu === "next7" && (diffDays < 0 || diffDays > 7)) return false;
+      if (otsFilterWaktu === "last35" && (diffDays < -35 || diffDays > 0)) return false;
+      if (otsFilterWaktu === "next35" && (diffDays < 0 || diffDays > 35)) return false;
     }
 
-    // Search text
+    // 2. Filter Kategori & Kata Kunci
     if (otsSearchQuery.trim()) {
       const q = otsSearchQuery.toLowerCase().trim();
-      const match =
-        j.idJadwal?.toLowerCase().includes(q) ||
-        j.otsKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
-        j.otsNama?.toLowerCase().includes(q) ||
-        j.cabangStudio?.toLowerCase().includes(q);
-      if (!match) return false;
+      const otsName = j.otsKaryawan?.namaLengkap || j.otsNama || "";
+      const otsId = j.otsKaryawan?.idKaryawan || j.otsId || "";
+      const streamerName = j.streamerKaryawan?.namaLengkap || j.streamerNama || "";
+      const hostName = j.hostKaryawan?.namaLengkap || "";
+      const studio = `${j.cabangStudio || ""} ${j.nomorStudio || ""}`;
+      const status = j.status || "";
+      const idJadwal = j.idJadwal || "";
+
+      if (otsFilterKategori === "id_jadwal") return idJadwal.toLowerCase().includes(q);
+      if (otsFilterKategori === "status") return status.toLowerCase().includes(q);
+      if (otsFilterKategori === "nama") {
+        return (
+          otsName.toLowerCase().includes(q) ||
+          otsId.toLowerCase().includes(q) ||
+          streamerName.toLowerCase().includes(q) ||
+          hostName.toLowerCase().includes(q)
+        );
+      }
+      if (otsFilterKategori === "cabang") return studio.toLowerCase().includes(q);
+
+      // ALL
+      return (
+        idJadwal.toLowerCase().includes(q) ||
+        status.toLowerCase().includes(q) ||
+        otsName.toLowerCase().includes(q) ||
+        otsId.toLowerCase().includes(q) ||
+        streamerName.toLowerCase().includes(q) ||
+        hostName.toLowerCase().includes(q) ||
+        studio.toLowerCase().includes(q) ||
+        (j.platform || "").toLowerCase().includes(q) ||
+        (j.client?.namaClient || "").toLowerCase().includes(q)
+      );
     }
 
     return true;
@@ -269,7 +298,7 @@ export function TabOts({
       <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <h2 className="font-extrabold text-black text-base flex items-center gap-2">
-            <i className="fa-solid fa-headphones text-blue-600" />
+            <i className="fa-solid fa-headphones text-[#941A0B]" />
             <span>Formulir Penugasan Jadwal Kerja OTS</span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -279,7 +308,7 @@ export function TabOts({
         <button
           type="button"
           onClick={handleAddOtsForm}
-          className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-blue-200"
+          className="px-4 py-2 bg-red-50 hover:bg-red-100 text-[#941A0B] rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-red-200"
         >
           <i className="fa-solid fa-plus" /> Tambah Form OTS
         </button>
@@ -305,7 +334,7 @@ export function TabOts({
           >
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
-                <span className="w-7 h-7 bg-blue-600 text-white rounded-lg flex items-center justify-center text-xs font-bold">
+                <span className="w-7 h-7 bg-[#941A0B] text-white rounded-lg flex items-center justify-center text-xs font-bold">
                   {idx + 1}
                 </span>
                 <span className="font-mono text-xs font-bold text-slate-700">
@@ -467,30 +496,30 @@ export function TabOts({
           <button
             type="button"
             onClick={handleAddOtsForm}
-            className="w-full sm:w-auto text-blue-600 bg-blue-50 hover:bg-blue-100 font-bold py-3 px-6 rounded-xl transition-all flex items-center justify-center gap-2 text-sm"
+            className="w-full sm:w-auto px-6 py-3 bg-red-50 text-[#941A0B] rounded-xl hover:bg-red-100 font-bold transition flex items-center justify-center gap-2 text-xs border border-red-200"
           >
-            <i className="fa-solid fa-plus" /> Tambah Jadwal OTS (Maks 100)
+            <i className="fa-solid fa-plus" /> Tambah Form OTS
           </button>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
             <button
               type="button"
               onClick={checkBebasCrashOts}
-              className="w-full sm:w-auto px-6 py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-bold transition-all shadow-md flex items-center justify-center gap-2 text-sm"
+              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
             >
               <i className="fa-solid fa-shield-halved" /> Bebas Crash
             </button>
             <button
               type="submit"
               disabled={loading || !isOtsCrashVerified}
-              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm ${
+              className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs text-white ${
                 isOtsCrashVerified && !loading
-                  ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                  ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
+                  : "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-200"
               }`}
             >
               <i className="fa-solid fa-cloud-arrow-up" />
-              <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal"}</span>
+              <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal OTS"}</span>
             </button>
           </div>
         </div>
@@ -501,159 +530,231 @@ export function TabOts({
         <div className="p-4 sm:px-6 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
             <h3 className="font-extrabold text-black text-sm flex items-center gap-2">
-              <i className="fa-solid fa-list-check text-blue-600" />
+              <i className="fa-solid fa-list-check text-[#941A0B]" />
               <span>Tabel Monitoring Jadwal Kerja OTS</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Menampilkan jadwal kerja dan status kehadiran personel operator technical support
+            <p className="text-xs text-slate-400 mt-0.5">
+              Sistem monitoring jadwal operasional, penugasan studio, dan jam wajib hadir OTS.
             </p>
           </div>
-          <span className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
+          <span className="text-xs font-bold text-slate-600 bg-slate-50 px-3.5 py-1.5 rounded-xl border border-slate-200 shadow-2xs">
             Total {otsSchedules.length} Sesi OTS
           </span>
         </div>
 
-        {/* Filter Controls */}
-        <div className="p-4 bg-slate-50/50 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
-              Periode Waktu
-            </label>
-            <select
-              value={otsFilterWaktu}
-              onChange={(e) => {
-                setOtsFilterWaktu(e.target.value);
-                setOtsTablePage(1);
-              }}
-              className={selectCls}
-            >
-              <option value="all">Semua Waktu</option>
-              <option value="hari_ini">Hari Ini</option>
-              <option value="akan_datang">Akan Datang</option>
-              <option value="lewat">Sudah Lewat</option>
-            </select>
+        {/* Filter Bar 12-Kolom Persis Staff Dashboard */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          {/* Periode Filter */}
+          <div className="lg:col-span-4">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Periode Waktu</label>
+            <div className="relative">
+              <i className="fa-regular fa-calendar absolute left-3.5 top-3 text-blue-500 text-xs pointer-events-none" />
+              <select
+                value={otsFilterWaktu}
+                onChange={(e) => {
+                  setOtsFilterWaktu(e.target.value);
+                  setOtsTablePage(1);
+                }}
+                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
+              >
+                <option value="all">Semua Periode</option>
+                <option value="today">Hari Ini</option>
+                <option value="last7">7 Hari Ke Belakang</option>
+                <option value="next7">7 Hari Ke Depan</option>
+                <option value="last35">35 Hari Ke Belakang</option>
+                <option value="next35">35 Hari Ke Depan</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
-              Status Jadwal
-            </label>
-            <select
-              value={otsFilterKategori}
-              onChange={(e) => {
-                setOtsFilterKategori(e.target.value);
-                setOtsTablePage(1);
-              }}
-              className={selectCls}
-            >
-              <option value="all">Semua Status</option>
-              <option value="TERJADWAL">TERJADWAL</option>
-              <option value="ON_GOING">BERJALAN / ON GOING</option>
-              <option value="SELESAI">SELESAI</option>
-              <option value="BATAL">DIBATALKAN</option>
-            </select>
+          {/* Kategori Filter */}
+          <div className="lg:col-span-3">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Kategori Cari</label>
+            <div className="relative">
+              <i className="fa-solid fa-layer-group absolute left-3.5 top-3 text-blue-500 text-xs pointer-events-none" />
+              <select
+                value={otsFilterKategori}
+                onChange={(e) => {
+                  setOtsFilterKategori(e.target.value);
+                  setOtsTablePage(1);
+                }}
+                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs"
+              >
+                <option value="all">Semua Data</option>
+                <option value="id_jadwal">ID Jadwal</option>
+                <option value="status">Status</option>
+                <option value="nama">Nama OTS / Staff</option>
+                <option value="cabang">Cabang / Studio</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">
-              Cari Staff / Studio / ID
-            </label>
-            <input
-              type="text"
-              value={otsSearchQuery}
-              onChange={(e) => {
-                setOtsSearchQuery(e.target.value);
+          {/* Text Search */}
+          <div className="lg:col-span-4">
+            <label className="block text-[11px] font-bold text-slate-600 mb-1">Kata Kunci</label>
+            <div className="relative">
+              <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs pointer-events-none" />
+              <input
+                type="text"
+                value={otsSearchQuery}
+                onChange={(e) => {
+                  setOtsSearchQuery(e.target.value);
+                  setOtsTablePage(1);
+                }}
+                placeholder="Ketik kata kunci pencarian..."
+                className="w-full pl-9 pr-8 py-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none shadow-2xs font-medium"
+              />
+              {otsSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOtsSearchQuery("");
+                    setOtsTablePage(1);
+                  }}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Reset & Refresh Buttons */}
+          <div className="lg:col-span-1 flex items-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setOtsFilterWaktu("all");
+                setOtsFilterKategori("all");
+                setOtsSearchQuery("");
                 setOtsTablePage(1);
               }}
-              placeholder="Ketik pencarian..."
-              className={inputCls}
-            />
+              className="flex-1 py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-bold transition flex items-center justify-center shadow-2xs"
+              title="Reset Filter"
+            >
+              <i className="fa-solid fa-filter-circle-xmark" />
+            </button>
+            <button
+              type="button"
+              onClick={() => fetchData()}
+              className="flex-1 py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-xs font-bold transition flex items-center justify-center border border-blue-200 shadow-2xs"
+              title="Muat Ulang Data"
+            >
+              <i className="fa-solid fa-rotate-right" />
+            </button>
           </div>
         </div>
 
         {/* Table */}
-        <div className="overflow-auto max-h-[500px]">
-          <table className="min-w-full text-left text-xs">
-            <thead className="bg-slate-100 text-slate-600 font-bold sticky top-0 z-10 border-b border-slate-200">
+        <div className="overflow-auto rounded-2xl border border-slate-200 shadow-2xs max-h-[520px]">
+          <table className="min-w-full text-left text-xs border-collapse">
+            <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
               <tr>
-                <th className="p-3 text-center w-12">NO</th>
-                <th className="p-3 text-center w-28">STATUS</th>
-                <th className="p-3">WAKTU KERJA</th>
-                <th className="p-3 text-center">WAJIB HADIR</th>
-                <th className="p-3 text-center w-24">CATATAN</th>
-                <th className="p-3 text-center w-24">FILE</th>
-                <th className="p-3">OTS / STAFF</th>
+                <th className="px-3.5 py-3 text-center w-12">NO</th>
+                <th className="px-4 py-3 text-center w-28 whitespace-nowrap">STATUS</th>
+                <th className="px-4 py-3">WAKTU KERJA</th>
+                <th className="px-4 py-3 text-center whitespace-nowrap">WAJIB HADIR</th>
+                <th className="px-3.5 py-3 text-center w-24">CATATAN</th>
+                <th className="px-3.5 py-3 text-center w-24">FILE</th>
+                <th className="px-4 py-3">OTS / STAFF</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
+            <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
               {paginatedOts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400 text-xs">
-                    Tidak ada data jadwal OTS yang sesuai filter.
+                  <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
+                    Tidak ada data jadwal OTS yang sesuai kriteria filter.
                   </td>
                 </tr>
               ) : (
                 paginatedOts.map((j, idx) => {
-                  const badgeCls = getStatusBadgeClass(j.status || "TERJADWAL");
+                  const st = (j.status || "TERJADWAL").toUpperCase();
+                  let badgeClass = "bg-blue-100 text-blue-700 border-blue-200";
+                  if (st === "SELESAI") badgeClass = "bg-emerald-100 text-emerald-700 border-emerald-200";
+                  else if (st === "DIBATALKAN" || st === "REJECTED" || st === "BATAL") badgeClass = "bg-red-100 text-red-700 border-red-200";
+                  else if (st === "ON_GOING" || st === "BERJALAN" || j.liveState === "LIVE") badgeClass = "bg-rose-100 text-rose-700 border-rose-200 animate-pulse font-bold";
+                  else if (st === "PENDING") badgeClass = "bg-amber-100 text-amber-700 border-amber-200";
+
+                  let durMins: number | null = j.durasiMenit ?? null;
+                  if (!durMins && j.jamMulaiLive && j.jamSelesaiLive) {
+                    const sStr = formatTimeSafe(j.jamMulaiLive);
+                    const eStr = formatTimeSafe(j.jamSelesaiLive);
+                    if (sStr.includes(":") && eStr.includes(":")) {
+                      const [sh, sm] = sStr.split(":").map(Number);
+                      const [eh, em] = eStr.split(":").map(Number);
+                      let sM = sh * 60 + (sm || 0);
+                      let eM = eh * 60 + (em || 0);
+                      if (eM < sM) eM += 1440;
+                      durMins = eM - sM;
+                    }
+                  }
+
                   return (
-                    <tr key={j.id || idx} className="hover:bg-slate-50 transition">
-                      <td className="p-3 text-center font-bold text-slate-400">
+                    <tr key={j.id || idx} className="hover:bg-slate-50 transition group">
+                      <td className="px-3.5 py-3 text-center font-bold text-slate-400">
                         {startOtsIndex + idx + 1}
                       </td>
-                      <td className="p-3 text-center">
-                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border ${badgeCls}`}>
-                          {(j.status || "TERJADWAL").toUpperCase()}
+                      <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                        <span className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border shadow-2xs uppercase tracking-wide inline-block ${badgeClass}`}>
+                          {st}
                         </span>
                       </td>
-                      <td className="p-3">
-                        <div className="font-bold text-slate-900">
+                      <td className="px-4 py-3 align-top">
+                        <div className="font-bold text-slate-900 text-xs">
                           {formatDateSafe(j.tanggal)}
                           {j.cabangStudio && (
                             <span className="ml-2 text-rose-600 font-semibold">
+                              <i className="fa-solid fa-location-dot mr-1" />
                               {j.cabangStudio} {j.nomorStudio ? `(${j.nomorStudio})` : ""}
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-emerald-600 font-mono mt-0.5">
-                          {formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB
+                        <div className="text-[11px] text-emerald-600 font-mono mt-0.5 flex items-center gap-1">
+                          <i className="fa-regular fa-clock" />
+                          <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
+                          {durMins ? <span className="text-slate-400 font-sans">({durMins} menit)</span> : null}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">
+                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                           ID: <span className="text-blue-600 font-bold">{j.idJadwal || "–"}</span>
+                          {j.platform && ` • ${j.platform}`}
+                          {j.client?.namaClient && ` • ${j.client.namaClient}`}
                         </div>
                       </td>
-                      <td className="p-3 text-center">
-                        <div className="font-bold text-amber-600 font-mono">
+                      <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
+                        <div className="font-bold text-amber-600 text-xs font-mono">
                           {calcWajibHadir(j.jamMulaiLive)}
                         </div>
                         <div className="text-[10px] text-slate-400">Brief & Persiapan</div>
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="px-3.5 py-3 text-center align-middle">
                         {j.catatanOts || j.catatanHost ? (
                           <button
                             type="button"
                             onClick={() => setModalCatatanOts(j.catatanOts || j.catatanHost)}
-                            className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-[10px] font-bold transition mx-auto"
+                            className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs mx-auto"
                           >
-                            Catatan
+                            <i className="fa-solid fa-note-sticky text-amber-600" />
+                            <span>Catatan</span>
                           </button>
                         ) : (
-                          <span className="text-slate-300">–</span>
+                          <span className="text-slate-300 font-bold text-xs">–</span>
                         )}
                       </td>
-                      <td className="p-3 text-center">
+                      <td className="px-3.5 py-3 text-center align-middle">
                         {j.filePendukungOtsDriveId || j.filePendukungHostDriveId ? (
                           <button
                             type="button"
                             onClick={() => setModalFileOts(j.filePendukungOtsDriveId || j.filePendukungHostDriveId)}
-                            className="px-2.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg text-[10px] font-bold transition mx-auto"
+                            className="bg-blue-100 hover:bg-blue-200 text-blue-800 px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 shadow-2xs mx-auto"
                           >
-                            File
+                            <i className="fa-solid fa-folder-open text-blue-600" />
+                            <span>File</span>
                           </button>
                         ) : (
-                          <span className="text-slate-300">–</span>
+                          <span className="text-slate-300 font-bold text-xs">–</span>
                         )}
                       </td>
-                      <td className="p-3">
+                      <td className="px-4 py-3 align-top">
                         <div className="font-bold text-slate-900">
                           {j.otsKaryawan?.namaLengkap || j.otsNama || "Belum Ditugaskan"}
                         </div>

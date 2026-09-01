@@ -114,6 +114,96 @@ export async function addQuestion(input: z.infer<typeof questionSchema> & { id?:
   });
 }
 
+export function checkAnswerMatch(
+  userAnswer: string | null | undefined,
+  correctAnswer: string | null | undefined,
+  options?: any
+): boolean {
+  if (!userAnswer || !correctAnswer) return false;
+  const cleanUser = userAnswer.trim().toLowerCase();
+  const cleanCorrect = correctAnswer.trim().toLowerCase();
+
+  // 1. Direct exact match
+  if (cleanUser === cleanCorrect) return true;
+
+  // 2. Map letter / index (A=0, B=1, C=2, D=3, E=4, etc.)
+  const parseIdxOrLetter = (val: string): { letter: string | null; idx: number | null } => {
+    const v = val.trim().toUpperCase();
+    if (/^[0-9]+$/.test(v)) {
+      const idx = parseInt(v, 10);
+      return { letter: String.fromCharCode(65 + idx), idx };
+    }
+    if (/^[A-Z]$/.test(v)) {
+      const idx = v.charCodeAt(0) - 65;
+      return { letter: v, idx };
+    }
+    const match = v.match(/^([A-Z])[\.\)\-\:\s]/);
+    if (match) {
+      const letter = match[1];
+      return { letter, idx: letter.charCodeAt(0) - 65 };
+    }
+    return { letter: null, idx: null };
+  };
+
+  const pUser = parseIdxOrLetter(userAnswer);
+  const pCorrect = parseIdxOrLetter(correctAnswer);
+
+  if (pUser.idx !== null && pCorrect.idx !== null && pUser.idx === pCorrect.idx) {
+    return true;
+  }
+  if (pUser.letter !== null && pCorrect.letter !== null && pUser.letter === pCorrect.letter) {
+    return true;
+  }
+
+  // 3. Match against options list if available
+  let optsList: string[] = [];
+  if (Array.isArray(options)) {
+    optsList = options;
+  } else if (typeof options === "string") {
+    try {
+      optsList = JSON.parse(options);
+    } catch {
+      optsList = [];
+    }
+  }
+
+  if (optsList.length > 0) {
+    let userOptIdx: number | null = pUser.idx;
+    if (userOptIdx === null || userOptIdx < 0 || userOptIdx >= optsList.length) {
+      const uIdx = optsList.findIndex((opt) => {
+        const oClean = opt.trim().toLowerCase();
+        return (
+          oClean === cleanUser ||
+          oClean.replace(/^[a-z0-9][\.\)\-\:\s]\s*/i, "") === cleanUser.replace(/^[a-z0-9][\.\)\-\:\s]\s*/i, "")
+        );
+      });
+      if (uIdx !== -1) userOptIdx = uIdx;
+    }
+
+    let correctOptIdx: number | null = pCorrect.idx;
+    if (correctOptIdx === null || correctOptIdx < 0 || correctOptIdx >= optsList.length) {
+      const cIdx = optsList.findIndex((opt) => {
+        const oClean = opt.trim().toLowerCase();
+        return (
+          oClean === cleanCorrect ||
+          oClean.replace(/^[a-z0-9][\.\)\-\:\s]\s*/i, "") === cleanCorrect.replace(/^[a-z0-9][\.\)\-\:\s]\s*/i, "")
+        );
+      });
+      if (cIdx !== -1) correctOptIdx = cIdx;
+    }
+
+    if (userOptIdx !== null && correctOptIdx !== null && userOptIdx === correctOptIdx) {
+      return true;
+    }
+  }
+
+  // 4. Text comparison without prefix
+  const stripPrefix = (str: string) => str.replace(/^[a-z0-9][\.\)\-\:\s]\s*/i, "").trim().toLowerCase();
+  if (stripPrefix(userAnswer) === stripPrefix(correctAnswer)) return true;
+
+  return false;
+}
+
 /** Auto-grade an MCQ attempt; essay returns null (manual grading). */
 export async function submitAnswer(enrollmentId: string, questionId: string, answerText: string) {
   const user = await requirePortal("streamer");
@@ -127,7 +217,7 @@ export async function submitAnswer(enrollmentId: string, questionId: string, ans
 
   let score: number | null = null;
   if (q.type === "MCQ" && q.correctAnswer != null) {
-    score = answerText.trim() === q.correctAnswer.trim() ? 100 : 0;
+    score = checkAnswerMatch(answerText, q.correctAnswer, q.options) ? 100 : 0;
   }
   return db.quizAttempt.create({
     data: { enrollmentId, moduleId: q.moduleId, questionId, answerText, score, gradedAt: score != null ? new Date() : undefined },
@@ -335,7 +425,7 @@ export async function submitVideoLesson(input: { enrollmentId: string; lessonId:
     if (!q) continue;
     let score: number | null = null;
     if (q.type === "MCQ" && q.correctAnswer != null) {
-      score = a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase() ? 100 : 0;
+      score = checkAnswerMatch(a.answerText, q.correctAnswer, q.options) ? 100 : 0;
       if (score === 100) totalCorrect += 1;
     }
     await db.quizAttempt.create({
@@ -395,7 +485,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
     const gradedQuestions = questions.filter((q) => q.correctAnswer != null);
     for (const q of gradedQuestions) {
       const a = attempts.find((x) => x.questionId === q.id);
-      if (a && (a.score === 100 || (a.answerText && q.correctAnswer && a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()))) {
+      if (a && (a.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options))) {
         correctCount += 1;
       }
     }
@@ -462,7 +552,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
     let correctCount = 0;
     for (const q of gradedQuestions) {
       const a = group.attempts.find((x: any) => x.questionId === q.id);
-      if (a && (a.score === 100 || (a.answerText && q.correctAnswer && a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase()))) {
+      if (a && (a.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options))) {
         correctCount += 1;
       }
     }
@@ -517,7 +607,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
       const a = attempts.find((x) => x.questionId === q.id);
       let isCorrect = false;
       if (q.correctAnswer != null && a?.answerText != null) {
-        isCorrect = a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase();
+        isCorrect = a?.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options);
       }
       return {
         questionId: q.id,
@@ -568,7 +658,7 @@ export async function getVideoSubmissionDetail(watchId: string) {
     const a = attempts.find((x) => x.questionId === q.id);
     let isCorrect = false;
     if (q.correctAnswer != null && a?.answerText != null) {
-      isCorrect = a.answerText.trim().toUpperCase() === q.correctAnswer.trim().toUpperCase();
+      isCorrect = a?.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options);
     }
     return {
       questionId: q.id,

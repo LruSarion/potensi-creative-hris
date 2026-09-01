@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
 
 export default function StreamerDirectoryPage() {
   const [streamers, setStreamers] = useState<any[]>([]);
@@ -8,6 +9,7 @@ export default function StreamerDirectoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("");
+  const [selectedStreamerId, setSelectedStreamerId] = useState<string | null>(null);
 
   useEffect(() => {
     load();
@@ -72,6 +74,7 @@ export default function StreamerDirectoryPage() {
                 <th className="px-4 py-3">Sesi</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Sertifikasi Brand</th>
+                <th className="px-4 py-3 text-center w-28">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -110,6 +113,16 @@ export default function StreamerDirectoryPage() {
                       <span className="text-[10px] text-slate-400">Belum bersertifikasi</span>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStreamerId(s.id)}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-[#941A0B] border border-red-200 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 mx-auto"
+                    >
+                      <i className="fa-solid fa-id-card text-xs" />
+                      <span>Detail</span>
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -118,6 +131,15 @@ export default function StreamerDirectoryPage() {
             <div className="p-8 text-center text-slate-400 text-xs">Tidak ada streamer ditemukan.</div>
           )}
         </div>
+      )}
+
+      {/* Streamer Detail Modal */}
+      {selectedStreamerId && (
+        <StreamerProfileCardOverview
+          streamerId={selectedStreamerId}
+          isModal={true}
+          onClose={() => setSelectedStreamerId(null)}
+        />
       )}
 
       {/* Certifications overview */}

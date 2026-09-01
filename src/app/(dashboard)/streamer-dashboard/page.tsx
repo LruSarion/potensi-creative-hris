@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
 import { generateGoogleCalendarUrl } from "@/lib/google-calendar-utils";
+import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
+import { StreamerListView } from "@/components/streamer-dashboard/streamer-list-view";
 
 // --- Safe Date & Time Formatting Helpers (Prevents "Invalid Date" Errors) ---
 function formatDateSafe(val: any, options?: Intl.DateTimeFormatOptions, fallback = "–"): string {
@@ -197,6 +199,7 @@ type AbsensiHistory = {
 };
 
 const TABS = [
+  { id: "overview", label: "Daftar & Profil Streamer", icon: "fa-solid fa-users-viewfinder" },
   { id: "checkin", label: "Check In", icon: "fa-solid fa-arrow-right-to-bracket" },
   { id: "checkout", label: "Check Out", icon: "fa-solid fa-arrow-right-from-bracket" },
   { id: "terbatas", label: "Terbatas", icon: "fa-solid fa-bolt" },
@@ -211,6 +214,7 @@ export default function StreamerDashboardPage() {
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role ?? "");
 
   const [activeTab, setActiveTab] = useState("checkin");
+  const [selectedOverviewStreamerId, setSelectedOverviewStreamerId] = useState<string | null>(null);
   const [jadwal, setJadwal] = useState<Jadwal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -221,6 +225,8 @@ export default function StreamerDashboardPage() {
   const [pendingGmvList, setPendingGmvList] = useState<any[]>([]);
   const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
   const [absensiHistory, setAbsensiHistory] = useState<AbsensiHistory[]>([]);
+  const [allStreamersList, setAllStreamersList] = useState<any[]>([]);
+  const [adminSelectedStreamerId, setAdminSelectedStreamerId] = useState<string>("");
 
   // Check-in form state
   const [selectedJadwalId, setSelectedJadwalId] = useState("");
@@ -303,6 +309,15 @@ export default function StreamerDashboardPage() {
           jamMaksimal: b.jamMaksimal,
           ratePerJam: Number(b.ratePerJam),
         })));
+      }
+
+      if (isAdmin) {
+        fetch("/api/streamer-directory")
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.status === "success") setAllStreamersList(d.data || []);
+          })
+          .catch(() => {});
       }
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
@@ -593,7 +608,16 @@ export default function StreamerDashboardPage() {
     );
   });
 
-  const visibleTabs = TABS;
+  const visibleTabs = TABS.map((t) => {
+    if (t.id === "overview") {
+      return {
+        ...t,
+        label: isAdmin ? "Daftar & Profil Streamer" : "Profil & SOP Saya",
+        icon: isAdmin ? "fa-solid fa-users-viewfinder" : "fa-solid fa-id-card",
+      };
+    }
+    return t;
+  });
 
   return (
     <div className="space-y-6">
@@ -739,6 +763,30 @@ export default function StreamerDashboardPage() {
           })}
         </div>
       </div>
+
+      {/* ======== TAB: DAFTAR & PROFIL STREAMER (ROLE-AWARE) ======== */}
+      {activeTab === "overview" && (
+        <div className="space-y-4">
+          {isAdmin ? (
+            !selectedOverviewStreamerId ? (
+              <StreamerListView
+                onSelectStreamer={(id) => setSelectedOverviewStreamerId(id)}
+                currentKaryawanId={(session?.user as any)?.karyawanId}
+              />
+            ) : (
+              <StreamerProfileCardOverview
+                streamerId={selectedOverviewStreamerId}
+                onBackToList={() => setSelectedOverviewStreamerId(null)}
+              />
+            )
+          ) : (
+            /* Streamer role: only sees their own profile */
+            <StreamerProfileCardOverview
+              streamerId={(session?.user as any)?.karyawanId || undefined}
+            />
+          )}
+        </div>
+      )}
 
       {/* ======== TAB: CHECK IN ======== */}
       {activeTab === "checkin" && (
@@ -1862,7 +1910,7 @@ export default function StreamerDashboardPage() {
           {/* Other Portal Links */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Link
-              href="/pengajuan?tab=tukar-shift"
+              href="/tukar-shift"
               className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
             >
               <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">
@@ -1875,7 +1923,7 @@ export default function StreamerDashboardPage() {
             </Link>
 
             <Link
-              href="/pengajuan?tab=izin"
+              href="/pengajuan-izin"
               className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-amber-400 hover:bg-amber-50/40 transition group text-center shadow-sm"
             >
               <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
@@ -1888,7 +1936,7 @@ export default function StreamerDashboardPage() {
             </Link>
 
             <Link
-              href="/pengajuan?tab=lembur"
+              href="/pengajuan-lembur"
               className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
             >
               <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
 
 type GmvData = {
   totalGmv: number;
@@ -52,6 +53,7 @@ export default function AnalyticsGmvPage() {
   const [error, setError] = useState("");
   const [periode, setPeriode] = useState(months[0]);
   const [activeTab, setActiveTab] = useState<"client" | "platform" | "streamer">("client");
+  const [selectedStreamerKaryawanId, setSelectedStreamerKaryawanId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, [periode]);
 
@@ -239,7 +241,17 @@ export default function AnalyticsGmvPage() {
                             <div className="text-[10px] text-slate-400 font-mono">{s.idKaryawan} • {s.sessions} sesi</div>
                           </div>
                         </div>
-                        <span className="text-sm font-black text-emerald-700 shrink-0">{fmtCur(s.totalGmv)}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span className="text-sm font-black text-emerald-700">{fmtCur(s.totalGmv)}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedStreamerKaryawanId(s.idKaryawan)}
+                            className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-[#941A0B] border border-red-200 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer active:scale-95"
+                          >
+                            <i className="fa-solid fa-id-card text-[10px]" />
+                            <span>Detail</span>
+                          </button>
+                        </div>
                       </div>
                       <ProgressBar pct={(s.totalGmv / maxStreamer) * 100} color="bg-indigo-500" />
                     </div>
@@ -249,6 +261,15 @@ export default function AnalyticsGmvPage() {
             </>
           )}
         </div>
+      )}
+
+      {/* Streamer Detail Modal */}
+      {selectedStreamerKaryawanId && (
+        <StreamerProfileCardOverview
+          streamerId={selectedStreamerKaryawanId}
+          isModal={true}
+          onClose={() => setSelectedStreamerKaryawanId(null)}
+        />
       )}
     </div>
   );

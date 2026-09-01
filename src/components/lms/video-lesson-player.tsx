@@ -22,6 +22,7 @@ type VideoLessonProps = {
   enrollmentId: string;
   questions: VideoQuestion[];
   onSubmitted?: () => void;
+  onAnswerRecorded?: (questionId: string, answerText: string) => void;
 };
 
 type YTPlayer = {
@@ -42,7 +43,7 @@ function formatTime(sec: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onSubmitted }: VideoLessonProps) {
+export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onSubmitted, onAnswerRecorded }: VideoLessonProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const [activeEvent, setActiveEvent] = useState<VideoQuestion | null>(null);
@@ -205,6 +206,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
     // Record answer
     answersRef.current[activeEvent.id] = currentAnswer;
+    onAnswerRecorded?.(activeEvent.id, currentAnswer);
     const answeredCount = Object.keys(answersRef.current).length;
     const allDone = answeredCount >= timedQuestions.length;
 
@@ -355,8 +357,12 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
 
             <div className="space-y-2.5">
               {(activeEvent.options ?? []).map((opt, idx) => {
-                const isSelected = answers[activeEvent.id] === opt;
                 const letter = String.fromCharCode(65 + idx);
+                const isSelected =
+                  answers[activeEvent.id] === letter ||
+                  answers[activeEvent.id] === String(idx) ||
+                  answers[activeEvent.id] === opt ||
+                  answers[activeEvent.id]?.trim().toLowerCase() === opt.trim().toLowerCase();
                 return (
                   <label
                     key={idx}
@@ -370,7 +376,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
                       type="radio"
                       name={`active-q-${activeEvent.id}`}
                       checked={isSelected}
-                      onChange={() => setAnswers((prev) => ({ ...prev, [activeEvent.id]: opt }))}
+                      onChange={() => setAnswers((prev) => ({ ...prev, [activeEvent.id]: letter }))}
                       className="accent-purple-600 w-4 h-4"
                     />
                     <span className="font-bold text-slate-400 w-4">{letter}.</span>

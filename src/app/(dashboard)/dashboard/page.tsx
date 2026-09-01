@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { formatLogEntry } from "@/lib/log-formatter";
+import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
+import { StreamerListView } from "@/components/streamer-dashboard/streamer-list-view";
 
 function formatRelativeTime(dateStr: string) {
   try {
@@ -28,7 +30,11 @@ function formatRelativeTime(dateStr: string) {
 export default function DashboardPage() {
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "Karyawan";
+  const userRole = session?.user?.role ?? "";
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(userRole);
 
+  const [dashboardView, setDashboardView] = useState<"streamer_sop" | "main">("streamer_sop");
+  const [selectedStreamerId, setSelectedStreamerId] = useState<string | null>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
 
@@ -51,14 +57,75 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="w-full flex flex-col justify-between min-h-full space-y-8">
+    <div className="w-full flex flex-col justify-between min-h-full space-y-6">
       <div>
-        <div className="mb-6 lg:mb-8">
-          <h1 className="text-2xl font-bold text-[#000000] mb-1 lg:hidden">Dashboard</h1>
-          <p className="text-[#4D4D4D] text-sm lg:text-base">
-            Selamat datang kembali, <span className="font-semibold text-[#000000]">{userName}</span>. Anda adalah potensi terbaik.
-          </p>
+        <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-[#000000] mb-1">Dashboard</h1>
+            <p className="text-[#4D4D4D] text-sm">
+              Selamat datang kembali, <span className="font-semibold text-[#000000]">{userName}</span>.
+            </p>
+          </div>
+
+          {/* View Toggle Tabs */}
+          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setDashboardView("streamer_sop");
+                setSelectedStreamerId(null);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                dashboardView === "streamer_sop"
+                  ? "bg-[#941A0B] text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <i className={isAdmin ? "fa-solid fa-users-viewfinder text-xs" : "fa-solid fa-id-card text-xs"} />
+              <span>{isAdmin ? "Daftar & Profil Streamer" : "Profil & SOP Saya"}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDashboardView("main")}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                dashboardView === "main"
+                  ? "bg-[#941A0B] text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <i className="fa-solid fa-chart-line text-xs" />
+              <span>Statistik Ringkasan</span>
+            </button>
+          </div>
         </div>
+
+        {/* View 1: Streamer List -> Streamer Profile Card Overview (Role Aware) */}
+        {dashboardView === "streamer_sop" && (
+          <div className="pt-2">
+            {isAdmin ? (
+              !selectedStreamerId ? (
+                <StreamerListView
+                  onSelectStreamer={(id) => setSelectedStreamerId(id)}
+                  currentKaryawanId={(session?.user as any)?.karyawanId}
+                />
+              ) : (
+                <StreamerProfileCardOverview
+                  streamerId={selectedStreamerId}
+                  onBackToList={() => setSelectedStreamerId(null)}
+                />
+              )
+            ) : (
+              /* Streamer role: only sees their own profile */
+              <StreamerProfileCardOverview
+                streamerId={(session?.user as any)?.karyawanId || undefined}
+              />
+            )}
+          </div>
+        )}
+
+        {/* View 2: Main Global Dashboard Overview */}
+        {dashboardView === "main" && (
+          <div>
 
         {/* Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6">
@@ -80,13 +147,25 @@ export default function DashboardPage() {
             <div className="text-xs text-[#919191]">8 selesai</div>
           </div>
 
-          <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
+          {/* Streamer Aktif Card -> Clickable to switch to Streamer List/Detail */}
+          <div
+            onClick={() => {
+              setDashboardView("streamer_sop");
+              setSelectedStreamerId(null);
+            }}
+            className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] hover:border-[#941A0B] shadow-sm flex flex-col cursor-pointer transition group"
+          >
             <div className="flex justify-between items-start mb-4">
-              <span className="text-sm font-medium text-[#4D4D4D]">Streamer Aktif</span>
+              <span className="text-sm font-medium text-[#4D4D4D] group-hover:text-[#941A0B]">Streamer Aktif</span>
               <i className="fa-solid fa-wave-square text-[#FA3737] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-[#000000] mb-1">45</div>
-            <div className="text-xs text-[#919191]">12 sedang live</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1 group-hover:text-[#941A0B]">45</div>
+            <div className="text-xs text-[#919191] flex items-center justify-between">
+              <span>12 sedang live</span>
+              <span className="text-[#941A0B] font-bold text-[11px] group-hover:underline flex items-center gap-0.5">
+                Lihat Detail <i className="fa-solid fa-chevron-right text-[9px]" />
+              </span>
+            </div>
           </div>
 
           <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
@@ -215,8 +294,10 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+    )}
+      </div>
 
-      <div className="mt-12 text-center pb-4">
+      <div className="mt-8 text-center pb-4">
         <p className="text-xs text-[#919191]">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
       </div>
     </div>
