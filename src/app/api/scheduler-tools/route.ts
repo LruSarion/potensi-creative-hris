@@ -28,8 +28,11 @@ export const GET = apiHandler(async (req: Request) => {
     return {
       allowLiburRequest: cfg.allowLiburRequest !== false,
       allowShiftRequest: cfg.allowShiftRequest !== false,
-      defaultKuotaLibur: typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 4,
+      fiturLibur: cfg.allowLiburRequest !== false ? "ON" : "OFF",
+      fiturShift: cfg.allowShiftRequest !== false ? "ON" : "OFF",
+      defaultKuotaLibur: typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 20,
       defaultKuotaShift: typeof cfg.defaultKuotaShift === "number" && cfg.defaultKuotaShift > 0 ? cfg.defaultKuotaShift : 4,
+      dailyShiftQuota: cfg.dailyShiftQuota ?? {},
     };
   }
 
@@ -39,7 +42,7 @@ export const GET = apiHandler(async (req: Request) => {
       ? await db.tenant.findUnique({ where: { id: user.tenantId } })
       : await db.tenant.findFirst();
     const cfg = (tenant?.config ?? {}) as Record<string, any>;
-    const defaultKuotaLibur = typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 4;
+    const defaultKuotaLibur = typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 20;
     const defaultKuotaShift = typeof cfg.defaultKuotaShift === "number" && cfg.defaultKuotaShift > 0 ? cfg.defaultKuotaShift : 4;
 
     const streamerCondition = {
@@ -54,7 +57,7 @@ export const GET = apiHandler(async (req: Request) => {
       ],
     };
 
-    const [streamers, leaveRequests, shiftRequests] = await Promise.all([
+    const [streamers, leaveRequests, shiftRequests, liburStreamerDb] = await Promise.all([
       db.karyawan.findMany({
         where: streamerCondition,
         select: { id: true, idKaryawan: true, namaLengkap: true, kategori: true, jabatan: true },
@@ -76,14 +79,24 @@ export const GET = apiHandler(async (req: Request) => {
         include: { karyawan: { select: { id: true, idKaryawan: true, namaLengkap: true } } },
         orderBy: { tanggalMulai: "desc" },
       }),
+      db.liburStreamer.findMany({
+        include: { karyawan: { select: { id: true, idKaryawan: true, namaLengkap: true } } },
+        orderBy: { tanggal: "desc" },
+      }),
     ]);
 
     return {
       defaultKuotaLibur,
       defaultKuotaShift,
+      fiturLibur: cfg.allowLiburRequest !== false ? "ON" : "OFF",
+      fiturShift: cfg.allowShiftRequest !== false ? "ON" : "OFF",
+      allowLiburRequest: cfg.allowLiburRequest !== false,
+      allowShiftRequest: cfg.allowShiftRequest !== false,
+      dailyShiftQuota: cfg.dailyShiftQuota ?? {},
       streamers,
       leaveRequests,
       shiftRequests,
+      liburStreamerDb,
     };
   }
 
@@ -98,35 +111,52 @@ export const GET = apiHandler(async (req: Request) => {
   // streamer-stats: compute accumulated hours and tier for current or given month
   if (!karyawanId) return { totalJam: 0, tier: null, isOverlimit: false };
 
-  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-  let startOfMonth: Date, endOfMonth: Date;
-  const m = periode ? /^(\w+) (\d{4})$/.exec(periode.trim()) : null;
-  if (m) {
-    const idx = months.indexOf(m[1]);
-    const year = parseInt(m[2], 10);
-    startOfMonth = new Date(year, idx, 1);
-    endOfMonth = new Date(year, idx + 1, 1);
+  const tenant = user.tenantId
+    ? await db.tenant.findUnique({ where: { id: user.tenantId } })
+    : await db.tenant.findFirst();
+  const cfg = (tenant?.config ?? {}) as Record<string, any>;
+  const tieringList: Array<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }> =
+    cfg.streamerTiering ?? [];
+
+  // Parse periode to get start & end of month
+  let startOfMonth: Date;
+  let endOfMonth: Date;
+  if (periode) {
+    const parts = periode.split(" ");
+    const monthNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    const mIdx = monthNames.indexOf(parts[0]);
+    const yr = Number(parts[1]) || new Date().getFullYear();
+    if (mIdx !== -1) {
+      startOfMonth = new Date(yr, mIdx, 1, 0, 0, 0);
+      endOfMonth = new Date(yr, mIdx + 1, 0, 23, 59, 59);
+    } else {
+      const now = new Date();
+      startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+      endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    }
   } else {
     const now = new Date();
-    startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
   }
 
-  const [jadwal, tieringList, karyawan] = await Promise.all([
+  const [jadwal, karyawan] = await Promise.all([
     db.jadwal.findMany({
       where: {
         streamerKaryawanId: karyawanId,
-        tanggal: { gte: startOfMonth, lt: endOfMonth },
-        status: { notIn: ["DIBATALKAN", "REJECTED"] },
+        tanggal: { gte: startOfMonth, lte: endOfMonth },
+        status: { in: ["SELESAI", "TERJADWAL"] },
       },
+      select: { jamMulaiLive: true, jamSelesaiLive: true },
     }),
-    db.tiering.findMany({ orderBy: { jamMinimal: "asc" } }),
-    db.karyawan.findUnique({ where: { id: karyawanId }, select: { namaLengkap: true, tags: true } }),
+    db.karyawan.findUnique({
+      where: { id: karyawanId },
+      select: { namaLengkap: true, tags: true },
+    }),
   ]);
 
-  const totalMinutes = jadwal.reduce((s, j) => {
-    if (j.durationSec > 0) return s + j.durationSec / 60;
-    return s + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
+  const totalMinutes = jadwal.reduce((acc, j) => {
+    return acc + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
   }, 0);
   const totalJam = Math.round((totalMinutes / 60) * 100) / 100;
 
@@ -152,7 +182,7 @@ export const GET = apiHandler(async (req: Request) => {
 });
 
 export const POST = apiHandler(async (req: Request) => {
-  const user = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION");
+  const user = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STAFF");
   const tenantId = user.tenantId || (await db.tenant.findFirst())?.id;
 
   const body = await req.json();
@@ -163,10 +193,12 @@ export const POST = apiHandler(async (req: Request) => {
     const currentCfg = (tenant?.config ?? {}) as Record<string, any>;
 
     const nextCfg = { ...currentCfg };
-    if (body.fitur === "LIBUR") {
-      nextCfg.allowLiburRequest = body.status === "ON";
-    } else if (body.fitur === "SHIFT") {
-      nextCfg.allowShiftRequest = body.status === "ON";
+    const isTurnOn = body.status === "ON";
+
+    if (body.fitur === "LIBUR" || body.fitur === "fiturLibur") {
+      nextCfg.allowLiburRequest = isTurnOn;
+    } else if (body.fitur === "SHIFT" || body.fitur === "fiturShift") {
+      nextCfg.allowShiftRequest = isTurnOn;
     }
 
     await db.tenant.update({
@@ -178,6 +210,52 @@ export const POST = apiHandler(async (req: Request) => {
       success: true,
       fitur: body.fitur,
       status: body.status,
+      fiturLibur: nextCfg.allowLiburRequest !== false ? "ON" : "OFF",
+      fiturShift: nextCfg.allowShiftRequest !== false ? "ON" : "OFF",
+      allowLiburRequest: nextCfg.allowLiburRequest !== false,
+      allowShiftRequest: nextCfg.allowShiftRequest !== false,
+      config: nextCfg,
+    };
+  }
+
+  if (body.action === "save-daily-quota") {
+    if (!tenantId) throw AppError.forbidden("Tenant tidak ditemukan");
+    const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
+    const currentCfg = (tenant?.config ?? {}) as Record<string, any>;
+
+    const nextDaily = { ...(currentCfg.dailyShiftQuota ?? {}) };
+    if (Array.isArray(body.items)) {
+      for (const it of body.items) {
+        if (it.tanggal) {
+          nextDaily[it.tanggal] = {
+            q00_08: Number(it.q00_08 ?? 0),
+            q08_16: Number(it.q08_16 ?? 0),
+            q16_00: Number(it.q16_00 ?? 0),
+            qLibur: Number(it.qLibur ?? 20),
+          };
+        }
+      }
+    } else if (body.tanggal) {
+      nextDaily[body.tanggal] = {
+        q00_08: Number(body.q00_08 ?? 0),
+        q08_16: Number(body.q08_16 ?? 0),
+        q16_00: Number(body.q16_00 ?? 0),
+        qLibur: Number(body.qLibur ?? 20),
+      };
+    }
+
+    const nextCfg = {
+      ...currentCfg,
+      dailyShiftQuota: nextDaily,
+    };
+
+    await db.tenant.update({
+      where: { id: tenantId },
+      data: { config: nextCfg },
+    });
+
+    return {
+      success: true,
       config: nextCfg,
     };
   }
@@ -189,7 +267,7 @@ export const POST = apiHandler(async (req: Request) => {
 
     const nextCfg = {
       ...currentCfg,
-      defaultKuotaLibur: Number(body.defaultKuotaLibur) || 4,
+      defaultKuotaLibur: Number(body.defaultKuotaLibur) || 20,
       defaultKuotaShift: Number(body.defaultKuotaShift) || 4,
     };
 
