@@ -389,6 +389,20 @@ export async function submitLeaveRequest(input: { tanggal: string; alasan?: stri
   const startOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 0, 0, 0);
   const endOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 23, 59, 59);
 
+  // Check quota libur harian (kebijakan operasional: maksimal kuota per hari adalah 20 streamer)
+  const maxQuota = typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 20;
+  const existingLeavesCount = await db.izin.count({
+    where: {
+      jenis: "LIBUR_STREAMER",
+      status: { in: ["PENDING", "APPROVED"] },
+      tanggalMulai: { gte: startOfDay, lte: endOfDay },
+    },
+  });
+
+  if (existingLeavesCount >= maxQuota) {
+    throw AppError.conflict(`Kuota libur host untuk tanggal ${input.tanggal} sudah penuh (Maksimal ${maxQuota} streamer).`);
+  }
+
   // Check if streamer has an active live schedule on this day
   const existingJadwal = await db.jadwal.findFirst({
     where: {
@@ -402,7 +416,7 @@ export async function submitLeaveRequest(input: { tanggal: string; alasan?: stri
     ? ` [Peringatan: Jadwal Live ${existingJadwal.idJadwal} aktif]`
     : "";
 
-  return db.izin.create({
+  const izin = await db.izin.create({
     data: {
       karyawanId,
       tanggalMulai: startOfDay,
@@ -412,6 +426,31 @@ export async function submitLeaveRequest(input: { tanggal: string; alasan?: stri
       status: "PENDING",
     },
   });
+
+  // Sync to liburStreamer database table
+  try {
+    await db.liburStreamer.upsert({
+      where: {
+        karyawanId_tanggal: {
+          karyawanId,
+          tanggal: startOfDay,
+        },
+      },
+      create: {
+        tenantId: user.tenantId || undefined,
+        karyawanId,
+        tanggal: startOfDay,
+        alasan: input.alasan ?? "Pengajuan Libur Streamer",
+      },
+      update: {
+        alasan: input.alasan ?? "Pengajuan Libur Streamer",
+      },
+    });
+  } catch {
+    // ignore duplicate constraint
+  }
+
+  return izin;
 }
 
 /** Submit 3-Session Live request (SESI_1: 00-08, SESI_2: 08-16, SESI_3: 16-00) */
@@ -427,6 +466,37 @@ export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1
   }
 
   const tgl = new Date(input.tanggal);
+  const startOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 0, 0, 0);
+  const endOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 23, 59, 59);
+
+  // Check quota sesi live (kebutuhan host harian)
+  const defaultQuota = typeof cfg.defaultKuotaShift === "number" && cfg.defaultKuotaShift > 0 ? cfg.defaultKuotaShift : 4;
+  const dailyShiftQuota = (cfg.dailyShiftQuota ?? {}) as Record<string, any>;
+  const dateKey = input.tanggal.split("T")[0];
+  const customQuotaForDay = dailyShiftQuota[dateKey];
+  let maxShiftQuota = defaultQuota;
+  if (customQuotaForDay) {
+    if (input.sesi === "SESI_1" && typeof customQuotaForDay.q00_08 === "number" && customQuotaForDay.q00_08 > 0) {
+      maxShiftQuota = customQuotaForDay.q00_08;
+    } else if (input.sesi === "SESI_2" && typeof customQuotaForDay.q08_16 === "number" && customQuotaForDay.q08_16 > 0) {
+      maxShiftQuota = customQuotaForDay.q08_16;
+    } else if (input.sesi === "SESI_3" && typeof customQuotaForDay.q16_00 === "number" && customQuotaForDay.q16_00 > 0) {
+      maxShiftQuota = customQuotaForDay.q16_00;
+    }
+  }
+
+  const existingShiftCount = await db.izin.count({
+    where: {
+      jenis: `REQUEST_${input.sesi}`,
+      status: { in: ["PENDING", "APPROVED"] },
+      tanggalMulai: { gte: startOfDay, lte: endOfDay },
+    },
+  });
+
+  if (existingShiftCount >= maxShiftQuota) {
+    throw AppError.conflict(`Kuota request untuk sesi ini pada tanggal ${dateKey} sudah penuh.`);
+  }
+
   const sesiLabel = {
     SESI_1: "Sesi 1 (00:00 - 08:00)",
     SESI_2: "Sesi 2 (08:00 - 16:00)",
@@ -436,8 +506,8 @@ export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1
   return db.izin.create({
     data: {
       karyawanId,
-      tanggalMulai: tgl,
-      tanggalSelesai: tgl,
+      tanggalMulai: startOfDay,
+      tanggalSelesai: endOfDay,
       jenis: `REQUEST_${input.sesi}`,
       alasan: `${sesiLabel} - ${input.catatan ?? "Permintaan Sesi Live"}`,
       status: "PENDING",
