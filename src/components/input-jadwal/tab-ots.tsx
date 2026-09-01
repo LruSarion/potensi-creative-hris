@@ -27,7 +27,7 @@ export function TabOts({
     {
       id: 1,
       idJadwal: generateNewScheduleId("OTS"),
-      tanggal: new Date().toISOString().slice(0, 10),
+      tanggal: "",
       platform: "Shopee Live",
       cabangStudio: "Timoho",
       nomorStudio: "01",
@@ -66,7 +66,7 @@ export function TabOts({
       {
         id: Date.now(),
         idJadwal: generateNewScheduleId("OTS", last?.tanggal),
-        tanggal: last?.tanggal || new Date().toISOString().slice(0, 10),
+        tanggal: last?.tanggal || "",
         platform: "Shopee Live",
         cabangStudio: last?.cabangStudio || "Timoho",
         nomorStudio: last?.nomorStudio || "01",
@@ -201,7 +201,7 @@ export function TabOts({
         {
           id: 1,
           idJadwal: generateNewScheduleId("OTS"),
-          tanggal: new Date().toISOString().slice(0, 10),
+          tanggal: "",
           platform: "Shopee Live",
           cabangStudio: "Timoho",
           nomorStudio: "01",

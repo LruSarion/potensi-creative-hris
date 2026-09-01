@@ -33,12 +33,12 @@ export function TabKlien({
     {
       id: 1,
       idJadwal: generateNewScheduleId("JDK"),
-      tanggal: new Date().toISOString().slice(0, 10),
+      tanggal: "",
       platform: "",
       clientId: "",
-      jamMulaiLive: "10:00",
-      jamSelesaiLive: "12:00",
-      durasi: "2",
+      jamMulaiLive: "",
+      jamSelesaiLive: "",
+      durasi: "0",
       kuota: 1,
       judulLive: "",
       promoLive: "",
@@ -138,12 +138,12 @@ export function TabKlien({
       {
         id: Date.now(),
         idJadwal: generateNewScheduleId("JDK", last?.tanggal),
-        tanggal: last?.tanggal || new Date().toISOString().slice(0, 10),
+        tanggal: last?.tanggal || "",
         platform: last?.platform || "",
         clientId: last?.clientId || "",
-        jamMulaiLive: "10:00",
-        jamSelesaiLive: "12:00",
-        durasi: "2",
+        jamMulaiLive: "",
+        jamSelesaiLive: "",
+        durasi: "0",
         kuota: 1,
         judulLive: "",
         promoLive: "",
@@ -175,7 +175,14 @@ export function TabKlien({
       const updated = [...prev];
       const item = { ...updated[idx], [field]: value };
       if (field === "jamMulaiLive" || field === "jamSelesaiLive") {
-        item.durasi = calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+        if (item.jamMulaiLive && item.jamSelesaiLive) {
+          item.durasi = calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+        } else {
+          item.durasi = "0";
+        }
+      }
+      if (field === "tanggal" && value) {
+        item.idJadwal = generateNewScheduleId("JDK", value);
       }
       updated[idx] = item;
       return updated;
@@ -402,12 +409,12 @@ export function TabKlien({
         {
           id: 1,
           idJadwal: generateNewScheduleId("JDK"),
-          tanggal: new Date().toISOString().slice(0, 10),
+          tanggal: "",
           platform: "",
           clientId: "",
-          jamMulaiLive: "10:00",
-          jamSelesaiLive: "12:00",
-          durasi: "2",
+          jamMulaiLive: "",
+          jamSelesaiLive: "",
+          durasi: "0",
           kuota: 1,
           judulLive: "",
           promoLive: "",
@@ -594,12 +601,13 @@ export function TabKlien({
           <div className="space-y-4">
             {klienForms.map((item, idx) => {
               const isCollapsed = item.isCollapsed;
-              const durasiStr = item.durasi || calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+              const hasTimes = !!(item.jamMulaiLive && item.jamSelesaiLive);
+              const durasiStr = hasTimes ? (item.durasi || calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive)) : "0";
               const platLabel =
                 platformClientOptions.find((p) => p.value === item.platform)?.label ||
                 item.platform ||
                 "Formulir Jadwal Klien";
-              const tglFormatted = item.tanggal ? formatDateSafe(item.tanggal) : "Tgl";
+              const tglFormatted = item.tanggal ? formatDateSafe(item.tanggal) : "--/--/----";
               const jamMulaiFormatted = item.jamMulaiLive || "--:--";
               const jamSelesaiFormatted = item.jamSelesaiLive || "--:--";
 
@@ -735,9 +743,10 @@ export function TabKlien({
                             </label>
                             <input
                               type="text"
-                              value={durasiStr}
+                              value={item.jamMulaiLive && item.jamSelesaiLive ? (item.durasi || calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive)) : ""}
+                              placeholder="0"
                               readOnly
-                              className="w-full border border-slate-200 bg-slate-100 text-slate-400 font-bold rounded-lg px-4 py-2.5 text-sm outline-none cursor-not-allowed"
+                              className="w-full border border-slate-200 bg-slate-100 text-slate-400 font-bold rounded-lg px-4 py-2.5 text-sm outline-none cursor-not-allowed font-mono"
                             />
                           </div>
                           <div>

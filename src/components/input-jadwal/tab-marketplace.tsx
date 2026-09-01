@@ -23,12 +23,12 @@ export function TabMarketplace({
     {
       id: 1,
       idJadwal: generateNewScheduleId("MKT"),
-      tanggal: new Date().toISOString().slice(0, 10),
+      tanggal: "",
       platform: "",
       clientId: "",
-      jamMulaiLive: "10:00",
-      jamSelesaiLive: "12:00",
-      durasi: "2",
+      jamMulaiLive: "",
+      jamSelesaiLive: "",
+      durasi: "0",
       kuota: 1,
       judulLive: "",
       promoLive: "",
@@ -73,12 +73,12 @@ export function TabMarketplace({
       prev.map((f) => ({ ...f, isCollapsed: true })).concat({
         id: Date.now(),
         idJadwal: generateNewScheduleId("MKT", last?.tanggal),
-        tanggal: last?.tanggal || new Date().toISOString().slice(0, 10),
+        tanggal: last?.tanggal || "",
         platform: last?.platform || "",
         clientId: last?.clientId || "",
-        jamMulaiLive: "10:00",
-        jamSelesaiLive: "12:00",
-        durasi: "2",
+        jamMulaiLive: "",
+        jamSelesaiLive: "",
+        durasi: "0",
         kuota: 1,
         judulLive: "",
         promoLive: "",
@@ -115,7 +115,14 @@ export function TabMarketplace({
       const updated = [...prev];
       const item = { ...updated[idx], [field]: value };
       if (field === "jamMulaiLive" || field === "jamSelesaiLive") {
-        item.durasi = calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+        if (item.jamMulaiLive && item.jamSelesaiLive) {
+          item.durasi = calcDurationHours(item.jamMulaiLive, item.jamSelesaiLive);
+        } else {
+          item.durasi = "0";
+        }
+      }
+      if (field === "tanggal" && value) {
+        item.idJadwal = generateNewScheduleId("MKT", value);
       }
       updated[idx] = item;
       return updated;
@@ -406,12 +413,12 @@ export function TabMarketplace({
         {
           id: 1,
           idJadwal: generateNewScheduleId("MKT"),
-          tanggal: new Date().toISOString().slice(0, 10),
+          tanggal: "",
           platform: "",
           clientId: "",
-          jamMulaiLive: "10:00",
-          jamSelesaiLive: "12:00",
-          durasi: "2",
+          jamMulaiLive: "",
+          jamSelesaiLive: "",
+          durasi: "0",
           kuota: 1,
           judulLive: "",
           promoLive: "",
