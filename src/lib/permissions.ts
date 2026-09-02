@@ -118,6 +118,7 @@ export const PERMISSIONS: Record<Role, string[]> = {
     "lms:grade",
     "lms:certify",
     "employee:read",
+    "client:read",
   ],
   QC_MANAGER: [
     "qc:read",

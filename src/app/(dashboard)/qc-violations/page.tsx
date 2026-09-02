@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import QcLiveMonitor from "@/components/qc-live-monitor";
 
 const CATEGORY_COLORS: Record<string, string> = {
   GROOMING: "bg-pink-100 text-pink-700",
@@ -18,6 +19,7 @@ export default function QcViolationsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("");
+  const [activeTab, setActiveTab] = useState<"input" | "history">("input");
 
   useEffect(() => {
     load();
@@ -50,24 +52,64 @@ export default function QcViolationsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pelanggaran QC Live Streaming</h1>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+            <i className="fa-solid fa-shield-halved text-[#941A0B]" />
+            Pelanggaran QC Live Streaming
+          </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Laporan pelanggaran dari QC Reviewer — dipantau oleh Super Admin & Trainer.
+            Form input laporan pelanggaran dari QC Reviewer dan rekap pemantauan kepatuhan SOP live agency.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder="Cari streamer / kategori..."
-            className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-          />
-          <button onClick={load} className="text-xs text-blue-600 hover:underline font-semibold">
-            <i className="fa-solid fa-arrows-rotate mr-1" />Refresh
+
+        {/* Tab switcher */}
+        <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+          <button
+            type="button"
+            onClick={() => setActiveTab("input")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              activeTab === "input"
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-pen-to-square text-[#941A0B]" />
+            <span>Input Log Pelanggaran</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab("history");
+              load();
+            }}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              activeTab === "history"
+                ? "bg-white text-slate-900 shadow-xs"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <i className="fa-solid fa-table-list text-blue-600" />
+            <span>Semua Riwayat ({violations.length})</span>
           </button>
         </div>
       </div>
+
+      {activeTab === "input" ? (
+        <QcLiveMonitor />
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Cari streamer / kategori..."
+              className="px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-[#941A0B] bg-white w-full max-w-xs"
+            />
+            <button onClick={load} className="text-xs text-[#941A0B] hover:underline font-semibold flex items-center gap-1">
+              <i className="fa-solid fa-arrows-rotate" />
+              Refresh
+            </button>
+          </div>
 
       {error && <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4">⚠ {error}</div>}
 
@@ -130,5 +172,7 @@ export default function QcViolationsPage() {
         </div>
       )}
     </div>
+  )}
+</div>
   );
 }

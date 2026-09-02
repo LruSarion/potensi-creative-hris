@@ -33,6 +33,12 @@ export const MENU_ITEMS: NavItem[] = [
     roles: ["STREAMER", "TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STAFF", "OTS"],
   },
   {
+    href: "/portal/trainer",
+    label: "Kelola Kelas (Trainer)",
+    icon: "fa-solid fa-chalkboard-user",
+    roles: ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"],
+  },
+  {
     href: "/marketplace",
     label: "Marketplace",
     icon: "fa-solid fa-store",
@@ -79,6 +85,12 @@ export const MENU_ITEMS: NavItem[] = [
     label: "Penilaian SDM",
     icon: "fa-regular fa-star",
     roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"],
+  },
+  {
+    href: "/qc-violations",
+    label: "Log Pelanggaran QC",
+    icon: "fa-solid fa-shield-halved",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"],
   },
   {
     href: "/payroll",

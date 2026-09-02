@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useAlert } from "@/components/ui/custom-alert";
 
 type Question = {
@@ -46,6 +48,7 @@ const DEFAULT_OPTIONS = ["", "", "", ""];
 
 export default function LearningTestPage() {
   const { showConfirm } = useAlert();
+  const pathname = usePathname();
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedModuleId, setSelectedModuleId] = useState("");
@@ -267,8 +270,48 @@ export default function LearningTestPage() {
 
   return (
     <div className="space-y-6">
+      {/* Trainer Portal Sub-Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        <Link
+          href="/portal/trainer"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-book-open" />
+          <span>1. Kurikulum & Input Kelas</span>
+        </Link>
+        <Link
+          href="/portal/trainer/learning-test"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer/learning-test"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-video" />
+          <span>2. Studio Video Interaktif</span>
+        </Link>
+        <Link
+          href="/portal/trainer/hasil-jawaban"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer/hasil-jawaban"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-square-poll-vertical" />
+          <span>3. Hasil Jawaban & Rekap Nilai</span>
+        </Link>
+      </div>
+
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Learning Test — Materi Video Interaktif</h1>
+        <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+          <i className="fa-solid fa-video text-purple-600" />
+          Learning Test — Materi Video Interaktif
+        </h1>
         <p className="text-sm text-slate-500 mt-0.5">
           Buat materi video YouTube, lalu pasang pertanyaan di waktu tertentu langsung di bawahnya — semuanya dalam satu layar.
         </p>

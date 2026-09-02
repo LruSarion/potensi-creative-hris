@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { formatDateIndo } from "@/lib/utils/date-format";
 
 function fmt(iso: string | null | undefined) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  return formatDateIndo(iso, "—");
 }
 function fmtCur(n: number | null | undefined) {
   if (n == null) return "Rp —";

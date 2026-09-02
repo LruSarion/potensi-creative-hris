@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { formatDateIndo } from "@/lib/utils/date-format";
 
 // ─── Daftar Jabatan Baku ─────────────────────────────────────────────────────
 const JABATAN_LIST = [
@@ -1283,7 +1284,7 @@ export default function InputKaryawanPage() {
                 <div>
                   <span className="block text-[11px] text-slate-400 mb-0.5">Tanggal Lahir</span>
                   <div className="font-semibold text-slate-200">
-                    {targetEmployee.tanggalLahir ? new Date(targetEmployee.tanggalLahir).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) : "-"}
+                    {formatDateIndo(targetEmployee.tanggalLahir)}
                   </div>
                 </div>
 
@@ -1988,7 +1989,7 @@ export default function InputKaryawanPage() {
                   <div><span className="text-slate-400 block">Nama Panggilan</span><span className="font-bold text-black">{detailEmployee.namaPanggilan || "-"}</span></div>
                   <div><span className="text-slate-400 block">Jenis Kelamin</span><span className="font-bold text-black">{detailEmployee.gender || "-"}</span></div>
                   <div><span className="text-slate-400 block">Tempat Lahir</span><span className="font-bold text-black">{detailEmployee.tempatLahir || "-"}</span></div>
-                  <div><span className="text-slate-400 block">Tanggal Lahir</span><span className="font-bold text-black">{detailEmployee.tanggalLahir || "-"}</span></div>
+                  <div><span className="text-slate-400 block">Tanggal Lahir</span><span className="font-bold text-black">{formatDateIndo(detailEmployee.tanggalLahir)}</span></div>
                   <div><span className="text-slate-400 block">Agama</span><span className="font-bold text-black">{detailEmployee.agama || "-"}</span></div>
                   <div><span className="text-slate-400 block">Status Nikah</span><span className="font-bold text-black">{detailEmployee.statusPerkawinan || "-"}</span></div>
                 </div>
@@ -2013,8 +2014,8 @@ export default function InputKaryawanPage() {
                   <div><span className="text-slate-400 block">Jabatan</span><span className="font-bold text-black">{detailEmployee.jabatan || "-"}</span></div>
                   <div><span className="text-slate-400 block">Kategori</span><span className="font-bold text-black">{detailEmployee.kategori || "-"}</span></div>
                   <div><span className="text-slate-400 block">Tipe Jadwal</span><span className="font-bold text-black">{detailEmployee.tipeJadwal || "-"}</span></div>
-                  <div><span className="text-slate-400 block">Mulai Kerja</span><span className="font-bold text-black">{detailEmployee.startDate || "-"}</span></div>
-                  <div><span className="text-slate-400 block">Akhir Kontrak</span><span className="font-bold text-black">{detailEmployee.endDate || "-"}</span></div>
+                  <div><span className="text-slate-400 block">Mulai Kerja</span><span className="font-bold text-black">{formatDateIndo(detailEmployee.startDate)}</span></div>
+                  <div><span className="text-slate-400 block">Akhir Kontrak</span><span className="font-bold text-black">{formatDateIndo(detailEmployee.endDate)}</span></div>
                   <div><span className="text-slate-400 block">Status Aktif</span><span className="font-bold text-emerald-700">{detailEmployee.statusAktif || "Aktif"}</span></div>
                   <div><span className="text-slate-400 block">NIK KTP</span><span className="font-mono font-bold text-black">{detailEmployee.nik || "-"}</span></div>
                   <div><span className="text-slate-400 block">NPWP</span><span className="font-mono font-bold text-black">{detailEmployee.npwp || "-"}</span></div>

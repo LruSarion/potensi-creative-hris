@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export default function TrainerPortalPage() {
   const [courses, setCourses] = useState<any[]>([]);
@@ -54,10 +56,119 @@ export default function TrainerPortalPage() {
   // Essay grading state
   const [gradingAttemptId, setGradingAttemptId] = useState("");
   const [gradeScore, setGradeScore] = useState<number>(80);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [loadingSubmissions, setLoadingSubmissions] = useState(false);
+
+  // Expanded module inspection
+  const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === "grading") {
+      loadSubmissions();
+    }
+  }, [activeTab]);
+
+  async function loadSubmissions() {
+    setLoadingSubmissions(true);
+    try {
+      const r = await fetch("/api/lms?view=video-submissions", { cache: "no-store" });
+      const d = await r.json();
+      if (d.status === "success") setSubmissions(d.data ?? []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSubmissions(false);
+    }
+  }
+
+  async function handleDeleteCourse(id: string, title: string) {
+    if (!confirm(`Hapus kursus "${title}" beserta seluruh modul dan materinya?`)) return;
+    setError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/lms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "course-delete", id }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess(`Kursus "${title}" berhasil dihapus.`);
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal menghapus kursus");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    }
+  }
+
+  async function handleDeleteModule(id: string, title: string) {
+    if (!confirm(`Hapus modul "${title}" beserta seluruh materi dan kuisnya?`)) return;
+    setError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/lms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "module-delete", id }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess(`Modul "${title}" berhasil dihapus.`);
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal menghapus modul");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    }
+  }
+
+  async function handleDeleteLesson(id: string, title: string) {
+    if (!confirm(`Hapus materi lesson "${title}"?`)) return;
+    setError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/lms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "lesson-delete", id }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess(`Materi "${title}" berhasil dihapus.`);
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal menghapus materi");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    }
+  }
+
+  async function handleDeleteQuestion(id: string) {
+    if (!confirm("Hapus pertanyaan kuis ini?")) return;
+    setError(""); setSuccess("");
+    try {
+      const res = await fetch("/api/lms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "question-delete", id }),
+      });
+      const d = await res.json();
+      if (d.status === "success") {
+        setSuccess("Pertanyaan kuis berhasil dihapus.");
+        loadData();
+      } else {
+        setError(d.message ?? "Gagal menghapus pertanyaan");
+      }
+    } catch {
+      setError("Koneksi gagal");
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -238,15 +349,52 @@ export default function TrainerPortalPage() {
 
   return (
     <div className="space-y-6">
+      {/* Trainer Portal Sub-Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-3">
+        <Link
+          href="/portal/trainer"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-book-open" />
+          <span>1. Kurikulum & Input Kelas</span>
+        </Link>
+        <Link
+          href="/portal/trainer/learning-test"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer/learning-test"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-video" />
+          <span>2. Studio Video Interaktif</span>
+        </Link>
+        <Link
+          href="/portal/trainer/hasil-jawaban"
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 ${
+            pathname === "/portal/trainer/hasil-jawaban"
+              ? "bg-purple-600 text-white shadow-sm"
+              : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+          }`}
+        >
+          <i className="fa-solid fa-square-poll-vertical" />
+          <span>3. Hasil Jawaban & Rekap Nilai</span>
+        </Link>
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <i className="fa-solid fa-chalkboard-user text-blue-600" />
+            <i className="fa-solid fa-chalkboard-user text-purple-600" />
             Trainer & Academy Studio
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Manajemen kurikulum pelatihan live streaming, modul onboarding host baru, dan penugasan sertifikasi.
+            Manajemen kurikulum pelatihan live streaming, input kelas & modul baru, materi video interaktif, dan evaluasi hasil ujian streamer.
           </p>
         </div>
 
@@ -285,14 +433,15 @@ export default function TrainerPortalPage() {
       {/* Tabs */}
       <div className="flex gap-1 border-b border-slate-200">
         {[
-          { key: "courses", label: `Daftar Kursus (${courses.length})`, icon: "fa-book-open" },
+          { key: "courses", label: `Daftar Kursus & Modul (${courses.length})`, icon: "fa-book-open" },
           { key: "enrollments", label: `Progres Streamer (${enrollments.length})`, icon: "fa-user-graduate" },
+          { key: "grading", label: `Evaluasi & Nilai Jawaban (${submissions.length})`, icon: "fa-marker" },
         ].map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key as any)}
             className={`px-4 py-2.5 text-xs font-bold rounded-t-xl border-b-2 -mb-px flex items-center gap-2 transition ${
-              activeTab === t.key ? "text-blue-600 border-blue-600 bg-white shadow-sm" : "text-slate-500 border-transparent hover:text-slate-700"
+              activeTab === t.key ? "text-purple-600 border-purple-600 bg-white shadow-sm" : "text-slate-500 border-transparent hover:text-slate-700"
             }`}
           >
             <i className={`fa-solid ${t.icon}`} />
@@ -322,9 +471,19 @@ export default function TrainerPortalPage() {
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-slate-400 font-mono shrink-0">
-                      {c.modules?.length ?? 0} Modul
-                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {c.modules?.length ?? 0} Modul
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteCourse(c.id, c.title)}
+                        className="text-slate-300 hover:text-red-600 p-1 rounded transition text-xs"
+                        title="Hapus Kursus"
+                      >
+                        <i className="fa-solid fa-trash-can" />
+                      </button>
+                    </div>
                   </div>
                   <h3 className="font-bold text-slate-900 text-base">{c.title}</h3>
                   <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">
@@ -332,7 +491,7 @@ export default function TrainerPortalPage() {
                   </p>
                 </div>
 
-                {/* Modules summary */}
+                {/* Modules summary & detail inspection */}
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                   <div className="text-[11px] font-semibold text-slate-700 flex justify-between items-center">
                     <span>Modul & Materi:</span>
@@ -348,40 +507,121 @@ export default function TrainerPortalPage() {
                     </button>
                   </div>
                   {c.modules?.length > 0 ? (
-                    <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                      {c.modules.map((m: any, idx: number) => (
-                        <div key={m.id} className="bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-800 text-[11px]">
-                              {idx + 1}. {m.title}
-                            </span>
-                            <div className="flex gap-1.5">
+                    <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                      {c.modules.map((m: any, idx: number) => {
+                        const isExpanded = expandedModuleId === m.id;
+                        return (
+                          <div key={m.id} className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs space-y-2">
+                            <div className="flex items-center justify-between">
                               <button
-                                onClick={() => {
-                                  setSelectedModuleId(m.id);
-                                  setLessonModalOpen(true);
-                                }}
-                                className="text-[10px] text-blue-600 font-semibold hover:underline"
+                                type="button"
+                                onClick={() => setExpandedModuleId(isExpanded ? null : m.id)}
+                                className="font-bold text-slate-800 text-xs flex items-center gap-1.5 hover:text-purple-600 text-left"
                               >
-                                + Materi
+                                <i className={`fa-solid ${isExpanded ? "fa-chevron-down" : "fa-chevron-right"} text-[10px] text-slate-400`} />
+                                <span>{idx + 1}. {m.title}</span>
                               </button>
-                              <button
-                                onClick={() => {
-                                  setQuestionForm({ moduleId: m.id, type: "MCQ", question: "", options: ["", "", "", ""], correctAnswer: "" });
-                                  setQuestionModalOpen(true);
-                                }}
-                                className="text-[10px] text-emerald-600 font-semibold hover:underline"
-                              >
-                                + Kuis
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => {
+                                    setSelectedModuleId(m.id);
+                                    setLessonModalOpen(true);
+                                  }}
+                                  className="text-[10px] text-blue-600 font-bold hover:underline bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200"
+                                >
+                                  + Materi
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setQuestionForm({ moduleId: m.id, type: "MCQ", question: "", options: ["", "", "", ""], correctAnswer: "" });
+                                    setQuestionModalOpen(true);
+                                  }}
+                                  className="text-[10px] text-emerald-600 font-bold hover:underline bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200"
+                                >
+                                  + Kuis
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteModule(m.id, m.title)}
+                                  className="text-slate-300 hover:text-red-600 p-0.5 text-xs"
+                                  title="Hapus Modul"
+                                >
+                                  <i className="fa-solid fa-trash-can" />
+                                </button>
+                              </div>
                             </div>
+
+                            <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                              <span>Passing Score: <b>{m.passingScore}%</b></span>
+                              <span>{m.lessons?.length ?? 0} materi • {m.questions?.length ?? 0} kuis</span>
+                            </div>
+
+                            {/* Expanded Detail for Lessons and Questions */}
+                            {isExpanded && (
+                              <div className="pt-2 border-t border-slate-200 space-y-2 animate-fadeIn">
+                                {/* Lessons list */}
+                                <div className="space-y-1">
+                                  <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wide block">
+                                    Materi Pembelajaran ({m.lessons?.length ?? 0})
+                                  </span>
+                                  {m.lessons?.length > 0 ? (
+                                    m.lessons.map((l: any) => (
+                                      <div key={l.id} className="flex items-center justify-between bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                                        <div className="flex items-center gap-1.5 truncate">
+                                          <i className={l.videoId ? "fa-brands fa-youtube text-red-600 text-xs" : "fa-regular fa-file-lines text-slate-400 text-xs"} />
+                                          <span className="font-semibold text-slate-800 truncate text-[11px]">{l.title}</span>
+                                          {l.videoDuration ? <span className="text-[9px] text-slate-400 font-mono">({Math.round(l.videoDuration / 60)}m)</span> : null}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteLesson(l.id, l.title)}
+                                          className="text-slate-300 hover:text-red-600 p-0.5 text-[11px]"
+                                          title="Hapus Materi"
+                                        >
+                                          <i className="fa-solid fa-trash-can" />
+                                        </button>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-[10px] text-slate-400 italic">Belum ada materi. Klik + Materi di atas.</div>
+                                  )}
+                                </div>
+
+                                {/* Questions list */}
+                                <div className="space-y-1 pt-1">
+                                  <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wide block">
+                                    Soal Ujian / Kuis ({m.questions?.length ?? 0})
+                                  </span>
+                                  {m.questions?.length > 0 ? (
+                                    m.questions.map((q: any, qIdx: number) => (
+                                      <div key={q.id} className="bg-white border border-slate-200 rounded-lg p-1.5 text-xs space-y-1">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${q.type === "MCQ" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"}`}>
+                                              {q.type}
+                                            </span>
+                                            <span className="font-medium text-slate-800 line-clamp-1 text-[11px]">{qIdx + 1}. {q.question}</span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteQuestion(q.id)}
+                                            className="text-slate-300 hover:text-red-600 p-0.5 text-[11px] shrink-0"
+                                            title="Hapus Soal"
+                                          >
+                                            <i className="fa-solid fa-trash-can" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-[10px] text-slate-400 italic">Belum ada soal kuis. Klik + Kuis di atas.</div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-[10px] text-slate-500 flex gap-3">
-                            <span>{m.lessons?.length ?? 0} materi teks/video</span>
-                            <span>{m.questions?.length ?? 0} soal kuis</span>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="text-[10px] text-slate-400 italic">Belum ada modul. Klik + Tambah Modul di atas.</p>
@@ -474,6 +714,93 @@ export default function TrainerPortalPage() {
               <div className="p-8 text-center text-xs text-slate-400">Belum ada data penugasan kursus.</div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Tab: Grading / Evaluasi Essay & Nilai Siswa */}
+      {activeTab === "grading" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden space-y-4 p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-4">
+            <div>
+              <h3 className="font-bold text-slate-900 text-sm">Evaluasi Hasil Ujian & Penilaian Manual Trainer</h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Beri nilai essay streamer atau periksa rekapan lembar jawaban kuis video interaktif.
+              </p>
+            </div>
+            <Link
+              href="/portal/trainer/hasil-jawaban"
+              className="bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 font-bold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5 self-start sm:self-auto"
+            >
+              <i className="fa-solid fa-square-poll-vertical text-purple-600" />
+              <span>Buka Rekap Lengkap & Rincian Lembar Jawaban</span>
+            </Link>
+          </div>
+
+          {loadingSubmissions ? (
+            <div className="p-8 text-center text-xs text-slate-400">
+              <i className="fa-solid fa-spinner animate-spin text-purple-500 text-lg block mb-2" />
+              Memuat data pengerjaan ujian...
+            </div>
+          ) : submissions.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-400">
+              Belum ada data pengerjaan ujian atau quiz dari streamer.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                  <tr>
+                    <th className="px-4 py-3 uppercase text-[10px]">Streamer / Host</th>
+                    <th className="px-4 py-3 uppercase text-[10px]">Modul & Materi</th>
+                    <th className="px-4 py-3 uppercase text-[10px]">Tontonan</th>
+                    <th className="px-4 py-3 uppercase text-[10px]">Skor Kuis</th>
+                    <th className="px-4 py-3 uppercase text-[10px]">Status</th>
+                    <th className="px-4 py-3 uppercase text-[10px] text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {submissions.map((sub: any) => (
+                    <tr key={sub.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-bold text-slate-800">
+                        {sub.studentName}
+                        <div className="text-[10px] text-slate-400 font-normal">{sub.studentId}</div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">
+                        {sub.lessonTitle}
+                        <div className="text-[10px] text-slate-400 font-normal">{sub.moduleTitle}</div>
+                      </td>
+                      <td className="px-4 py-3 font-mono font-medium text-slate-600">
+                        {sub.watchPercentage}%
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`font-mono font-bold text-xs ${sub.scorePercent >= 70 ? "text-emerald-600" : "text-red-600"}`}>
+                          {sub.scorePercent}/100
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">({sub.correctCount}/{sub.totalQuestions} benar)</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          sub.status === "PASSED" || sub.scorePercent >= 70
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                        }`}>
+                          {sub.status === "PASSED" || sub.scorePercent >= 70 ? "LULUS" : "REMIDI"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Link
+                          href={`/portal/trainer/hasil-jawaban`}
+                          className="text-purple-600 hover:underline font-bold text-xs"
+                        >
+                          Lihat Lembar Jawaban →
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

@@ -49,6 +49,11 @@ export const proxy = auth((req) => {
   const isLoggedIn = !!req.auth?.user;
   const role = req.auth?.user?.role as string | undefined;
 
+  // Always bypass API routes so they handle their own JSON responses and are never redirected to HTML /login
+  if (pathname.startsWith("/api/")) {
+    return NextResponse.next();
+  }
+
   // Allow public routes (exact match for "/" or prefix for specific subpaths).
   if (pathname === "/" || PUBLIC_ROUTES.some((r) => r !== "/" && pathname.startsWith(r))) {
     return NextResponse.next();

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import { formatDateIndo } from "@/lib/utils/date-format";
 
 export interface StreamerProfileCardData {
   karyawan: {
@@ -256,7 +257,7 @@ export function StreamerProfileCardOverview({
               PERIODE KONTRAK
             </div>
             <div className="text-xs text-slate-700 font-semibold">
-              Awal: {karyawan.startDate} - Berakhir: {karyawan.endDate}
+              Awal: {formatDateIndo(karyawan.startDate)} - Berakhir: {formatDateIndo(karyawan.endDate)}
             </div>
           </div>
 
@@ -542,11 +543,11 @@ export function StreamerProfileCardOverview({
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Periode Mulai:</span>
-                  <span className="font-bold text-slate-800">{karyawan.startDate}</span>
+                  <span className="font-bold text-slate-800">{formatDateIndo(karyawan.startDate)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Periode Berakhir:</span>
-                  <span className="font-bold text-slate-800">{karyawan.endDate}</span>
+                  <span className="font-bold text-slate-800">{formatDateIndo(karyawan.endDate)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-slate-500 font-medium">Status Operasional:</span>

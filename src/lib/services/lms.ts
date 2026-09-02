@@ -4,7 +4,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere, requirePortal } from "@/lib/auth-helpers";
 import type { Role } from "@/generated/prisma/enums";
 
-const TRAINER_ROLES: Role[] = ["TRAINER", "SUPER_ADMIN"];
+const TRAINER_ROLES: Role[] = ["TRAINER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
 
 // ---------- T17: Course authoring ----------
 
@@ -22,20 +22,25 @@ export type CourseInput = z.infer<typeof courseSchema>;
 export async function createCourse(input: CourseInput) {
   const user = await requireRole(...TRAINER_ROLES);
   const parsed = courseSchema.parse(input);
+  const tenantId = user.tenantId || (await db.tenant.findFirst({ where: { type: "AGENCY" } }))?.id || undefined;
   return db.course.create({
     data: {
-      ...parsed,
-      tenantId: user.tenantId || undefined,
+      title: parsed.title,
+      description: parsed.description ?? null,
+      coverDriveId: parsed.coverDriveId ?? null,
+      isCertification: parsed.isCertification ?? false,
+      tenantId: tenantId ?? undefined,
       status: parsed.status ?? "ACTIVE",
-      clientId: parsed.clientId ?? null,
+      clientId: parsed.clientId ? parsed.clientId : null,
     },
   });
 }
 
 export async function listCourses() {
   const user = await requireRole();
+  const where = user.role === "SUPER_ADMIN" ? {} : user.tenantId ? { OR: [{ tenantId: user.tenantId }, { tenantId: null }] } : {};
   return db.course.findMany({
-    where: tenantWhere(user),
+    where,
     include: { modules: { orderBy: { order: "asc" }, include: { lessons: true, questions: true } } },
     orderBy: { createdAt: "desc" },
   });
@@ -79,6 +84,20 @@ export async function deleteQuestion(id: string) {
   const q = await db.quizQuestion.findUnique({ where: { id } });
   if (!q) throw AppError.notFound("Pertanyaan tidak ditemukan");
   return db.quizQuestion.delete({ where: { id } });
+}
+
+export async function deleteModule(id: string) {
+  await requireRole(...TRAINER_ROLES);
+  const mod = await db.module.findUnique({ where: { id } });
+  if (!mod) throw AppError.notFound("Modul tidak ditemukan");
+  return db.module.delete({ where: { id } });
+}
+
+export async function deleteCourse(id: string) {
+  await requireRole(...TRAINER_ROLES);
+  const c = await db.course.findUnique({ where: { id } });
+  if (!c) throw AppError.notFound("Kursus tidak ditemukan");
+  return db.course.delete({ where: { id } });
 }
 
 // ---------- T18: Quiz engine ----------

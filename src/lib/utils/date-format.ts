@@ -18,9 +18,9 @@ export function formatDateSafe(
   try {
     if (typeof val === "string") {
       const trimmed = val.trim();
-      // Handle plain "YYYY-MM-DD" to avoid timezone shifts
-      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-        const [y, m, d] = trimmed.split("-").map(Number);
+      // Handle plain "YYYY-MM-DD" or ISO string "YYYY-MM-DDTHH:mm:ss..." to avoid timezone shifts
+      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+        const [y, m, d] = trimmed.slice(0, 10).split("-").map(Number);
         const dt = new Date(y, m - 1, d);
         if (!isNaN(dt.getTime())) {
           return dt.toLocaleDateString(
@@ -39,6 +39,18 @@ export function formatDateSafe(
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Format a date in standard Indonesian formal style (e.g. "12 Mei 1998" or "15 Januari 2024").
+ * Ideal for employee profiles, detail modals, and official records.
+ */
+export function formatDateIndo(val: any, fallback = "-"): string {
+  return formatDateSafe(
+    val,
+    { day: "numeric", month: "long", year: "numeric" },
+    fallback,
+  );
 }
 
 /**

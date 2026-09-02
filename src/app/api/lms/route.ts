@@ -5,6 +5,8 @@ import {
   upsertModule,
   upsertLesson,
   deleteLesson,
+  deleteModule,
+  deleteCourse,
   addQuestion,
   deleteQuestion,
   submitAnswer,
@@ -40,7 +42,9 @@ export const POST = apiHandler(async (req: Request) => {
   const action = body.action as string | undefined;
 
   if (action === "course") return createCourse(body.course ?? body);
+  if (action === "course-delete") return deleteCourse(body.id);
   if (action === "module") return upsertModule(body);
+  if (action === "module-delete") return deleteModule(body.id);
   if (action === "lesson") return upsertLesson(body);
   if (action === "lesson-delete") return deleteLesson(body.id);
   if (action === "question") return addQuestion(body.question && typeof body.question === "object" ? body.question : body);
