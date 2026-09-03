@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatLogEntry } from "@/lib/log-formatter";
+import { fetchJson } from "@/lib/api-client";
 
 // Badge color map for action types
 function getActionBadge(aksi: string) {
@@ -46,16 +47,11 @@ export default function HistoryLogPage() {
   async function loadLogs() {
     setLoading(true);
     try {
-      const res = await fetch("/api/history");
-      const d = await res.json();
-      if (d.status === "success") {
-        setList(d.data);
-        setFiltered(d.data);
-      } else {
-        setError(d.message ?? "Akses ditolak");
-      }
-    } catch {
-      setError("Koneksi error");
+      const data = await fetchJson<any[]>("/api/history");
+      setList(data);
+      setFiltered(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Akses ditolak");
     } finally {
       setLoading(false);
     }
@@ -137,7 +133,8 @@ export default function HistoryLogPage() {
                 filtered.map((item) => {
                   const aksiRaw = (item.aksi ?? "LOG").toUpperCase();
                   const target = item.targetSheet ?? item.target ?? "-";
-                  const detail = item.detail ?? item.keterangan ?? "-";
+                  const formatted = formatLogEntry(item);
+                  const detail = formatted.description || item.keterangan || "-";
                   const userName = item.user?.name || item.user?.email || "System";
                   const userSub = item.user?.role || (item.user?.email !== item.user?.name ? item.user?.email : "");
 
@@ -165,8 +162,10 @@ export default function HistoryLogPage() {
                       <td className="px-6 py-4 text-slate-600 font-semibold text-xs uppercase tracking-wide">
                         {target}
                       </td>
-                      <td className="px-6 py-4 text-slate-600 text-xs max-w-xs md:max-w-md lg:max-w-xl truncate block" title={detail}>
-                        {detail}
+                      <td className="px-6 py-4 text-slate-600 text-xs max-w-xs md:max-w-md lg:max-w-xl">
+                        <span className="block whitespace-pre-line break-words leading-relaxed" title={detail}>
+                          {detail}
+                        </span>
                       </td>
                     </tr>
                   );

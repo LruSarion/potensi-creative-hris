@@ -18,9 +18,9 @@ export function formatDateSafe(
   try {
     if (typeof val === "string") {
       const trimmed = val.trim();
-      // Handle plain "YYYY-MM-DD" or ISO string "YYYY-MM-DDTHH:mm:ss..." to avoid timezone shifts
-      if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-        const [y, m, d] = trimmed.slice(0, 10).split("-").map(Number);
+      // Handle plain "YYYY-MM-DD" directly
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const [y, m, d] = trimmed.split("-").map(Number);
         const dt = new Date(y, m - 1, d);
         if (!isNaN(dt.getTime())) {
           return dt.toLocaleDateString(
@@ -30,11 +30,14 @@ export function formatDateSafe(
         }
       }
     }
-    const dt = new Date(val);
+    const dt = val instanceof Date ? val : new Date(val);
     if (isNaN(dt.getTime())) return fallback;
     return dt.toLocaleDateString(
       "id-ID",
-      options ?? { day: "2-digit", month: "short", year: "numeric" },
+      {
+        timeZone: "Asia/Jakarta",
+        ...(options ?? { day: "2-digit", month: "short", year: "numeric" }),
+      },
     );
   } catch {
     return fallback;
@@ -54,7 +57,7 @@ export function formatDateIndo(val: any, fallback = "-"): string {
 }
 
 /**
- * Safely format a value as a "HH:mm" time string.
+ * Safely format a value as a "HH:mm" time string in WIB (Asia/Jakarta).
  * Handles ISO strings, "HH:mm" strings, Date objects, and nullish values.
  */
 export function formatTimeSafe(val: any, fallback = "–"): string {
@@ -62,19 +65,16 @@ export function formatTimeSafe(val: any, fallback = "–"): string {
   try {
     if (typeof val === "string") {
       const trimmed = val.trim();
-      if (/^\d{1,2}:\d{2}/.test(trimmed)) {
+      // If plain HH:mm or HH:mm:ss without date or timezone
+      if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
         const parts = trimmed.split(":");
         return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
       }
-      // Extract from ISO string
-      if (trimmed.includes("T")) {
-        const timePart = trimmed.split("T")[1];
-        if (timePart) return timePart.slice(0, 5);
-      }
     }
-    const dt = new Date(val);
+    const dt = val instanceof Date ? val : new Date(val);
     if (isNaN(dt.getTime())) return fallback;
-    return dt.toLocaleTimeString("id-ID", {
+    return dt.toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Jakarta",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -85,22 +85,23 @@ export function formatTimeSafe(val: any, fallback = "–"): string {
 }
 
 /**
- * Extract a "HH:mm" time portion from a value.
+ * Extract a "HH:mm" time portion from a value in WIB (Asia/Jakarta).
  * Returns empty string on failure (useful for form inputs).
  */
 export function formatTimeOnly(val: any): string {
   if (!val) return "";
   if (typeof val === "string") {
-    if (val.includes("T")) {
-      const timePart = val.split("T")[1];
-      return timePart ? timePart.slice(0, 5) : "";
+    const trimmed = val.trim();
+    if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(trimmed)) {
+      const parts = trimmed.split(":");
+      return `${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
     }
-    if (val.includes(":")) return val.slice(0, 5);
   }
   try {
-    const d = new Date(val);
+    const d = val instanceof Date ? val : new Date(val);
     if (isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString("id-ID", {
+    return d.toLocaleTimeString("en-GB", {
+      timeZone: "Asia/Jakarta",
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -111,16 +112,26 @@ export function formatTimeOnly(val: any): string {
 }
 
 /**
- * Extract a "YYYY-MM-DD" date portion from a value.
+ * Extract a "YYYY-MM-DD" date portion from a value in WIB (Asia/Jakarta).
  * Returns empty string on failure.
  */
 export function formatDateOnly(val: any): string {
   if (!val) return "";
-  if (typeof val === "string") return val.slice(0, 10);
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+  }
   try {
-    const d = new Date(val);
+    const d = val instanceof Date ? val : new Date(val);
     if (isNaN(d.getTime())) return "";
-    return d.toISOString().slice(0, 10);
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Jakarta",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
   } catch {
     return "";
   }
@@ -143,21 +154,15 @@ export function calcDurationHours(startVal: string, endVal: string): string {
 }
 
 /**
- * Calculate an end time that is 2 hours after the given start "HH:mm" string.
- */
-export function calculateEndTime(startStr: string): string {
-  if (!startStr || !startStr.includes(":")) return "";
-  const [h, m] = startStr.split(":").map(Number);
-  const endH = ((isNaN(h) ? 0 : h) + 2) % 24;
-  return `${String(endH).padStart(2, "0")}:${String(isNaN(m) ? 0 : m).padStart(2, "0")}`;
-}
-
-/**
  * Given a "jamMulaiLive" time value, calculate "Wajib Hadir" (15 minutes before).
  * Returns a readable "HH.mm WIB" string.
  */
 export function calcWajibHadir(jamMulaiVal: any): string {
   if (!jamMulaiVal) return "–";
+  const timeStr = formatTimeSafe(jamMulaiVal);
+  if (timeStr && timeStr !== "–" && timeStr.includes(":")) {
+    return getWajibHadirTime(timeStr);
+  }
   const d = new Date(jamMulaiVal);
   if (isNaN(d.getTime())) return "15 Menit Sebelum";
   d.setMinutes(d.getMinutes() - 15);

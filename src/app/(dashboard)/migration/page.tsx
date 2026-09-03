@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { sendJson } from "@/lib/api-client";
 
 const MODULES = [
   {
@@ -58,21 +59,12 @@ export default function MigrationWizardPage() {
     setBusy(true);
     setError("");
     try {
-      const r = await fetch("/api/migration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "preview", ...payload }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setPreview(d.data);
-        setEngine(null);
-        setStep(3);
-      } else {
-        setError(d.message ?? "Gagal membaca data");
-      }
-    } catch {
-      setError("Gagal membaca data");
+      const data = await sendJson<any>("/api/migration", "POST", { action: "preview", ...payload });
+      setPreview(data);
+      setEngine(null);
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membaca data");
     } finally {
       setBusy(false);
     }
@@ -100,26 +92,17 @@ export default function MigrationWizardPage() {
     }
     setBusy(true);
     try {
-      const r = await fetch("/api/migration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "convert", module, pastedText }),
+      const data = await sendJson<any>("/api/migration", "POST", { action: "convert", module, pastedText });
+      setEngine(data.engine ?? "heuristic");
+      setPreview({
+        sheetName: null,
+        headers: data.rows.length ? Object.keys(data.rows[0]) : [],
+        rowCount: data.rowCount ?? data.rows.length,
+        preview: data.preview ?? data.rows.slice(0, 5),
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setEngine(d.data.engine ?? "heuristic");
-        setPreview({
-          sheetName: null,
-          headers: d.data.rows.length ? Object.keys(d.data.rows[0]) : [],
-          rowCount: d.data.rowCount ?? d.data.rows.length,
-          preview: d.data.preview ?? d.data.rows.slice(0, 5),
-        });
-        setStep(3);
-      } else {
-        setError(d.message ?? "Gagal mengonversi teks");
-      }
-    } catch {
-      setError("Gagal mengonversi teks");
+      setStep(3);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengonversi teks");
     } finally {
       setBusy(false);
     }
@@ -149,28 +132,19 @@ export default function MigrationWizardPage() {
     setSuccess("");
     setResult(null);
     try {
-      const r = await fetch("/api/migration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "import",
-          module,
-          fileContent: source === "file" ? fileContent : undefined,
-          fileName: source === "file" ? fileName : undefined,
-          googleSheetUrl: source === "sheet" ? sheetUrl.trim() : undefined,
-          pastedText: source === "paste" ? pastedText : undefined,
-        }),
+      const data = await sendJson<any>("/api/migration", "POST", {
+        action: "import",
+        module,
+        fileContent: source === "file" ? fileContent : undefined,
+        fileName: source === "file" ? fileName : undefined,
+        googleSheetUrl: source === "sheet" ? sheetUrl.trim() : undefined,
+        pastedText: source === "paste" ? pastedText : undefined,
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setResult(d.data);
-        setSuccess("Data berhasil diimpor ke aplikasi!");
-        setStep(4);
-      } else {
-        setError(d.message ?? "Gagal mengimpor data");
-      }
-    } catch {
-      setError("Gagal menghubungi server");
+      setResult(data);
+      setSuccess("Data berhasil diimpor ke aplikasi!");
+      setStep(4);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengimpor data");
     } finally {
       setBusy(false);
     }

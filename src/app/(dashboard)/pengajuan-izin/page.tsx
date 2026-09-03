@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function PengajuanIzinPage() {
   const { data: session } = useSession();
@@ -35,8 +36,7 @@ export default function PengajuanIzinPage() {
   async function loadHistory() {
     try {
       setLoadingHistory(true);
-      const res = await fetch("/api/izin");
-      const data = await res.json();
+      const data = await fetchJson<any>("/api/izin");
       if (Array.isArray(data)) {
         setHistory(data);
       }
@@ -71,35 +71,26 @@ export default function PengajuanIzinPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch("/api/izin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tipeIzin: formIzin.jenis,
-          tanggalMulai: new Date(formIzin.tanggalMulai).toISOString(),
-          tanggalSelesai: new Date(formIzin.tanggalSelesai).toISOString(),
-          alasan: formIzin.alasan,
-          lampiranDriveId: formIzin.buktiB64 || undefined,
-        }),
+      await sendJson("/api/izin", "POST", {
+        tipeIzin: formIzin.jenis,
+        tanggalMulai: new Date(formIzin.tanggalMulai).toISOString(),
+        tanggalSelesai: new Date(formIzin.tanggalSelesai).toISOString(),
+        alasan: formIzin.alasan,
+        lampiranDriveId: formIzin.buktiB64 || undefined,
       });
 
-      if (res.ok) {
-        showAlert("✅ Pengajuan cuti / izin berhasil dikirim!");
-        setFormIzin({
-          jenis: "CUTI TAHUNAN",
-          tanggalMulai: new Date().toISOString().split("T")[0],
-          tanggalSelesai: new Date().toISOString().split("T")[0],
-          alasan: "",
-          buktiB64: "",
-        });
-        loadHistory();
-        setActiveTab("riwayat");
-      } else {
-        const d = await res.json();
-        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan izin"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("✅ Pengajuan cuti / izin berhasil dikirim!");
+      setFormIzin({
+        jenis: "CUTI TAHUNAN",
+        tanggalMulai: new Date().toISOString().split("T")[0],
+        tanggalSelesai: new Date().toISOString().split("T")[0],
+        alasan: "",
+        buktiB64: "",
+      });
+      loadHistory();
+      setActiveTab("riwayat");
+    } catch (err) {
+      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengajukan izin"));
     } finally {
       setSubmitting(false);
     }
@@ -109,13 +100,9 @@ export default function PengajuanIzinPage() {
     const confirmed = await showConfirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} pengajuan cuti/izin ini?`);
     if (!confirmed) return;
     try {
-      const res = await fetch(`/api/izin?id=${id}&approve=${approve}`, { method: "PATCH" });
-      if (res.ok) {
-        showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
-        loadHistory();
-      } else {
-        showAlert("❌ Gagal memproses approval izin.");
-      }
+      await sendJson(`/api/izin?id=${id}&approve=${approve}`, "PATCH");
+      showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      loadHistory();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }

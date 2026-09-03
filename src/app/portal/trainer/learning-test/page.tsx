@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type Question = {
   id: string;
@@ -72,27 +73,22 @@ export default function LearningTestPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/lms?view=courses", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") {
-        setCourses(d.data ?? []);
-        if (d.data?.length) {
-          const c = d.data[0] as Course;
-          if (!selectedCourseId) {
-            setSelectedCourseId(c.id);
-            const m = c.modules?.[0];
-            if (m) {
-              setSelectedModuleId(m.id);
-              const v = m.lessons?.find((l) => l.videoId);
-              setSelectedLessonId(v?.id ?? "");
-            }
+      const data = await fetchJson<Course[]>("/api/lms?view=courses", { cache: "no-store" });
+      setCourses(data ?? []);
+      if (data?.length) {
+        const c = data[0] as Course;
+        if (!selectedCourseId) {
+          setSelectedCourseId(c.id);
+          const m = c.modules?.[0];
+          if (m) {
+            setSelectedModuleId(m.id);
+            const v = m.lessons?.find((l) => l.videoId);
+            setSelectedLessonId(v?.id ?? "");
           }
         }
-      } else {
-        setError(d.message ?? "Gagal memuat kursus");
       }
-    } catch {
-      setError("Koneksi gagal");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -123,33 +119,23 @@ export default function LearningTestPage() {
     const videoId = extractYouTubeId(lessonForm.videoUrl);
     const duration = Math.max(1, Math.round(lessonForm.duration));
     try {
-      const r = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "lesson",
-          moduleId: selectedModuleId,
-          id: editingLesson?.id,
-          title: lessonForm.title.trim(),
-          order: editingLesson?.order ?? 1,
-          videoId,
-          videoDuration: duration,
-        }),
+      const d = await sendJson<{ id?: string }>("/api/lms", "POST", {
+        action: "lesson",
+        moduleId: selectedModuleId,
+        id: editingLesson?.id,
+        title: lessonForm.title.trim(),
+        order: editingLesson?.order ?? 1,
+        videoId,
+        videoDuration: duration,
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess(editingLesson ? "Materi video diperbarui." : "Materi video interaktif baru berhasil dibuat!");
-        const savedId = d.data?.id;
-        setLessonModal(false);
-        setLessonForm({ title: "", videoUrl: "", duration: 60 });
-        setEditingLesson(null);
-        setSelectedLessonId(savedId ?? "");
-        load();
-      } else {
-        setError(d.message ?? "Gagal menyimpan materi video.");
-      }
-    } catch {
-      setError("Terjadi kesalahan jaringan.");
+      setSuccess(editingLesson ? "Materi video diperbarui." : "Materi video interaktif baru berhasil dibuat!");
+      setLessonModal(false);
+      setLessonForm({ title: "", videoUrl: "", duration: 60 });
+      setEditingLesson(null);
+      setSelectedLessonId(d?.id ?? "");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
     }
   }
 
@@ -158,21 +144,12 @@ export default function LearningTestPage() {
     if (!confirmed) return;
     setError("");
     try {
-      const r = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "lesson-delete", id }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Materi video dihapus.");
-        setSelectedLessonId("");
-        load();
-      } else {
-        setError(d.message ?? "Gagal menghapus materi video.");
-      }
-    } catch {
-      setError("Terjadi kesalahan jaringan.");
+      await sendJson("/api/lms", "POST", { action: "lesson-delete", id });
+      setSuccess("Materi video dihapus.");
+      setSelectedLessonId("");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
     }
   }
 
@@ -240,21 +217,12 @@ export default function LearningTestPage() {
         eventTime: parsedSec,
         isNote: false,
       };
-      const r = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess(editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`);
-        setQuestionModal(false);
-        load();
-      } else {
-        setError(d.message ?? "Gagal menyimpan pertanyaan.");
-      }
-    } catch {
-      setError("Terjadi kesalahan jaringan.");
+      await sendJson("/api/lms", "POST", payload);
+      setSuccess(editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`);
+      setQuestionModal(false);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
     }
   }
 
@@ -488,20 +456,11 @@ export default function LearningTestPage() {
                             const confirmed = await showConfirm("Hapus pertanyaan ini?");
                             if (!confirmed) return;
                             try {
-                              const r = await fetch("/api/lms", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ action: "question-delete", id: q.id }),
-                              });
-                              const d = await r.json();
-                              if (d.status === "success") {
-                                setSuccess("Pertanyaan dihapus.");
-                                load();
-                              } else {
-                                setError(d.message ?? "Gagal menghapus pertanyaan.");
-                              }
-                            } catch {
-                              setError("Terjadi kesalahan jaringan.");
+                              await sendJson("/api/lms", "POST", { action: "question-delete", id: q.id });
+                              setSuccess("Pertanyaan dihapus.");
+                              load();
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
                             }
                           }}
                           className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"

@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export type Notification = {
   id: string;
@@ -78,14 +79,9 @@ export default function NotificationBell() {
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/integration?view=notifications", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") {
-        setItems(d.data ?? []);
-        setError(false);
-      } else {
-        setError(true);
-      }
+      const data = await fetchJson<Notification[]>("/api/integration?view=notifications", { cache: "no-store" });
+      setItems(data ?? []);
+      setError(false);
     } catch {
       setError(true);
     }
@@ -135,11 +131,7 @@ export default function NotificationBell() {
       prev.map((it) => (it.id === id ? { ...it, isRead: true, readAt: new Date().toISOString() } : it))
     );
     try {
-      await fetch("/api/integration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "markRead", id }),
-      });
+      await sendJson("/api/integration", "POST", { action: "markRead", id });
     } catch {
       load();
     }
@@ -151,11 +143,7 @@ export default function NotificationBell() {
       prev.map((it) => ({ ...it, isRead: true, readAt: new Date().toISOString() }))
     );
     try {
-      await fetch("/api/integration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "markAllRead" }),
-      });
+      await sendJson("/api/integration", "POST", { action: "markAllRead" });
     } catch {
       load();
     }
@@ -167,11 +155,7 @@ export default function NotificationBell() {
     // Optimistic update
     setItems((prev) => prev.filter((it) => it.id !== id));
     try {
-      await fetch("/api/integration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", id }),
-      });
+      await sendJson("/api/integration", "POST", { action: "delete", id });
     } catch {
       load();
     }
@@ -182,11 +166,7 @@ export default function NotificationBell() {
     if (!confirmed) return;
     setItems([]);
     try {
-      await fetch("/api/integration", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "clearAll" }),
-      });
+      await sendJson("/api/integration", "POST", { action: "clearAll" });
     } catch {
       load();
     }
@@ -195,7 +175,7 @@ export default function NotificationBell() {
   async function sendTestNotification() {
     setLoading(true);
     try {
-      await fetch("/api/notifications/test?type=bell");
+      await fetchJson("/api/notifications/test?type=bell");
       await load();
     } finally {
       setLoading(false);

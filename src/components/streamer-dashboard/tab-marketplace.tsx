@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type MarketplaceListing = {
   id: string;
@@ -46,15 +47,10 @@ export default function TabMarketplace({ onNavigateToLms }: TabMarketplaceProps)
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/marketplace?view=eligible");
-      const d = await r.json();
-      if (d.status === "success" || Array.isArray(d.data)) {
-        setListings(d.data || []);
-      } else {
-        setError(d.message ?? "Gagal memuat bursa proyek marketplace.");
-      }
-    } catch {
-      setError("Koneksi gagal saat memuat data marketplace.");
+      const data = await fetchJson<MarketplaceListing[]>("/api/marketplace?view=eligible");
+      setListings(data || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat bursa proyek marketplace.");
     } finally {
       setLoading(false);
     }
@@ -67,26 +63,17 @@ export default function TabMarketplace({ onNavigateToLms }: TabMarketplaceProps)
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/marketplace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "apply",
-          listingId: selectedListing.id,
-          note: applyNote.trim() || undefined,
-        }),
+      await sendJson("/api/marketplace", "POST", {
+        action: "apply",
+        listingId: selectedListing.id,
+        note: applyNote.trim() || undefined,
       });
-      const d = await r.json();
-      if (d.status === "success" || d.data?.id) {
-        setSuccess(`✅ Lamaran Anda untuk proyek "${selectedListing.title}" berhasil dikirim! Tim Klien/HR akan meninjau pengajuan Anda.`);
-        setSelectedListing(null);
-        setApplyNote("");
-        loadListings();
-      } else {
-        setError(d.message ?? "Gagal mengirim lamaran proyek.");
-      }
-    } catch {
-      setError("Koneksi gagal saat mengirim lamaran.");
+      setSuccess(`✅ Lamaran Anda untuk proyek "${selectedListing.title}" berhasil dikirim! Tim Klien/HR akan meninjau pengajuan Anda.`);
+      setSelectedListing(null);
+      setApplyNote("");
+      loadListings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengirim lamaran proyek.");
     } finally {
       setApplying(false);
     }

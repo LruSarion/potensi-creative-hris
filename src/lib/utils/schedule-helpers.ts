@@ -130,3 +130,17 @@ export function isTimeOverlap(
 ): boolean {
   return s1 < e2 && s2 < e1;
 }
+
+/**
+ * Auto-fill end time from a start time (mirrors ref-deploy calculateEndTime):
+ * adds offsetHours (wrapping at 24h) and keeps the minutes as-is.
+ * Returns "" when start is empty or malformed.
+ */
+export function calculateEndTime(startTime: string, offsetHours: number): string {
+  const trimmed = (startTime || "").trim();
+  if (!trimmed) return "";
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "";
+  const hours = (parseInt(match[1], 10) + offsetHours) % 24;
+  return `${String(hours).padStart(2, "0")}:${match[2]}`;
+}

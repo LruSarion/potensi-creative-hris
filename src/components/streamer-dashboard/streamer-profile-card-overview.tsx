@@ -2,7 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
+import { useSession } from "next-auth/react";
 import { formatDateIndo } from "@/lib/utils/date-format";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export interface StreamerProfileCardData {
   karyawan: {
@@ -11,10 +13,13 @@ export interface StreamerProfileCardData {
     namaLengkap: string;
     namaPanggilan: string | null;
     fotoUrl: string | null;
-    kontrakType: string;
-    startDate: string;
-    endDate: string;
+    jabatan?: string;
+    kategori?: string;
+    startDate?: string;
+    endDate?: string;
     statusAktif: string;
+    email?: string | null;
+    nomorTelepon?: string | null;
   } | null;
   gmv: {
     currentMonthLabel: string;
@@ -22,17 +27,13 @@ export interface StreamerProfileCardData {
     prevMonthGmv: number;
     completedSessions: number | string;
     cancelledSessions: number | string;
+    totalLiveHours?: number;
   };
   thp: {
     estimasiThp: number;
     tierName: string;
     ratePerJam: number;
-  };
-  kpi: {
-    periode: string;
-    salesTargetText: string;
-    retentionRate: number;
-    conversionRate: number;
+    totalJamLive?: number;
   };
   jobDesk: string[];
   workflow: Array<{
@@ -69,13 +70,54 @@ export function StreamerProfileCardOverview({
   isModal = false,
   onClose,
   onBackToList,
-  onEditProfile,
-  onViewContract,
 }: StreamerProfileCardOverviewProps) {
+  const { data: session } = useSession();
+
   const [data, setData] = useState<StreamerProfileCardData | null>(initialData || null);
   const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState("");
-  const [showContractModal, setShowContractModal] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  async function handlePhotoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Harap pilih file gambar (JPG/PNG/WebP).");
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Ukuran gambar maksimal 4MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      setUploadingPhoto(true);
+      try {
+        const targetId = data?.karyawan?.id || streamerId;
+        await sendJson("/api/streamer-profile", "PATCH", {
+          karyawanId: targetId,
+          photoUrl: base64,
+        });
+        setData((prev) =>
+          prev && prev.karyawan
+            ? {
+                ...prev,
+                karyawan: { ...prev.karyawan, fotoUrl: base64 },
+              }
+            : prev
+        );
+      } catch (err) {
+        alert(err instanceof Error ? err.message : "Gagal mengunggah foto profil");
+      } finally {
+        setUploadingPhoto(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -84,17 +126,16 @@ export function StreamerProfileCardOverview({
       setError("");
       try {
         const query = streamerId ? `?karyawanId=${encodeURIComponent(streamerId)}` : "";
-        const res = await fetch(`/api/streamer-profile-card${query}`);
-        const result = await res.json();
+        const data = await fetchJson<StreamerProfileCardData>(`/api/streamer-profile-card${query}`);
         if (isMounted) {
-          if (result.status === "success" && result.data?.karyawan) {
-            setData(result.data);
+          if (data?.karyawan) {
+            setData(data);
           } else {
-            setError(result.message || "Gagal memuat profil streamer");
+            setError("Gagal memuat profil streamer");
           }
         }
-      } catch {
-        if (isMounted) setError("Terjadi kesalahan koneksi saat memuat data streamer");
+      } catch (err) {
+        if (isMounted) setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi saat memuat data streamer");
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -125,7 +166,7 @@ export function StreamerProfileCardOverview({
             <button
               type="button"
               onClick={onBackToList}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
             >
               Kembali ke Daftar
             </button>
@@ -134,7 +175,7 @@ export function StreamerProfileCardOverview({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+              className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold cursor-pointer"
             >
               Tutup
             </button>
@@ -144,7 +185,8 @@ export function StreamerProfileCardOverview({
     );
   }
 
-  const { karyawan, gmv, thp, kpi, jobDesk, workflow, doAndDonts, violations } = data;
+  const { karyawan, gmv, thp, jobDesk, workflow, doAndDonts, violations } = data;
+  const isAktif = (karyawan.statusAktif || "AKTIF").toUpperCase() === "AKTIF";
 
   const content = (
     <div className="space-y-5 max-w-7xl mx-auto">
@@ -182,7 +224,7 @@ export function StreamerProfileCardOverview({
                 Detail Profil & SOP Streamer — {karyawan.namaLengkap}
               </h2>
               <p className="text-xs text-slate-500">
-                Ringkasan KPI, GMV, SOP sebelum live, dan log pelanggaran
+                Ringkasan Profil, GMV, SOP sebelum live, dan log pelanggaran
               </p>
             </div>
           </div>
@@ -199,21 +241,22 @@ export function StreamerProfileCardOverview({
         </div>
       )}
 
-      {/* 3-COLUMN TOP & MIDDLE GRID MATCHING EXACT REFERENCE LAYOUT */}
+      {/* TOP & MIDDLE GRID MATCHING EXACT REFERENCE LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         
         {/* ================================================================= */}
-        {/* CARD 1 (LEFT COLUMN): PROFIL STAFF                              */}
+        {/* CARD 1 (LEFT COLUMN): PROFIL HOST STREAMER                        */}
         {/* ================================================================= */}
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-6 flex flex-col items-center text-center space-y-4">
           <div className="w-full text-left">
-            <h3 className="font-extrabold text-slate-900 text-base tracking-tight">
-              Profil Staff
+            <h3 className="font-extrabold text-slate-900 text-base tracking-tight flex items-center gap-2">
+              <i className="fa-solid fa-user-circle text-[#941A0B]" />
+              <span>Profil Host Streamer</span>
             </h3>
           </div>
 
-          {/* Photo Avatar */}
-          <div className="relative w-36 h-36 rounded-2xl overflow-hidden border-2 border-slate-200 shadow-sm bg-slate-100 flex-shrink-0">
+          {/* Photo Avatar with Ganti Foto on hover */}
+          <div className="relative w-36 h-36 rounded-2xl overflow-hidden border-2 border-slate-200 shadow-sm bg-slate-100 flex-shrink-0 group">
             {karyawan.fotoUrl ? (
               <Image
                 src={karyawan.fotoUrl}
@@ -223,10 +266,23 @@ export function StreamerProfileCardOverview({
                 unoptimized
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-300 text-4xl font-bold bg-slate-50">
-                {karyawan.namaLengkap.charAt(0)}
+              <div className="w-full h-full flex items-center justify-center text-slate-400 text-4xl font-black bg-slate-50">
+                {karyawan.namaLengkap.charAt(0).toUpperCase()}
               </div>
             )}
+
+            {/* Hover overlay to change photo */}
+            <label className="absolute inset-0 bg-black/60 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-xs font-bold gap-1.5 backdrop-blur-[2px]">
+              <i className={uploadingPhoto ? "fa-solid fa-circle-notch fa-spin text-xl" : "fa-solid fa-camera text-xl"} />
+              <span>{uploadingPhoto ? "Menyimpan..." : "Ganti Foto"}</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingPhoto}
+                onChange={handlePhotoUpload}
+              />
+            </label>
           </div>
 
           {/* Name & Code */}
@@ -235,136 +291,147 @@ export function StreamerProfileCardOverview({
               {karyawan.namaLengkap}
             </h2>
             <div className="text-xs font-bold text-slate-500 font-mono">
-              Code: {karyawan.idKaryawan}
+              ID Host: <span className="text-slate-700">{karyawan.idKaryawan}</span>
             </div>
           </div>
 
-          {/* Status Kontrak */}
-          <div className="w-full pt-1 space-y-1.5">
-            <div className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
-              STATUS KONTRAK
+          {/* Jabatan & Kategori */}
+          <div className="w-full pt-1 space-y-1">
+            <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+              JABATAN & KATEGORI
             </div>
-            <div>
-              <span className="inline-block bg-[#941A0B] text-white font-extrabold text-xs px-5 py-1 rounded-md uppercase tracking-wider shadow-xs">
-                {karyawan.kontrakType || "DEDICATED"}
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-bold text-xs text-slate-800">
+                {karyawan.jabatan || "Host Streamer"}
+              </span>
+              <span className="inline-block bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-black px-2 py-0.5 rounded uppercase">
+                {karyawan.kategori || "STREAMER"}
               </span>
             </div>
           </div>
 
-          {/* Periode Kontrak */}
+          {/* Status Keaktifan */}
           <div className="w-full space-y-1">
-            <div className="text-[11px] font-extrabold text-slate-700 uppercase tracking-wider">
-              PERIODE KONTRAK
+            <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+              STATUS KEAKTIFAN
             </div>
-            <div className="text-xs text-slate-700 font-semibold">
-              Awal: {formatDateIndo(karyawan.startDate)} - Berakhir: {formatDateIndo(karyawan.endDate)}
+            <div>
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-xs font-extrabold border ${
+                  isAktif
+                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    : "bg-slate-100 text-slate-500 border-slate-200"
+                }`}
+              >
+                {isAktif ? "● AKTIF" : "○ NON-AKTIF"}
+              </span>
             </div>
           </div>
 
-          {/* Action Buttons: Edit & View Contract */}
-          <div className="w-full flex justify-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onEditProfile || (() => alert(`Pengaturan profil ${karyawan.namaLengkap} dapat diakses melalui menu Master Data / Data Karyawan.`))}
-              className="px-5 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95"
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={onViewContract || (() => setShowContractModal(true))}
-              className="px-5 py-1.5 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
-            >
-              View Contract
-            </button>
+          {/* Tanggal Bergabung */}
+          <div className="w-full space-y-1 border-t border-slate-100 pt-3">
+            <div className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+              TANGGAL BERGABUNG
+            </div>
+            <div className="text-xs text-slate-700 font-semibold">
+              {karyawan.startDate ? formatDateIndo(karyawan.startDate) : "-"}
+            </div>
           </div>
+
+          {/* Kontak / Telepon jika ada */}
+          {(karyawan.nomorTelepon || karyawan.email) && (
+            <div className="w-full space-y-1 text-xs text-slate-500">
+              {karyawan.nomorTelepon && (
+                <div className="flex items-center justify-center gap-1.5 font-medium">
+                  <i className="fa-brands fa-whatsapp text-emerald-600" />
+                  <span>{karyawan.nomorTelepon}</span>
+                </div>
+              )}
+              {karyawan.email && (
+                <div className="flex items-center justify-center gap-1.5 text-[11px] truncate">
+                  <i className="fa-regular fa-envelope text-slate-400" />
+                  <span>{karyawan.email}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ================================================================= */}
-        {/* RIGHT TWO COLUMNS (CARDS 2, 3, 4, 5, 6)                          */}
+        {/* RIGHT TWO COLUMNS (CARDS 2, 3, 4, 5)                             */}
         {/* ================================================================= */}
         <div className="lg:col-span-8 space-y-5">
-          {/* TOP METRICS ROW: TOTAL GMV, ESTIMASI THP, KPI METRICS */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+          {/* TOP METRICS ROW: TOTAL GMV & ESTIMASI THP / TIERING (2 EQUAL CARDS) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             
             {/* CARD 2: TOTAL GMV */}
-            <div className="md:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between space-y-3">
               <div>
-                <h3 className="font-extrabold text-slate-800 text-sm tracking-tight uppercase">
-                  TOTAL GMV ({gmv.currentMonthLabel})
-                </h3>
-                <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight mt-1.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-extrabold text-slate-800 text-sm tracking-tight uppercase flex items-center gap-1.5">
+                    <i className="fa-solid fa-chart-line text-emerald-600" />
+                    <span>TOTAL GMV ({gmv.currentMonthLabel})</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase">Realtime DB</span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight mt-1.5 text-emerald-600 font-mono">
                   Rp {gmv.totalGmv.toLocaleString("id-ID")}
                 </div>
                 <div className="text-xs text-slate-500 font-medium mt-1">
-                  GMV sebelumnya: <span className="font-semibold text-slate-700">Rp {gmv.prevMonthGmv.toLocaleString("id-ID")}</span>
+                  GMV bulan lalu: <span className="font-semibold text-slate-700 font-mono">Rp {gmv.prevMonthGmv.toLocaleString("id-ID")}</span>
                 </div>
               </div>
 
-              <div className="bg-slate-100/90 border border-slate-200 rounded-xl px-4 py-2 text-center text-xs font-bold text-slate-800 flex items-center justify-center gap-4">
-                <span>Selesai: <strong className="text-slate-900">{gmv.completedSessions}</strong></span>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-center text-xs font-bold text-slate-800 flex items-center justify-center gap-4">
+                <span className="text-emerald-700">
+                  <i className="fa-solid fa-circle-check mr-1" />
+                  Selesai: <strong className="text-slate-900 font-mono">{gmv.completedSessions} Sesi</strong>
+                </span>
                 <span className="text-slate-300">|</span>
-                <span>Batal: <strong className="text-slate-900">{gmv.cancelledSessions}</strong></span>
+                <span className="text-slate-500">
+                  <i className="fa-solid fa-ban mr-1" />
+                  Batal: <strong className="text-slate-900 font-mono">{gmv.cancelledSessions}</strong>
+                </span>
               </div>
             </div>
 
-            {/* CARD 3: ESTIMASI THP */}
-            <div className="md:col-span-3 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between space-y-2">
+            {/* CARD 3: ESTIMASI THP & TIERING */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between space-y-3">
               <div>
-                <h3 className="font-extrabold text-slate-800 text-sm tracking-tight">
-                  Estimasi THP
-                </h3>
-                <div className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight mt-1.5">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-extrabold text-slate-800 text-sm tracking-tight flex items-center gap-1.5">
+                    <i className="fa-solid fa-coins text-amber-500" />
+                    <span>ESTIMASI THP BULAN INI</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                    Tier: {thp.tierName}
+                  </span>
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight mt-1.5 font-mono">
                   Rp {thp.estimasiThp.toLocaleString("id-ID")}
                 </div>
-              </div>
-
-              <div className="text-xs text-slate-600 space-y-0.5 border-t border-slate-100 pt-2">
-                <div className="font-bold text-slate-800">Tier: {thp.tierName}</div>
-                <div className="text-[11px] text-slate-500">Rate: Rp {thp.ratePerJam.toLocaleString("id-ID")} / Jam</div>
-              </div>
-            </div>
-
-            {/* CARD 4: KPI METRICS */}
-            <div className="md:col-span-4 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 flex flex-col justify-between space-y-2 relative overflow-hidden">
-              <div>
-                <h3 className="font-extrabold text-slate-800 text-sm tracking-tight uppercase">
-                  KPI METRICS ({kpi.periode})
-                </h3>
-                <div className="space-y-1.5 mt-2.5 text-xs text-slate-700 font-semibold">
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#941A0B]" />
-                    <span>Sales Target: <strong className="text-slate-900">{kpi.salesTargetText}</strong></span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#941A0B]" />
-                    <span>Retention Rate: <strong className="text-slate-900">{kpi.retentionRate}%</strong></span>
-                  </div>
-                  <div className="flex items-center justify-between gap-1.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#941A0B]" />
-                      <span>Conversion: <strong className="text-slate-900">{kpi.conversionRate}%</strong></span>
-                    </div>
-                    {/* Trend Sparkline Icon / Mini SVG Wave */}
-                    <div className="w-16 h-6">
-                      <svg viewBox="0 0 60 20" className="w-full h-full stroke-[#941A0B] fill-none stroke-2">
-                        <path d="M 0 15 Q 15 5, 25 12 T 45 4 T 60 1" />
-                        <path d="M 0 15 Q 15 5, 25 12 T 45 4 T 60 1 L 60 20 L 0 20 Z" className="fill-[#941A0B]/10 stroke-none" />
-                      </svg>
-                    </div>
-                  </div>
+                <div className="text-xs text-slate-500 font-medium mt-1">
+                  Rate per jam: <span className="font-semibold text-slate-700 font-mono">Rp {thp.ratePerJam.toLocaleString("id-ID")} / Jam</span>
                 </div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-center text-xs font-bold text-slate-800 flex items-center justify-between">
+                <span className="text-slate-600">Total Durasi Live:</span>
+                <span className="text-[#941A0B] font-black font-mono">
+                  {gmv.totalLiveHours ?? thp.totalJamLive ?? 0} Jam Selesai
+                </span>
               </div>
             </div>
           </div>
 
-          {/* MIDDLE ROW: JOB DESK & EXPECTATIONS & WORKFLOW PROSEDUR */}
+          {/* MIDDLE ROW: JOB DESK & EXPECTATIONS & WORKFLOW PROSEDUR (SEMENTARA DIPERTAHANKAN) */}
           <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
             
-            {/* CARD 5: JOB DESK & EXPECTATIONS */}
+            {/* CARD 4: JOB DESK & EXPECTATIONS */}
             <div className="md:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-3">
-              <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase">
-                JOB DESK & EXPECTATIONS
+              <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase flex items-center gap-1.5">
+                <i className="fa-solid fa-list-check text-[#941A0B]" />
+                <span>JOB DESK & EXPECTATIONS</span>
               </h3>
               <ul className="space-y-2 text-xs text-slate-700 font-semibold">
                 {jobDesk.map((item, idx) => (
@@ -376,10 +443,11 @@ export function StreamerProfileCardOverview({
               </ul>
             </div>
 
-            {/* CARD 6: WORKFLOW & PROSEDUR SEBELUM LIVE */}
+            {/* CARD 5: WORKFLOW & PROSEDUR SEBELUM LIVE */}
             <div className="md:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-3">
-              <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase">
-                WORKFLOW & PROSEDUR SEBELUM LIVE
+              <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase flex items-center gap-1.5">
+                <i className="fa-solid fa-arrow-progress text-[#941A0B]" />
+                <span>WORKFLOW & PROSEDUR SEBELUM LIVE</span>
               </h3>
               
               {/* 5 Connected Step Nodes */}
@@ -413,10 +481,11 @@ export function StreamerProfileCardOverview({
       {/* =================================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
-        {/* CARD 7: DO AND DONTS (KODE ETIK LIVE) */}
+        {/* CARD 6: DO AND DONTS (KODE ETIK LIVE - DIPERTAHANKAN) */}
         <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200/90 shadow-sm p-5 space-y-3.5">
-          <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase text-center sm:text-left">
-            DO AND DONTS (KODE ETIK LIVE)
+          <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase text-center sm:text-left flex items-center gap-1.5">
+            <i className="fa-solid fa-scale-balanced text-[#941A0B]" />
+            <span>DO AND DONTS (KODE ETIK LIVE)</span>
           </h3>
 
           <div className="grid grid-cols-2 gap-4 pt-1">
@@ -454,12 +523,14 @@ export function StreamerProfileCardOverview({
           </div>
         </div>
 
-        {/* CARD 8: LOG PELANGGARAN SAAT LIVE (RIWAYAT) */}
+        {/* CARD 7: LOG PELANGGARAN SAAT LIVE (RIWAYAT DARI QC VIOLATION) */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col justify-between">
-          <div className="p-4 bg-slate-50/70 border-b border-slate-200">
-            <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase">
-              LOG PELANGGARAN SAAT LIVE (Riwayat)
+          <div className="p-4 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="font-extrabold text-slate-900 text-sm tracking-tight uppercase flex items-center gap-1.5">
+              <i className="fa-solid fa-triangle-exclamation text-amber-500" />
+              <span>LOG PELANGGARAN SAAT LIVE (Riwayat)</span>
             </h3>
+            <span className="text-[11px] text-slate-500 font-medium">Database QC & Incident</span>
           </div>
 
           <div className="overflow-x-auto flex-1">
@@ -499,7 +570,8 @@ export function StreamerProfileCardOverview({
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">
-                      Tidak ada riwayat pelanggaran live. Performa bersih dan patuh SOP.
+                      <i className="fa-solid fa-shield-check text-2xl mb-1.5 block text-emerald-500" />
+                      <span>Tidak ada riwayat pelanggaran live. Performa bersih dan patuh SOP.</span>
                     </td>
                   </tr>
                 )}
@@ -509,75 +581,6 @@ export function StreamerProfileCardOverview({
         </div>
 
       </div>
-
-      {/* Contract Detail Modal */}
-      {showContractModal && (
-        <div className="fixed inset-0 z-[10000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl border border-slate-200 space-y-5 animate-in fade-in">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-red-50 text-[#941A0B] flex items-center justify-center font-bold">
-                  <i className="fa-solid fa-file-contract text-base" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 text-sm">Rincian Kontrak Kerja</h3>
-                  <p className="text-xs text-slate-500 font-mono">{karyawan.idKaryawan} • {karyawan.namaLengkap}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowContractModal(false)}
-                className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-bold transition cursor-pointer"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Status Kontrak:</span>
-                  <span className="bg-[#941A0B] text-white px-2.5 py-0.5 rounded-md font-bold uppercase text-[10px]">
-                    {karyawan.kontrakType}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Periode Mulai:</span>
-                  <span className="font-bold text-slate-800">{formatDateIndo(karyawan.startDate)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Periode Berakhir:</span>
-                  <span className="font-bold text-slate-800">{formatDateIndo(karyawan.endDate)}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Status Operasional:</span>
-                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                    {karyawan.statusAktif}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-500 font-medium">Skema Pembayaran:</span>
-                  <span className="font-bold text-slate-800">Hourly Rate + Insentif GMV</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-slate-500 italic text-center">
-                Dokumen kontrak fisik dan adendum tersimpan terpusat di arsip HRIS PT Potensi Creative.
-              </p>
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <button
-                type="button"
-                onClick={() => setShowContractModal(false)}
-                className="px-4 py-2 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
-              >
-                Tutup Dokumen
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type MainTab = "streamer" | "ots" | "khusus";
 type SubTab = "formulir" | "approval";
@@ -109,8 +110,9 @@ export function TukarShiftView() {
   async function loadFormData() {
     try {
       setLoadingInitial(true);
-      const res = await fetch("/api/tukar-shift?view=form_data");
-      const json = await res.json();
+      const json = await fetchJson<{ REFERENSI_JADWAL?: string[]; HELPER_HOST?: string[] }>(
+        "/api/tukar-shift?view=form_data"
+      );
       if (json.REFERENSI_JADWAL) {
         setReferensiJadwal(json.REFERENSI_JADWAL);
       }
@@ -127,8 +129,7 @@ export function TukarShiftView() {
   async function loadSwaps() {
     try {
       setLoadingSwaps(true);
-      const res = await fetch("/api/tukar-shift");
-      const data = await res.json();
+      const data = await fetchJson<SwapRow[]>("/api/tukar-shift");
       if (Array.isArray(data)) {
         setSwapList(data);
       }
@@ -244,20 +245,15 @@ export function TukarShiftView() {
     setStrCekStatus({ tested: false, loading: true, ok: false, message: "Mengecek jadwal..." });
 
     try {
-      const res = await fetch("/api/tukar-shift?action=cek_bentrok", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "cekBentrok",
-          Tanggal: tanggal,
-          ID_Host: idHost,
-          Jam_Mulai: jamMulai,
-          Jam_Selesai: jamSelesai,
-        }),
+      const data = await sendJson<{ status: string; message?: string }>("/api/tukar-shift?action=cek_bentrok", "POST", {
+        action: "cekBentrok",
+        Tanggal: tanggal,
+        ID_Host: idHost,
+        Jam_Mulai: jamMulai,
+        Jam_Selesai: jamSelesai,
       });
-      const data = await res.json();
       if (data.status === "success") {
-        setStrCekStatus({ tested: true, loading: false, ok: true, message: data.message });
+        setStrCekStatus({ tested: true, loading: false, ok: true, message: data.message ?? "" });
       } else {
         setStrCekStatus({ tested: true, loading: false, ok: false, message: data.message || "Jadwal pengganti BENTROK." });
       }
@@ -279,32 +275,23 @@ export function TukarShiftView() {
 
     setStrSubmitting(true);
     try {
-      const res = await fetch("/api/tukar-shift", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          TIPE_ROLE: "STREAMER",
-          ID_JADWAL: idJadwal,
-          TANGGAL_JADWAL: tanggal,
-          ID_PENGGANTI: idPengganti,
-          ALASAN: strAlasan,
-          FOTO_LAMPIRAN_B64: strLampiranB64,
-        }),
+      await sendJson("/api/tukar-shift", "POST", {
+        TIPE_ROLE: "STREAMER",
+        ID_JADWAL: idJadwal,
+        TANGGAL_JADWAL: tanggal,
+        ID_PENGGANTI: idPengganti,
+        ALASAN: strAlasan,
+        FOTO_LAMPIRAN_B64: strLampiranB64,
       });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert(`✅ Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}\nAlasan: ${strAlasan}`);
-        setStrJadwal("");
-        setStrPengganti("");
-        setStrAlasan("");
-        setStrLampiranB64("");
-        setStrCekStatus({ tested: false, loading: false, ok: false, message: "" });
-        loadSwaps();
-      } else {
-        showAlert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert(`✅ Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}\nAlasan: ${strAlasan}`);
+      setStrJadwal("");
+      setStrPengganti("");
+      setStrAlasan("");
+      setStrLampiranB64("");
+      setStrCekStatus({ tested: false, loading: false, ok: false, message: "" });
+      loadSwaps();
+    } catch (err) {
+      showAlert("❌ Gagal mengirim: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
     } finally {
       setStrSubmitting(false);
     }
@@ -323,31 +310,22 @@ export function TukarShiftView() {
 
     setOtsSubmitting(true);
     try {
-      const res = await fetch("/api/tukar-shift", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          TIPE_ROLE: "OTS",
-          ID_JADWAL: idJadwal,
-          TANGGAL_JADWAL: tanggal,
-          ID_PENGGANTI: idPengganti,
-          ALASAN: otsAlasan,
-          FOTO_LAMPIRAN_B64: otsLampiranB64,
-        }),
+      await sendJson("/api/tukar-shift", "POST", {
+        TIPE_ROLE: "OTS",
+        ID_JADWAL: idJadwal,
+        TANGGAL_JADWAL: tanggal,
+        ID_PENGGANTI: idPengganti,
+        ALASAN: otsAlasan,
+        FOTO_LAMPIRAN_B64: otsLampiranB64,
       });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert(`✅ Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}\nAlasan: ${otsAlasan}`);
-        setOtsJadwal("");
-        setOtsPengganti("");
-        setOtsAlasan("");
-        setOtsLampiranB64("");
-        loadSwaps();
-      } else {
-        showAlert("❌ Gagal mengirim: " + (data.error || data.message || "Terjadi kesalahan"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert(`✅ Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}\nAlasan: ${otsAlasan}`);
+      setOtsJadwal("");
+      setOtsPengganti("");
+      setOtsAlasan("");
+      setOtsLampiranB64("");
+      loadSwaps();
+    } catch (err) {
+      showAlert("❌ Gagal mengirim: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
     } finally {
       setOtsSubmitting(false);
     }
@@ -372,32 +350,23 @@ export function TukarShiftView() {
 
     setKhsSubmitting(true);
     try {
-      const res = await fetch("/api/tukar-shift", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          TIPE_ROLE: "KHUSUS",
-          ID_JADWAL: idJadwal,
-          TANGGAL_JADWAL: tanggal,
-          ID_PENGGANTI: idPengganti,
-          ALASAN: khsAlasan,
-          FOTO_LAMPIRAN_B64: khsLampiranB64,
-        }),
+      await sendJson("/api/tukar-shift", "POST", {
+        TIPE_ROLE: "KHUSUS",
+        ID_JADWAL: idJadwal,
+        TANGGAL_JADWAL: tanggal,
+        ID_PENGGANTI: idPengganti,
+        ALASAN: khsAlasan,
+        FOTO_LAMPIRAN_B64: khsLampiranB64,
       });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert("✅ Jadwal berhasil diperbarui secara instan oleh Super Admin!");
-        setKhsJadwal("");
-        setKhsPengganti("");
-        setKhsAlasan("");
-        setKhsLampiranB64("");
-        loadSwaps();
-        loadFormData();
-      } else {
-        showAlert("❌ Gagal: " + (data.error || data.message || "Terjadi kesalahan"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan jaringan.");
+      showAlert("✅ Jadwal berhasil diperbarui secara instan oleh Super Admin!");
+      setKhsJadwal("");
+      setKhsPengganti("");
+      setKhsAlasan("");
+      setKhsLampiranB64("");
+      loadSwaps();
+      loadFormData();
+    } catch (err) {
+      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
     } finally {
       setKhsSubmitting(false);
     }
@@ -410,18 +379,11 @@ export function TukarShiftView() {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/tukar-shift?id=${id}&approve=${setuju}`, {
-        method: "PATCH",
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert(`✅ Pengajuan berhasil di-${setuju ? "setujui" : "tolak"}!`);
-        loadSwaps();
-      } else {
-        showAlert("❌ Gagal: " + (data.error || data.message || "Gagal memproses"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan jaringan.");
+      await sendJson(`/api/tukar-shift?id=${id}&approve=${setuju}`, "PATCH");
+      showAlert(`✅ Pengajuan berhasil di-${setuju ? "setujui" : "tolak"}!`);
+      loadSwaps();
+    } catch (err) {
+      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal memproses"));
     }
   }
 

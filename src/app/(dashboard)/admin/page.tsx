@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function MasterDataAdminPage() {
   const { data: session } = useSession();
@@ -39,29 +40,25 @@ export default function MasterDataAdminPage() {
   async function load() {
     try {
       const [m, h, a] = await Promise.all([
-        fetch("/api/integration?view=permissions").then((x) => x.json()),
-        fetch("/api/integration?view=health").then((x) => x.json()),
-        fetch("/api/integration?view=audit").then((x) => x.json()),
+        fetchJson<any>("/api/integration?view=permissions").catch(() => null),
+        fetchJson<any>("/api/integration?view=health").catch(() => null),
+        fetchJson<any[]>("/api/integration?view=audit"),
       ]);
-      if (m.status === "success") setMatrix(m.data);
-      if (h.status === "success") setHealth(h.data);
-      if (a.status === "success") setAudit(a.data);
-      else if (a.status === "error") setError(a.message ?? "Akses ditolak");
-    } catch {
-      setError("Gagal memuat data admin");
+      if (m) setMatrix(m);
+      if (h) setHealth(h);
+      setAudit(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat data admin");
     }
   }
 
   async function loadLlm() {
     try {
-      const r = await fetch("/api/llm-config");
-      const d = await r.json();
-      if (d.status === "success") {
-        setLlmConfigured(d.data.configured ?? false);
-        setLlmModel(d.data.model ?? "openai/gpt-4o-mini");
-        setLlmSource(d.data.source ?? "none");
-        if (d.data.configured) loadLlmModels();
-      }
+      const data = await fetchJson<any>("/api/llm-config");
+      setLlmConfigured(data.configured ?? false);
+      setLlmModel(data.model ?? "openai/gpt-4o-mini");
+      setLlmSource(data.source ?? "none");
+      if (data.configured) loadLlmModels();
     } catch {
       // ignore
     }
@@ -70,9 +67,8 @@ export default function MasterDataAdminPage() {
   async function loadLlmModels() {
     setLlmLoadingModels(true);
     try {
-      const r = await fetch("/api/llm-config?models=1");
-      const d = await r.json();
-      if (d.status === "success" && d.data.models?.length) setLlmModels(d.data.models);
+      const data = await fetchJson<any>("/api/llm-config?models=1");
+      if (data.models?.length) setLlmModels(data.models);
     } catch {
       // ignore
     } finally {
@@ -86,23 +82,14 @@ export default function MasterDataAdminPage() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/llm-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: llmKey, model: llmModel }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Konfigurasi LLM (OpenRouter) berhasil disimpan!");
-        setLlmConfigured(true);
-        setLlmKey("");
-        setLlmSource("tenant");
-        loadLlmModels();
-      } else {
-        setError(d.message ?? "Gagal menyimpan konfigurasi LLM");
-      }
-    } catch {
-      setError("Gagal menyimpan konfigurasi LLM");
+      await sendJson("/api/llm-config", "POST", { apiKey: llmKey, model: llmModel });
+      setSuccess("Konfigurasi LLM (OpenRouter) berhasil disimpan!");
+      setLlmConfigured(true);
+      setLlmKey("");
+      setLlmSource("tenant");
+      loadLlmModels();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan konfigurasi LLM");
     }
   }
 
@@ -111,11 +98,10 @@ export default function MasterDataAdminPage() {
   async function loadTiering() {
     setLoadingTiers(true);
     try {
-      const r = await fetch("/api/payroll?tiering=1").then((x) => x.json());
-      if (r.status === "success") setTiers(r.data);
-      else setError(r.message ?? "Gagal memuat konfigurasi tier");
-    } catch {
-      setError("Gagal memuat konfigurasi tier");
+      const data = await fetchJson<any>("/api/payroll?tiering=1");
+      setTiers(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat konfigurasi tier");
     } finally {
       setLoadingTiers(false);
     }

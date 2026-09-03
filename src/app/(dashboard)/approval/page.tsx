@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type MainTab = "marketplace" | "lembur" | "izin" | "shift";
 type MarketplaceSubTab = "jadwal" | "approved" | "online" | "cleaning" | "riwayat";
@@ -87,8 +88,7 @@ export default function ApprovalPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const res = await fetch("/api/approval");
-      const data = await res.json();
+      const data = await fetchJson<ApprovalItem[]>("/api/approval");
       if (Array.isArray(data)) {
         setItems(data);
       }
@@ -185,16 +185,12 @@ export default function ApprovalPage() {
     if (!confirmed) return;
 
     try {
-      const res = await fetch(
+      await sendJson(
         `/api/approval?id=${item.id}&action=${approve ? "approve" : "reject"}&type=${item.type}`,
-        { method: "PATCH" }
+        "PATCH"
       );
-      if (res.ok) {
-        showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
-        loadData();
-      } else {
-        showAlert("❌ Gagal memproses pengajuan.");
-      }
+      showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
@@ -214,18 +210,10 @@ export default function ApprovalPage() {
     }));
 
     try {
-      const res = await fetch("/api/approval?action=bulk_approve", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: payload }),
-      });
-      if (res.ok) {
-        showAlert(`✅ Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
-        setSelectedIds([]);
-        loadData();
-      } else {
-        showAlert("❌ Gagal menyetujui jadwal terpilih.");
-      }
+      await sendJson("/api/approval?action=bulk_approve", "POST", { items: payload });
+      showAlert(`✅ Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
+      setSelectedIds([]);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
@@ -238,16 +226,10 @@ export default function ApprovalPage() {
       return;
     }
     try {
-      const res = await fetch("/api/approval?action=publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-      if (res.ok) {
-        showAlert(`✅ Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
-        setSelectedIds([]);
-        loadData();
-      }
+      await sendJson("/api/approval?action=publish", "POST", { ids: selectedIds });
+      showAlert(`✅ Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
+      setSelectedIds([]);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
@@ -260,16 +242,10 @@ export default function ApprovalPage() {
       return;
     }
     try {
-      const res = await fetch("/api/approval?action=send_cleaning", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-      if (res.ok) {
-        showAlert(`✅ Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
-        setSelectedIds([]);
-        loadData();
-      }
+      await sendJson("/api/approval?action=send_cleaning", "POST", { ids: selectedIds });
+      showAlert(`✅ Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
+      setSelectedIds([]);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
@@ -282,16 +258,10 @@ export default function ApprovalPage() {
       return;
     }
     try {
-      const res = await fetch("/api/approval?action=pull_approved", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids: selectedIds }),
-      });
-      if (res.ok) {
-        showAlert(`✅ Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
-        setSelectedIds([]);
-        loadData();
-      }
+      await sendJson("/api/approval?action=pull_approved", "POST", { ids: selectedIds });
+      showAlert(`✅ Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
+      setSelectedIds([]);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }
@@ -321,21 +291,13 @@ export default function ApprovalPage() {
     if (!editingItem) return;
 
     try {
-      const res = await fetch("/api/approval?action=update_details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: editingItem.id,
-          data: editForm,
-        }),
+      await sendJson("/api/approval?action=update_details", "POST", {
+        id: editingItem.id,
+        data: editForm,
       });
-      if (res.ok) {
-        showAlert("✅ Data pengajuan klien berhasil diperbarui!");
-        setEditingItem(null);
-        loadData();
-      } else {
-        showAlert("❌ Gagal memperbarui data pengajuan.");
-      }
+      showAlert("✅ Data pengajuan klien berhasil diperbarui!");
+      setEditingItem(null);
+      loadData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }

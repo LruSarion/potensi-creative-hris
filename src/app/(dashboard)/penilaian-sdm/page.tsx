@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 interface KPIRow {
   rowIndex: number;
@@ -87,8 +88,7 @@ export default function PenilaianSDMPage() {
       const periodeParam = filterPeriode ? `&periode=${encodeURIComponent(filterPeriode)}` : "";
       const url = `/api/penilaian-sdm?view=matrix${roleParam}${periodeParam}`;
 
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await fetchJson<any>(url);
       if (data && Array.isArray(data.rows)) {
         setRawKpiData(data.rows);
         if (Array.isArray(data.periods)) {
@@ -265,19 +265,10 @@ export default function PenilaianSDMPage() {
 
     setSavingBatch(true);
     try {
-      const res = await fetch("/api/penilaian-sdm?action=batch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: itemsToSave }),
-      });
-
-      if (res.ok) {
-        showAlert(`✅ Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
-        setPendingChanges({});
-        fetchMatrixData();
-      } else {
-        showAlert("❌ Gagal menyimpan data KPI ke server.");
-      }
+      await sendJson("/api/penilaian-sdm?action=batch", "POST", { items: itemsToSave });
+      showAlert(`✅ Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
+      setPendingChanges({});
+      fetchMatrixData();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {

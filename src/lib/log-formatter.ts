@@ -33,6 +33,20 @@ export function formatLogEntry(log: {
         description = data.message || "Pelanggaran QC live stream baru.";
         icon = "fa-solid fa-triangle-exclamation";
         iconBg = "bg-rose-50 text-rose-600";
+        // Internal routing keys never shown; keep only meaningful extras (e.g. severity, link label)
+        const HIDDEN_KEYS = ["title", "message", "link", "type", "targetUserId", "targetKaryawanId", "runId", "lampiranDriveId", "read", "isRead", "readAt", "userId"];
+        const extras: string[] = [];
+        for (const [k, v] of Object.entries(data)) {
+          if (
+            v !== null &&
+            v !== undefined &&
+            v !== "" &&
+            !HIDDEN_KEYS.includes(k)
+          ) {
+            extras.push(`${k}: ${v}`);
+          }
+        }
+        if (extras.length > 0) description = `${description}\n${extras.join(" • ")}`;
       }
       // Case 2: Suara Karyawan / Aspirasi
       else if (data.kategori || data.pesan) {
@@ -61,15 +75,14 @@ export function formatLogEntry(log: {
       }
       // Case 5: Generic JSON Object - extract clean readable key-values
       else {
+        const HIDDEN_KEYS = ["runId", "targetUserId", "targetKaryawanId", "lampiranDriveId", "link", "type", "read", "isRead", "readAt", "userId"];
         const parts: string[] = [];
         for (const [k, v] of Object.entries(data)) {
           if (
             v !== null &&
             v !== undefined &&
-            k !== "runId" &&
-            k !== "targetUserId" &&
-            k !== "targetKaryawanId" &&
-            k !== "lampiranDriveId"
+            v !== "" &&
+            !HIDDEN_KEYS.includes(k)
           ) {
             parts.push(`${k}: ${v}`);
           }

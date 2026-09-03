@@ -34,19 +34,29 @@ export const GET = apiHandler(async () => {
 
 export const PATCH = apiHandler(async (req: Request) => {
   const user = await requireRole();
-  if (!user.karyawanId) throw new Error("Akun tidak terhubung ke karyawan");
   const body = await req.json();
+
+  let targetKaryawanId = user.karyawanId;
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(user.role);
+  if (isAdmin && body.karyawanId) {
+    targetKaryawanId = body.karyawanId;
+  }
+  if (!targetKaryawanId && user.email) {
+    const k = await db.karyawan.findFirst({ where: { email: user.email } });
+    targetKaryawanId = k?.id ?? null;
+  }
+  if (!targetKaryawanId) throw new Error("Akun tidak terhubung ke karyawan");
 
   const data: { photoUrl?: string | null; bio?: string | null; availability?: string } = {};
   if (typeof body.photoUrl === "string") data.photoUrl = body.photoUrl;
   if (typeof body.bio === "string") data.bio = body.bio;
   if (typeof body.availability === "string") data.availability = body.availability;
 
-  const existing = await db.streamerProfile.findUnique({ where: { karyawanId: user.karyawanId } });
+  const existing = await db.streamerProfile.findUnique({ where: { karyawanId: targetKaryawanId } });
   if (existing) {
     return db.streamerProfile.update({ where: { id: existing.id }, data });
   }
   return db.streamerProfile.create({
-    data: { tenantId: user.tenantId ?? undefined, karyawanId: user.karyawanId, ...data },
+    data: { tenantId: user.tenantId ?? undefined, karyawanId: targetKaryawanId, ...data },
   });
 });

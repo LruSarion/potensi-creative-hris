@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import VideoLessonPlayer from "@/components/lms/video-lesson-player";
+import { fetchJson } from "@/lib/api-client";
 
 type Question = {
   id: string;
@@ -81,32 +82,36 @@ export default function TabLms() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/lms?view=enrollments");
-      const d = await r.json();
       let list: Enrollment[] = [];
-      if (d.status === "success" && Array.isArray(d.data) && d.data.length > 0) {
-        list = d.data;
-      } else {
+      try {
+        const enrollments = await fetchJson<Enrollment[]>("/api/lms?view=enrollments");
+        if (Array.isArray(enrollments) && enrollments.length > 0) {
+          list = enrollments;
+        } else {
+          throw new Error("empty");
+        }
+      } catch {
         // Fallback to fetch all active courses if enrollments are empty
-        const rCourses = await fetch("/api/lms?view=courses");
-        const dCourses = await rCourses.json();
-        if (dCourses.status === "success" && Array.isArray(dCourses.data)) {
-          list = dCourses.data.map((c: any) => ({
-            id: c.id,
-            status: "ASSIGNED",
-            progressPct: 0,
-            dueDate: null,
-            course: {
+        try {
+          const courses = await fetchJson<Array<{ id: string; title: string; description?: string | null; isCertification?: boolean | null; modules?: Module[] }>>("/api/lms?view=courses");
+          if (Array.isArray(courses)) {
+            list = courses.map((c) => ({
               id: c.id,
-              title: c.title,
-              description: c.description,
-              isCertification: Boolean(c.isCertification),
-              modules: c.modules || [],
-            },
-            certificates: [],
-          }));
-        } else if (Array.isArray(d.data)) {
-          list = d.data;
+              status: "ASSIGNED",
+              progressPct: 0,
+              dueDate: null,
+              course: {
+                id: c.id,
+                title: c.title,
+                description: c.description,
+                isCertification: Boolean(c.isCertification),
+                modules: c.modules || [],
+              },
+              certificates: [],
+            }));
+          }
+        } catch {
+          // keep empty list
         }
       }
       setEnrollments(list);

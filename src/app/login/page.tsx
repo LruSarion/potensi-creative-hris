@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { sendJson } from "@/lib/api-client";
 
 const DEMO_ACCOUNTS = [
   { role: "Super Admin", email: "admin@potensicreative.test", pin: "123456", color: "bg-blue-50 text-blue-700 border-blue-200" },
@@ -43,18 +44,7 @@ export default function LoginPage() {
         if (result) {
           setLoading(true);
           try {
-            const res = await fetch("/api/auth/firebase", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(result),
-            });
-            const data = await res.json();
-
-            if (!res.ok) {
-              setError(data.error || "Gagal memproses otentikasi Google.");
-              setStep("google");
-              return;
-            }
+            const data = await sendJson<any>("/api/auth/firebase", "POST", result);
 
             if (data?.user?.email) {
               // Transition to Step 2: Input PIN
@@ -97,21 +87,13 @@ export default function LoginPage() {
         return;
       }
 
-      const res = await fetch("/api/auth/firebase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(result),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        // Unregistered user or token error
+      const data = await sendJson<any>("/api/auth/firebase", "POST", result).catch(async (err: Error) => {
+        // Unregistered user or token error: surface the real server message
         throw new Error(
-          data.error ||
+          err.message ||
             `Email Google (${result.user.email}) belum terdaftar di sistem HRIS. Silakan hubungi Administrator/HRD.`
         );
-      }
+      });
 
       if (!data?.user?.email) {
         throw new Error("Gagal memvalidasi data akun Google.");
@@ -442,7 +424,7 @@ export default function LoginPage() {
                     </button>
                   </div>
                   <p className="text-[11px] text-slate-400 text-center mt-1.5 font-medium">
-                    PIN default akun: <span className="font-mono font-bold text-blue-600">123456</span> (atau <span className="font-mono text-slate-500">1234</span>)
+                    PIN default akun baru: <span className="font-mono font-bold text-blue-600">123456</span>
                   </p>
                 </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { fetchJson } from "@/lib/api-client";
 
 /**
  * Dev-only helper that polls Telegram updates every few seconds so /start,
@@ -20,7 +21,7 @@ export default function TelegramAutoPoll() {
 
     const poll = async () => {
       try {
-        await fetch("/api/telegram/poll", { method: "POST", cache: "no-store" });
+        await fetchJson("/api/telegram/poll", { method: "POST", cache: "no-store" });
       } catch {
         // endpoint unavailable; ignore
       }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import VideoLessonPlayer from "@/components/lms/video-lesson-player";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type Question = {
   id: string;
@@ -51,12 +52,10 @@ export default function LmsAkademiPage() {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch("/api/lms?view=enrollments");
-      const d = await r.json();
-      if (d.status === "success") setEnrollments(d.data);
-      else setError(d.message ?? "Gagal memuat kursus");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<Enrollment[]>("/api/lms?view=enrollments");
+      setEnrollments(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -74,19 +73,16 @@ export default function LmsAkademiPage() {
       for (const q of activeModule.questions) {
         if (q.isNote) continue;
         const ans = answers[q.id] ?? "";
-        const res = await fetch("/api/lms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "answer", enrollmentId: activeEnroll.id, questionId: q.id, answerText: ans }),
-        }).then((x) => x.json());
-        if (res.data?.score === 100) correct++;
+        const res = await sendJson<{ score?: number }>("/api/lms", "POST", {
+          action: "answer",
+          enrollmentId: activeEnroll.id,
+          questionId: q.id,
+          answerText: ans,
+        });
+        if (res?.score === 100) correct++;
       }
       setQuizResult({ correct, total });
-      await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "progress", enrollmentId: activeEnroll.id }),
-      });
+      await sendJson("/api/lms", "POST", { action: "progress", enrollmentId: activeEnroll.id }).catch(() => null);
       load();
     } catch {
       setError("Gagal mengirim jawaban");

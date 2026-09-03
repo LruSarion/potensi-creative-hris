@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type SopTask = { id?: string; title: string; requiresPhoto: boolean };
 type SopTemplate = { id: string; title: string; description: string | null; tasks: SopTask[] };
@@ -23,12 +24,10 @@ export default function SopManagementPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/sop?view=templates");
-      const d = await r.json();
-      if (d.status === "success") setTemplates(d.data ?? []);
-      else setError(d.message ?? "Gagal memuat template SOP");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<SopTemplate[]>("/api/sop?view=templates");
+      setTemplates(data ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat template SOP");
     } finally {
       setLoading(false);
     }
@@ -48,31 +47,22 @@ export default function SopManagementPage() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/sop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "create-template",
-          template: {
-            title: formTitle,
-            description: formDesc || null,
-            tasks: validTasks.map((t, i) => ({ title: t.title, requiresPhoto: t.requiresPhoto, order: i + 1 })),
-          },
-        }),
+      await sendJson("/api/sop", "POST", {
+        action: "create-template",
+        template: {
+          title: formTitle,
+          description: formDesc || null,
+          tasks: validTasks.map((t, i) => ({ title: t.title, requiresPhoto: t.requiresPhoto, order: i + 1 })),
+        },
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess(`Template SOP "${formTitle}" berhasil dibuat!`);
-        setShowForm(false);
-        setFormTitle("");
-        setFormDesc("");
-        setTasks([{ title: "", requiresPhoto: false }]);
-        load();
-      } else {
-        setError(d.message ?? "Gagal membuat template");
-      }
-    } catch {
-      setError("Gagal membuat template");
+      setSuccess(`Template SOP "${formTitle}" berhasil dibuat!`);
+      setShowForm(false);
+      setFormTitle("");
+      setFormDesc("");
+      setTasks([{ title: "", requiresPhoto: false }]);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat template");
     }
   }
 

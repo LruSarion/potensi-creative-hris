@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import type { TabSharedProps } from "./types";
 import { generateNewScheduleId } from "@/lib/utils/schedule-helpers";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export interface HybridRowItem {
   TANGGAL: string;
@@ -201,14 +202,11 @@ export function TabHybrid({
         "https://docs.google.com/spreadsheets/d/1lojSwH6_Tyv_gs9K80LcP_ebS22RRS9KgR860l92BFI/copy";
 
       try {
-        const res = await fetch("/api/scheduler-tools", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "buatSalinanMasterHybrid" }),
+        const data = await sendJson<string>("/api/scheduler-tools", "POST", {
+          action: "buatSalinanMasterHybrid",
         });
-        const data = await res.json();
-        if (data.status === "success" && data.data) {
-          spreadsheetUrl = data.data;
+        if (data) {
+          spreadsheetUrl = data;
         }
       } catch {
         // Use default master copy URL
@@ -418,9 +416,7 @@ export function TabHybrid({
     setLoading(true);
     try {
       // Find matching schedules in current workspace / allJadwal or by API
-      const res = await fetch(`/api/jadwal?tanggal=${oldId.replace("HYB/", "")}`);
-      const data = await res.json();
-      const list = (Array.isArray(data) ? data : data?.data || []) as any[];
+      const list = await fetchJson<any[]>(`/api/jadwal?tanggal=${oldId.replace("HYB/", "")}`);
 
       const mapped: HybridRowItem[] = (list.length > 0 ? list : (allJadwal || []).slice(0, 50)).map((j: any) => ({
         TANGGAL: j.tanggal ? new Date(j.tanggal).toISOString().slice(0, 10) : "",
@@ -733,8 +729,9 @@ export function TabHybrid({
           tglIso = formatKeYYYYMMDD(item.TANGGAL);
         }
 
-        const startIso = `${tglIso}T${item.JAM_MULAI_LIVE.slice(0, 5)}:00.000Z`;
-        const endIso = `${tglIso}T${item.JAM_SELESAI_LIVE.slice(0, 5)}:00.000Z`;
+        // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
+        const startIso = `${tglIso}T${item.JAM_MULAI_LIVE.slice(0, 5)}:00+07:00`;
+        const endIso = `${tglIso}T${item.JAM_SELESAI_LIVE.slice(0, 5)}:00+07:00`;
 
         return {
           idJadwal: item.ID_JADWAL || generateNewScheduleId("JDK", tglIso).replace("JDK", "HYB"),
@@ -750,13 +747,7 @@ export function TabHybrid({
         };
       });
 
-      const res = await fetch("/api/jadwal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ batch: batchPayload }),
-      });
-
-      if (!res.ok) throw new Error("Gagal menyimpan jadwal ke database.");
+      await sendJson("/api/jadwal", "POST", { batch: batchPayload });
 
       setModalSuksesSimpan({
         isOpen: true,

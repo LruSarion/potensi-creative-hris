@@ -10,13 +10,21 @@ export const GET = apiHandler(async (req: Request) => {
   let targetKaryawanId = requestedKaryawanId;
 
   // Streamer role can only view their own profile
-  if (user?.role === "STREAMER" && user?.karyawanId) {
+  if (user?.role === "STREAMER") {
     targetKaryawanId = user.karyawanId;
+    if (!targetKaryawanId && user.email) {
+      const k = await db.karyawan.findFirst({ where: { email: user.email } });
+      targetKaryawanId = k?.id ?? null;
+    }
   } else if (!targetKaryawanId) {
-    // If not specified, use the logged-in user's karyawan ID or first streamer
+    // If not specified, use the logged-in user's karyawan ID or email or first streamer
     if (user?.karyawanId) {
       targetKaryawanId = user.karyawanId;
-    } else {
+    } else if (user?.email) {
+      const k = await db.karyawan.findFirst({ where: { email: user.email } });
+      targetKaryawanId = k?.id ?? null;
+    }
+    if (!targetKaryawanId) {
       const firstStreamer = await db.karyawan.findFirst({
         where: {
           OR: [
@@ -38,6 +46,25 @@ export const GET = apiHandler(async (req: Request) => {
     };
   }
 
+  const karyawan = await db.karyawan.findFirst({
+    where: {
+      OR: [
+        { id: targetKaryawanId },
+        { idKaryawan: targetKaryawanId },
+      ],
+    },
+    include: { user: true, streamerProfile: true },
+  });
+
+  if (!karyawan) {
+    return {
+      karyawan: null,
+      message: "Karyawan tidak ditemukan",
+    };
+  }
+
+  const actualKaryawanId = karyawan.id;
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -51,8 +78,6 @@ export const GET = apiHandler(async (req: Request) => {
   const prevMonthLabel = `${months[(now.getMonth() + 11) % 12]} ${now.getFullYear()}`;
 
   const [
-    karyawan,
-    streamerProfile,
     jadwalBulanIni,
     jadwalBatal,
     absensiBulanIni,
@@ -60,59 +85,67 @@ export const GET = apiHandler(async (req: Request) => {
     qcViolations,
     incidents,
     tieringList,
+    penilaianBulanLalu,
+    revenueCurrentMonth,
+    revenuePrevMonth,
   ] = await Promise.all([
-    db.karyawan.findUnique({
-      where: { id: targetKaryawanId },
-    }),
-    db.streamerProfile.findUnique({
-      where: { karyawanId: targetKaryawanId },
-    }),
     db.jadwal.findMany({
       where: {
-        streamerKaryawanId: targetKaryawanId,
+        streamerKaryawanId: actualKaryawanId,
         tanggal: { gte: startOfMonth, lt: endOfMonth },
         status: { in: ["SELESAI", "TERJADWAL", "APPROVED"] },
       },
     }),
     db.jadwal.findMany({
       where: {
-        streamerKaryawanId: targetKaryawanId,
+        streamerKaryawanId: actualKaryawanId,
         tanggal: { gte: startOfMonth, lt: endOfMonth },
         status: { in: ["DIBATALKAN", "REJECTED"] },
       },
     }),
     db.absensi.findMany({
       where: {
-        karyawanId: targetKaryawanId,
+        karyawanId: actualKaryawanId,
         waktu: { gte: startOfMonth, lt: endOfMonth },
       },
     }),
     db.absensi.findMany({
       where: {
-        karyawanId: targetKaryawanId,
+        karyawanId: actualKaryawanId,
         waktu: { gte: startOfPrevMonth, lt: startOfMonth },
       },
     }),
     db.qcViolation.findMany({
-      where: { streamerKaryawanId: targetKaryawanId },
+      where: { streamerKaryawanId: actualKaryawanId },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
     db.incident.findMany({
-      where: { streamerKaryawanId: targetKaryawanId },
+      where: { streamerKaryawanId: actualKaryawanId },
       include: { category: true },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
     db.tiering.findMany({ orderBy: { jamMinimal: "asc" } }),
+    db.penilaianSDM.findFirst({
+      where: { karyawanId: actualKaryawanId },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.revenueEntry.findMany({
+      where: {
+        streamerKaryawanId: actualKaryawanId,
+        eventAt: { gte: startOfMonth, lt: endOfMonth },
+      },
+      select: { grossAmount: true },
+    }),
+    db.revenueEntry.findMany({
+      where: {
+        streamerKaryawanId: actualKaryawanId,
+        eventAt: { gte: startOfPrevMonth, lt: startOfMonth },
+      },
+      select: { grossAmount: true },
+    }),
   ]);
-
-  if (!karyawan) {
-    return {
-      karyawan: null,
-      message: "Karyawan tidak ditemukan",
-    };
-  }
 
   // Calculate total live hours from jadwal
   const totalMinutes = jadwalBulanIni.reduce((s, j) => {
@@ -124,7 +157,7 @@ export const GET = apiHandler(async (req: Request) => {
       if (diff < 0) diff += 1440;
       return s + diff;
     }
-    return s + 120; // Default 2 hours if not set
+    return s;
   }, 0);
   const totalJam = Math.round((totalMinutes / 60) * 10) / 10;
 
@@ -137,20 +170,21 @@ export const GET = apiHandler(async (req: Request) => {
   const ratePerJam = Number(activeTier.ratePerJam ?? 25000);
   const grossPay = Math.round(totalJam * ratePerJam);
 
-  // Total GMV from check-out records with reportedGmv
-  let totalGmv = absensiBulanIni
+  // Total GMV from check-out records with reportedGmv + revenue entries (exact real database data)
+  const gmvFromAbsensi = absensiBulanIni
     .filter((a) => a.tipe === "CHECK_OUT" && a.reportedGmv)
     .reduce((s, a) => s + Number(a.reportedGmv), 0);
+  const gmvFromRevenue = revenueCurrentMonth.reduce((s, r) => s + Number(r.grossAmount), 0);
+  const totalGmv = gmvFromAbsensi + gmvFromRevenue;
 
-  let prevGmv = absensiBulanLalu
+  const prevGmvFromAbsensi = absensiBulanLalu
     .filter((a) => a.tipe === "CHECK_OUT" && a.reportedGmv)
     .reduce((s, a) => s + Number(a.reportedGmv), 0);
+  const prevGmvFromRevenue = revenuePrevMonth.reduce((s, r) => s + Number(r.grossAmount), 0);
+  const prevGmv = prevGmvFromAbsensi + prevGmvFromRevenue;
 
-  // If 0 in mock/dev, provide realistic baseline figures
-  if (totalGmv === 0) totalGmv = 36231284;
-  if (prevGmv === 0) prevGmv = 25300000;
-
-  const estimasiThp = grossPay > 0 ? grossPay : 1650000;
+  // Estimasi THP based on actual hours calculated (Rp 0 if no hours completed)
+  const estimasiThp = grossPay;
 
   // Build violation logs (merging qcViolations and incidents)
   const violationLogs: Array<{
@@ -201,31 +235,21 @@ export const GET = apiHandler(async (req: Request) => {
     });
   }
 
-  // Fallback logs matching design reference if no real records yet
-  if (violationLogs.length === 0) {
-    violationLogs.push(
-      {
-        tanggal: `12 Mei ${now.getFullYear()}`,
-        sesi: "14:00",
-        jenisPelanggaran: "Dead Air Berulang",
-        sanksi: "Teguran Ringan",
-        status: "Resolved",
-      },
-      {
-        tanggal: `05 Mei ${now.getFullYear()}`,
-        sesi: "18:00",
-        jenisPelanggaran: "Sebut Kompetitor",
-        sanksi: "SP 1",
-        status: "Resolved",
-      },
-      {
-        tanggal: `05 Mei ${now.getFullYear()}`,
-        sesi: "18:00",
-        jenisPelanggaran: "Dead Air Berulang",
-        sanksi: "SP 1",
-        status: "Resolved",
-      }
-    );
+  let salesTargetText = "-";
+  let retentionRate: number | string = "-";
+  let conversionRate: number | string = "-";
+
+  if (penilaianBulanLalu) {
+    try {
+      const parsed = JSON.parse(penilaianBulanLalu.komentar || "{}");
+      salesTargetText = parsed.salesTargetText || `${penilaianBulanLalu.skor}% Target`;
+      retentionRate = typeof parsed.retentionRate === "number" ? parsed.retentionRate : penilaianBulanLalu.skor;
+      conversionRate = typeof parsed.conversionRate === "number" ? parsed.conversionRate : (penilaianBulanLalu.skor / 20).toFixed(1);
+    } catch {
+      salesTargetText = `${penilaianBulanLalu.skor}% Skor`;
+      retentionRate = penilaianBulanLalu.skor;
+      conversionRate = "-";
+    }
   }
 
   const startDateFmt = karyawan.startDate
@@ -243,6 +267,11 @@ export const GET = apiHandler(async (req: Request) => {
         year: "numeric",
       })
     : `31 Des ${now.getFullYear()}`;
+  const profilePhoto = karyawan.streamerProfile?.photoUrl;
+  const userImage = karyawan.user?.image;
+  // If profilePhoto is a dummy unsplash seed URL, prioritize userImage (e.g. from Google OAuth) if present
+  const isSeedDummyPhoto = profilePhoto && profilePhoto.includes("unsplash.com");
+  const resolvedPhoto = isSeedDummyPhoto && userImage ? userImage : (profilePhoto || userImage || null);
 
   return {
     karyawan: {
@@ -250,29 +279,34 @@ export const GET = apiHandler(async (req: Request) => {
       idKaryawan: karyawan.idKaryawan,
       namaLengkap: karyawan.namaLengkap,
       namaPanggilan: karyawan.namaPanggilan,
-      fotoUrl: streamerProfile?.photoUrl || "/images/avatar-streamer.jpg",
-      kontrakType: (karyawan.kontrakType || karyawan.kategori || "DEDICATED").toUpperCase(),
+      fotoUrl: resolvedPhoto,
+      jabatan: karyawan.jabatan || "Host Streamer",
+      kategori: karyawan.kategori || "STREAMER",
       startDate: startDateFmt,
       endDate: endDateFmt,
       statusAktif: karyawan.statusAktif || "AKTIF",
+      email: karyawan.email || null,
+      nomorTelepon: karyawan.nomorTelepon || null,
     },
     gmv: {
       currentMonthLabel,
       totalGmv,
       prevMonthGmv: prevGmv,
-      completedSessions: jadwalBulanIni.length > 0 ? jadwalBulanIni.length : 31,
+      completedSessions: jadwalBulanIni.filter((j) => j.status === "SELESAI").length,
       cancelledSessions: jadwalBatal.length > 0 ? String(jadwalBatal.length) : "-",
+      totalLiveHours: totalJam,
     },
     thp: {
       estimasiThp,
       tierName: activeTier.tier || "Basic",
       ratePerJam,
+      totalJamLive: totalJam,
     },
     kpi: {
-      periode: prevMonthLabel,
-      salesTargetText: "Rp 50M (75%)",
-      retentionRate: 82,
-      conversionRate: 4.1,
+      periode: penilaianBulanLalu?.periode || prevMonthLabel,
+      salesTargetText,
+      retentionRate,
+      conversionRate,
     },
     jobDesk: [
       "Host Live: 4 Sesi/Minggu",

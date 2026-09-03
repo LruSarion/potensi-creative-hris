@@ -67,6 +67,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             },
             include: { karyawan: true, accounts: true },
           });
+          // Link karyawan to the new user (mirrors the Google-login flow):
+          // without this, the JWT's karyawanId stays null and streamer/staff
+          // services reject the account with "Akun tidak terhubung ke karyawan".
+          if (!karyawan.userId) {
+            await db.karyawan.update({
+              where: { id: karyawan.id },
+              data: { userId: user.id },
+            });
+            user = { ...user, karyawan };
+          }
         }
 
         // Auto-heal missing PIN hash/salt
@@ -87,9 +97,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         const valid =
-          (Boolean(user.pinSalt && user.pinHash) && verifyPin(pin, user.pinSalt!, user.pinHash!)) ||
-          pin === "123456" ||
-          pin === "1234";
+          Boolean(user.pinSalt && user.pinHash) &&
+          verifyPin(pin, user.pinSalt!, user.pinHash!);
         if (!valid) {
           const newFailed = user.failedLogins + 1;
           const blockedUntil = newFailed >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCKOUT_MS) : null;
@@ -169,6 +178,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.role = dbUser.role as Role;
           token.karyawanId = dbUser.karyawan?.id ?? null;
           token.tenantId = dbUser.tenantId ?? "";
+
+          // Self-heal a missing karyawan link (user pre-existed without it):
+          // match by email and link on Google login, so legacy accounts recover
+          // automatically instead of being rejected by streamer/staff services.
+          if (!token.karyawanId) {
+            const karyawan = await db.karyawan.findFirst({
+              where: { email: userEmail },
+              select: { id: true, userId: true },
+            });
+            if (karyawan && !karyawan.userId) {
+              await db.karyawan.update({
+                where: { id: karyawan.id },
+                data: { userId: dbUser.id },
+              });
+              token.karyawanId = karyawan.id;
+            }
+          }
 
           // Persist or update Google OAuth account tokens in DB
           if (account?.providerAccountId) {

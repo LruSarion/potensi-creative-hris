@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import CameraCapture from "@/components/camera-capture";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 /**
  * QC Live Monitor — for QC reviewers to record live-streaming violations
@@ -76,12 +77,12 @@ export default function QcLiveMonitor() {
     setLoading(true);
     setError("");
     try {
-      const [liveRes, listRes] = await Promise.all([
-        fetch("/api/qc-violation?view=live").then((r) => r.json()),
-        fetch("/api/qc-violation").then((r) => r.json()),
+      const [liveData, listData] = await Promise.all([
+        fetchJson<{ liveStreamers?: LiveStreamer[] }>("/api/qc-violation?view=live").catch(() => null),
+        fetchJson<Violation[]>("/api/qc-violation").catch(() => null),
       ]);
-      if (liveRes.status === "success") {
-        const ls = liveRes.data?.liveStreamers ?? [];
+      if (liveData) {
+        const ls = liveData.liveStreamers ?? [];
         setLiveStreamers(ls);
         // Auto-select the first live streamer.
         if (ls.length && !selectedStreamer) {
@@ -89,7 +90,7 @@ export default function QcLiveMonitor() {
           setSelectedJadwal(ls[0].id);
         }
       }
-      if (listRes.status === "success") setViolations(listRes.data ?? []);
+      if (listData) setViolations(listData ?? []);
     } catch {
       setError("Gagal memuat data live monitoring");
     } finally {
@@ -122,32 +123,23 @@ export default function QcLiveMonitor() {
     }
     setSubmitting(true);
     try {
-      const r = await fetch("/api/qc-violation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          streamerKaryawanId: selectedStreamer,
-          jadwalId: selectedJadwal || null,
-          category,
-          severity,
-          description: description || null,
-          photoUrl: photoUrl || null,
-          videoUrl: videoUrl || null,
-        }),
+      await sendJson("/api/qc-violation", "POST", {
+        streamerKaryawanId: selectedStreamer,
+        jadwalId: selectedJadwal || null,
+        category,
+        severity,
+        description: description || null,
+        photoUrl: photoUrl || null,
+        videoUrl: videoUrl || null,
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
-        setCategory("");
-        setPhotoUrl("");
-        setVideoUrl("");
-        setDescription("");
-        load();
-      } else {
-        setError(d.message ?? "Gagal mencatat pelanggaran");
-      }
-    } catch {
-      setError("Gagal menghubungi server");
+      setSuccess("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
+      setCategory("");
+      setPhotoUrl("");
+      setVideoUrl("");
+      setDescription("");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mencatat pelanggaran");
     } finally {
       setSubmitting(false);
     }

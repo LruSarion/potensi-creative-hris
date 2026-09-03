@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function SuaraKaryawanPage() {
   const { data: session } = useSession();
@@ -35,8 +36,7 @@ export default function SuaraKaryawanPage() {
   async function loadHistory() {
     try {
       setLoadingHistory(true);
-      const res = await fetch("/api/suara");
-      const data = await res.json();
+      const data = await fetchJson<any>("/api/suara");
       if (Array.isArray(data)) {
         setHistory(data);
       }
@@ -99,33 +99,24 @@ export default function SuaraKaryawanPage() {
     try {
       const combinedMessage = `[${formSuara.kategori}] ${formSuara.deskripsi}${formSuara.harapan ? `\n\nHarapan/Solusi: ${formSuara.harapan}` : ""}${formSuara.anonim ? " (Pengirim Anonim)" : ""}`;
 
-      const res = await fetch("/api/suara", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kategori: formSuara.kategori,
-          pesan: combinedMessage,
-          lampiranDriveId: formSuara.buktiB64 || undefined,
-        }),
+      await sendJson("/api/suara", "POST", {
+        kategori: formSuara.kategori,
+        pesan: combinedMessage,
+        lampiranDriveId: formSuara.buktiB64 || undefined,
       });
 
-      if (res.ok) {
-        showAlert("✅ Laporan suara karyawan berhasil dikirim ke manajemen!");
-        setFormSuara({
-          kategori: "KELUHAN",
-          deskripsi: "",
-          harapan: "",
-          buktiB64: "",
-          anonim: false,
-        });
-        loadHistory();
-        setActiveTab("riwayat");
-      } else {
-        const d = await res.json();
-        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengirim laporan"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("✅ Laporan suara karyawan berhasil dikirim ke manajemen!");
+      setFormSuara({
+        kategori: "KELUHAN",
+        deskripsi: "",
+        harapan: "",
+        buktiB64: "",
+        anonim: false,
+      });
+      loadHistory();
+      setActiveTab("riwayat");
+    } catch (err) {
+      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengirim laporan"));
     } finally {
       setSubmitting(false);
     }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
+import { fetchJson } from "@/lib/api-client";
 
 type GmvData = {
   totalGmv: number;
@@ -61,11 +62,10 @@ export default function AnalyticsGmvPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch(`/api/analytics?view=gmv&periode=${encodeURIComponent(periode)}`).then((x) => x.json());
-      if (r.status === "success") setData(r.data);
-      else setError(r.message ?? "Gagal memuat data GMV");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<GmvData>(`/api/analytics?view=gmv&periode=${encodeURIComponent(periode)}`);
+      setData(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat data GMV");
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { formatLogEntry } from "@/lib/log-formatter";
+import { fetchJson } from "@/lib/api-client";
 import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
 import { StreamerListView } from "@/components/streamer-dashboard/streamer-list-view";
 
@@ -28,7 +29,7 @@ function formatRelativeTime(dateStr: string) {
 }
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const userName = session?.user?.name ?? "Karyawan";
   const userRole = session?.user?.role ?? "";
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(userRole);
@@ -38,14 +39,23 @@ export default function DashboardPage() {
   const [activities, setActivities] = useState<any[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(true);
 
+  const [stats, setStats] = useState<{
+    totalKaryawan: number;
+    jadwalHariIni: number;
+    jadwalSelesai: number;
+    streamerAktif: number;
+    sedangLive: number;
+    totalRevenueBulanIni: number;
+  } | null>(null);
+  const [loadingStats, setLoadingStats] = useState(true);
+
   useEffect(() => {
     async function loadRecentActivities() {
       try {
         setLoadingActivities(true);
-        const res = await fetch("/api/history");
-        const d = await res.json();
-        if (d.status === "success" && Array.isArray(d.data)) {
-          setActivities(d.data.slice(0, 5));
+        const data = await fetchJson<any[]>("/api/history");
+        if (Array.isArray(data)) {
+          setActivities(data.slice(0, 5));
         }
       } catch {
         // ignore
@@ -55,6 +65,42 @@ export default function DashboardPage() {
     }
     loadRecentActivities();
   }, []);
+
+  useEffect(() => {
+    async function loadStats() {
+      try {
+        setLoadingStats(true);
+        const data = await fetchJson<any>("/api/dashboard/stats");
+        if (data) {
+          setStats(data);
+        }
+      } catch {
+        // ignore
+      } finally {
+        setLoadingStats(false);
+      }
+    }
+    if (isAdmin) loadStats();
+  }, [isAdmin]);
+
+  /** Format revenue in IDR: e.g. 1_500_000 -> "Rp 1,5Jt", 124_000_000 -> "Rp 124Jt" */
+  function formatRevenue(amount: number): string {
+    if (amount >= 1_000_000_000) return `Rp ${(amount / 1_000_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+    if (amount >= 1_000_000) return `Rp ${(amount / 1_000_000).toFixed(1).replace(/\.0$/, "")}Jt`;
+    if (amount >= 1_000) return `Rp ${(amount / 1_000).toFixed(0)}Rb`;
+    return `Rp ${amount.toLocaleString("id-ID")}`;
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="w-full min-h-[400px] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-2">
+          <i className="fa-solid fa-circle-notch fa-spin text-2xl text-[#941A0B]" />
+          <p className="text-xs text-slate-500 font-medium">Memuat dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full flex flex-col justify-between min-h-full space-y-6">
@@ -67,7 +113,8 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          {/* View Toggle Tabs */}
+          {/* View Toggle Tabs — only shown for admin roles */}
+          {isAdmin && (
           <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto">
             <button
               type="button"
@@ -81,8 +128,8 @@ export default function DashboardPage() {
                   : "text-slate-600 hover:text-slate-900"
               }`}
             >
-              <i className={isAdmin ? "fa-solid fa-users-viewfinder text-xs" : "fa-solid fa-id-card text-xs"} />
-              <span>{isAdmin ? "Daftar & Profil Streamer" : "Profil & SOP Saya"}</span>
+              <i className="fa-solid fa-users-viewfinder text-xs" />
+              <span>Daftar &amp; Profil Streamer</span>
             </button>
             <button
               type="button"
@@ -97,35 +144,38 @@ export default function DashboardPage() {
               <span>Statistik Ringkasan</span>
             </button>
           </div>
+          )}
         </div>
 
-        {/* View 1: Streamer List -> Streamer Profile Card Overview (Role Aware) */}
-        {dashboardView === "streamer_sop" && (
+        {/* If user is not admin (e.g. Streamer role), always display their own Profil & SOP directly */}
+        {!isAdmin ? (
           <div className="pt-2">
-            {isAdmin ? (
-              !selectedStreamerId ? (
-                <StreamerListView
-                  onSelectStreamer={(id) => setSelectedStreamerId(id)}
-                  currentKaryawanId={(session?.user as any)?.karyawanId}
-                />
-              ) : (
-                <StreamerProfileCardOverview
-                  streamerId={selectedStreamerId}
-                  onBackToList={() => setSelectedStreamerId(null)}
-                />
-              )
-            ) : (
-              /* Streamer role: only sees their own profile */
-              <StreamerProfileCardOverview
-                streamerId={(session?.user as any)?.karyawanId || undefined}
-              />
-            )}
+            <StreamerProfileCardOverview
+              streamerId={(session?.user as any)?.karyawanId || undefined}
+            />
           </div>
-        )}
+        ) : (
+          <>
+            {/* View 1: Streamer List -> Streamer Profile Card Overview (Admin view) */}
+            {dashboardView === "streamer_sop" && (
+              <div className="pt-2">
+                {!selectedStreamerId ? (
+                  <StreamerListView
+                    onSelectStreamer={(id) => setSelectedStreamerId(id)}
+                    currentKaryawanId={(session?.user as any)?.karyawanId}
+                  />
+                ) : (
+                  <StreamerProfileCardOverview
+                    streamerId={selectedStreamerId}
+                    onBackToList={() => setSelectedStreamerId(null)}
+                  />
+                )}
+              </div>
+            )}
 
-        {/* View 2: Main Global Dashboard Overview */}
-        {dashboardView === "main" && (
-          <div>
+            {/* View 2: Main Global Dashboard Overview (Admin Stats) */}
+            {dashboardView === "main" && (
+              <div>
 
         {/* Stat Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-6">
@@ -134,8 +184,10 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-[#4D4D4D]">Total Karyawan</span>
               <i className="fa-solid fa-users text-[#941A0B] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-[#000000] mb-1">124</div>
-            <div className="text-xs text-[#919191]">+4% dari bulan lalu</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">
+              {loadingStats ? <span className="inline-block w-10 h-7 bg-slate-100 rounded animate-pulse" /> : (stats?.totalKaryawan ?? "-")}
+            </div>
+            <div className="text-xs text-[#919191]">karyawan aktif</div>
           </div>
 
           <div className="bg-[#FFFFFF] p-5 rounded-xl border border-[#F1F1F1] shadow-sm flex flex-col">
@@ -143,8 +195,12 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-[#4D4D4D]">Jadwal Hari Ini</span>
               <i className="fa-regular fa-calendar-days text-[#047857] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-[#000000] mb-1">32</div>
-            <div className="text-xs text-[#919191]">8 selesai</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">
+              {loadingStats ? <span className="inline-block w-10 h-7 bg-slate-100 rounded animate-pulse" /> : (stats?.jadwalHariIni ?? "-")}
+            </div>
+            <div className="text-xs text-[#919191]">
+              {loadingStats ? "memuat..." : `${stats?.jadwalSelesai ?? 0} selesai`}
+            </div>
           </div>
 
           {/* Streamer Aktif Card -> Clickable to switch to Streamer List/Detail */}
@@ -159,9 +215,11 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-[#4D4D4D] group-hover:text-[#941A0B]">Streamer Aktif</span>
               <i className="fa-solid fa-wave-square text-[#FA3737] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-[#000000] mb-1 group-hover:text-[#941A0B]">45</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1 group-hover:text-[#941A0B]">
+              {loadingStats ? <span className="inline-block w-10 h-7 bg-slate-100 rounded animate-pulse" /> : (stats?.streamerAktif ?? "-")}
+            </div>
             <div className="text-xs text-[#919191] flex items-center justify-between">
-              <span>12 sedang live</span>
+              <span>{loadingStats ? "memuat..." : `${stats?.sedangLive ?? 0} sedang live`}</span>
               <span className="text-[#941A0B] font-bold text-[11px] group-hover:underline flex items-center gap-0.5">
                 Lihat Detail <i className="fa-solid fa-chevron-right text-[9px]" />
               </span>
@@ -173,8 +231,10 @@ export default function DashboardPage() {
               <span className="text-sm font-medium text-[#4D4D4D]">Total Revenue</span>
               <i className="fa-solid fa-arrow-trend-up text-[#941A0B] text-lg" />
             </div>
-            <div className="text-3xl font-bold text-[#000000] mb-1">Rp 124M</div>
-            <div className="text-xs text-[#919191]">+12% dari bulan lalu</div>
+            <div className="text-3xl font-bold text-[#000000] mb-1">
+              {loadingStats ? <span className="inline-block w-24 h-7 bg-slate-100 rounded animate-pulse" /> : formatRevenue(stats?.totalRevenueBulanIni ?? 0)}
+            </div>
+            <div className="text-xs text-[#919191]">bulan ini</div>
           </div>
         </div>
 
@@ -295,6 +355,8 @@ export default function DashboardPage() {
         </div>
       </div>
     )}
+    </>
+  )}
       </div>
 
       <div className="mt-8 text-center pb-4">

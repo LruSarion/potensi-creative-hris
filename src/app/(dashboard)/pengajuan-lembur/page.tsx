@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function PengajuanLemburPage() {
   const { data: session } = useSession();
@@ -55,8 +56,7 @@ export default function PengajuanLemburPage() {
   async function loadHistory() {
     try {
       setLoadingHistory(true);
-      const res = await fetch("/api/lembur");
-      const data = await res.json();
+      const data = await fetchJson<any>("/api/lembur");
       if (Array.isArray(data)) {
         setHistory(data);
         const approved = data.find((d: any) => d.status === "APPROVED" || d.status === "PENDING");
@@ -150,34 +150,25 @@ export default function PengajuanLemburPage() {
       const startIso = new Date(`${formAjukan.tanggal}T${formAjukan.jamMulai}:00`).toISOString();
       const endIso = new Date(`${formAjukan.tanggal}T${formAjukan.jamSelesai}:00`).toISOString();
 
-      const res = await fetch("/api/lembur", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          tanggal: new Date(formAjukan.tanggal).toISOString(),
-          jamMulai: startIso,
-          jamSelesai: endIso,
-          alasan: `[SPV: ${formAjukan.spv}] ${formAjukan.kegiatan}`,
-        }),
+      await sendJson("/api/lembur", "POST", {
+        tanggal: new Date(formAjukan.tanggal).toISOString(),
+        jamMulai: startIso,
+        jamSelesai: endIso,
+        alasan: `[SPV: ${formAjukan.spv}] ${formAjukan.kegiatan}`,
       });
 
-      if (res.ok) {
-        showAlert("✅ Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
-        setFormAjukan({
-          tanggal: new Date().toISOString().split("T")[0],
-          spv: "Raihan",
-          jamMulai: "18:00",
-          jamSelesai: "21:00",
-          kegiatan: "",
-        });
-        loadHistory();
-        setActiveTab("riwayat");
-      } else {
-        const d = await res.json();
-        showAlert("❌ Gagal: " + (d.error || d.message || "Gagal mengajukan lembur"));
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+      showAlert("✅ Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
+      setFormAjukan({
+        tanggal: new Date().toISOString().split("T")[0],
+        spv: "Raihan",
+        jamMulai: "18:00",
+        jamSelesai: "21:00",
+        kegiatan: "",
+      });
+      loadHistory();
+      setActiveTab("riwayat");
+    } catch (err) {
+      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengajukan lembur"));
     } finally {
       setSubmittingAjukan(false);
     }
@@ -192,21 +183,13 @@ export default function PengajuanLemburPage() {
 
     setSubmittingMulai(true);
     try {
-      const res = await fetch(`/api/lembur?id=${formMulai.idLembur}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          buktiDriveId: formMulai.fotoB64,
-        }),
+      await sendJson(`/api/lembur?id=${formMulai.idLembur}`, "PATCH", {
+        buktiDriveId: formMulai.fotoB64,
       });
 
-      if (res.ok) {
-        showAlert("✅ Absen mulai lembur berhasil dicatat!");
-        loadHistory();
-        setActiveTab("selesai");
-      } else {
-        showAlert("❌ Gagal mencatat absen masuk lembur.");
-      }
+      showAlert("✅ Absen mulai lembur berhasil dicatat!");
+      loadHistory();
+      setActiveTab("selesai");
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
@@ -223,22 +206,14 @@ export default function PengajuanLemburPage() {
 
     setSubmittingSelesai(true);
     try {
-      const res = await fetch(`/api/lembur?id=${formSelesai.idLembur}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          buktiDriveId: formSelesai.fotoB64,
-          alasan: formSelesai.catatan,
-        }),
+      await sendJson(`/api/lembur?id=${formSelesai.idLembur}`, "PATCH", {
+        buktiDriveId: formSelesai.fotoB64,
+        alasan: formSelesai.catatan,
       });
 
-      if (res.ok) {
-        showAlert("✅ Absen selesai lembur dan laporan akhir berhasil dikirim!");
-        loadHistory();
-        setActiveTab("riwayat");
-      } else {
-        showAlert("❌ Gagal mencatat absen selesai lembur.");
-      }
+      showAlert("✅ Absen selesai lembur dan laporan akhir berhasil dikirim!");
+      loadHistory();
+      setActiveTab("riwayat");
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     } finally {
@@ -250,13 +225,9 @@ export default function PengajuanLemburPage() {
     const confirmed = await showConfirm(`Yakin ingin ${approve ? "MENYETUJUI" : "MENOLAK"} lembur ini?`);
     if (!confirmed) return;
     try {
-      const res = await fetch(`/api/lembur?id=${id}&approve=${approve}`, { method: "PATCH" });
-      if (res.ok) {
-        showAlert(`✅ Lembur berhasil ${approve ? "disetujui" : "ditolak"}!`);
-        loadHistory();
-      } else {
-        showAlert("❌ Gagal memperbarui status lembur.");
-      }
+      await sendJson(`/api/lembur?id=${id}&approve=${approve}`, "PATCH");
+      showAlert(`✅ Lembur berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      loadHistory();
     } catch {
       showAlert("⚠️ Terjadi kesalahan koneksi.");
     }

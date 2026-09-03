@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
 import type { ScheduleFormItem } from "@/types/jadwal";
 import type { ClientRecord } from "@/types/employee";
-import { PLATFORMS } from "@/types/jadwal";
 import type { PlatformClientOption } from "@/lib/utils/schedule-helpers";
 
 /**
@@ -119,6 +118,7 @@ export function useJadwalData() {
   }, [fetchData, loadKendaliConfig, loadInfoStreamer]);
 
   // ---- Derived: Platform Client Options --------------------------------
+  // ONLY client + platform combinations are returned. Standalone platforms without client are excluded.
   const platformClientOptions = useMemo<PlatformClientOption[]>(() => {
     const options: PlatformClientOption[] = [];
     const seen = new Set<string>();
@@ -126,18 +126,50 @@ export function useJadwalData() {
     if (Array.isArray(clients) && clients.length > 0) {
       for (const c of clients) {
         const brand = (c.namaMerk || c.namaClient || "").trim();
-        const k0 = c.ketentuan?.[0];
-        const mps = [
-          k0?.marketplace1 || c.platform,
-          k0?.marketplace2,
-          k0?.marketplace3,
-        ]
-          .filter((m): m is string => Boolean(m))
-          .map((m) => m.trim());
-        const finalMps = mps.length > 0 ? mps : [c.platform || "Shopee Live"];
+        if (!brand) continue;
+
+        const clientMps = new Set<string>();
+
+        // 1. Direct platform field on Client
+        if (c.platform && typeof c.platform === "string") {
+          const raw = c.platform.trim();
+          if (raw) {
+            raw.split(/[,;/]+/).forEach((part: string) => {
+              const trimmed = part.trim();
+              if (trimmed) clientMps.add(trimmed);
+            });
+          }
+        }
+
+        // 2. Ketentuan entries (platform, marketplace1, marketplace2, marketplace3)
+        if (Array.isArray(c.ketentuan) && c.ketentuan.length > 0) {
+          for (const k of c.ketentuan) {
+            if (!k) continue;
+            [k.platform, k.marketplace1, k.marketplace2, k.marketplace3].forEach((m) => {
+              if (m && typeof m === "string") {
+                const raw = m.trim();
+                if (raw) {
+                  raw.split(/[,;/]+/).forEach((part: string) => {
+                    const trimmed = part.trim();
+                    if (trimmed) clientMps.add(trimmed);
+                  });
+                }
+              }
+            });
+          }
+        }
+
+        // If client has platforms defined, use them. If none defined, default to "Shopee Live"
+        const finalMps = clientMps.size > 0 ? Array.from(clientMps) : ["Shopee Live"];
 
         for (const mp of finalMps) {
-          const label = brand ? `${brand} ${mp}` : mp;
+          let label: string;
+          if (brand.toLowerCase().includes(mp.toLowerCase())) {
+            label = brand;
+          } else {
+            label = `${brand} ${mp}`;
+          }
+
           if (!seen.has(label)) {
             seen.add(label);
             options.push({ label, value: label, clientId: c.id });
@@ -145,14 +177,6 @@ export function useJadwalData() {
         }
       }
     }
-
-    // Always ensure standard / fallback platforms are present
-    PLATFORMS.forEach((p) => {
-      if (!seen.has(p)) {
-        seen.add(p);
-        options.push({ label: p, value: p, clientId: "" });
-      }
-    });
 
     return options;
   }, [clients]);

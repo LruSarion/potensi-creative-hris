@@ -3,7 +3,6 @@
 import React, { useState } from "react";
 import type { TabSharedProps } from "./types";
 import type { ScheduleFormItem } from "@/types/jadwal";
-import { STUDIOS } from "@/types/jadwal";
 import {
   generateNewScheduleId,
   applyShiftOts,
@@ -14,7 +13,11 @@ import {
   calcWajibHadir,
 } from "@/lib/utils/date-format";
 import FlatpickrPicker from "@/components/ui/flatpickr-picker";
-import { inputCls, selectCls, labelCls, getStatusBadgeClass } from "./shared-styles";
+import { toast } from "@/components/ui/toast";
+import { sendJson } from "@/lib/api-client";
+import { FlatpickrTimeInput } from "./flatpickr-time-input";
+import { calculateEndTime } from "@/lib/utils/schedule-helpers";
+import { labelCls, getStatusBadgeClass } from "./shared-styles";
 
 export function TabOts({
   otsStaff,
@@ -110,13 +113,13 @@ export function TabOts({
     setIsOtsCrashVerified(false);
   }
 
-  function checkBebasCrashOts() {
+  function runOtsCrashValidation(): { isValid: boolean; conflicts: any[] } {
     const conflicts: any[] = [];
     for (let i = 0; i < otsForms.length; i++) {
       const d1 = otsForms[i];
       if (!d1.tanggal || !d1.jamMulaiLive || !d1.jamSelesaiLive) {
-        showAlert("⚠️ Pastikan Tanggal, Jam Masuk, dan Jam Keluar terisi di semua form OTS.");
-        return;
+        showAlert(`⚠️ Pastikan Tanggal, Jam Masuk, dan Jam Keluar terisi di Jadwal #${i + 1}.`);
+        return { isValid: false, conflicts: [] };
       }
       for (let j = i + 1; j < otsForms.length; j++) {
         const d2 = otsForms[j];
@@ -141,6 +144,12 @@ export function TabOts({
         }
       }
     }
+    return { isValid: true, conflicts };
+  }
+
+  function checkBebasCrashOts() {
+    const { isValid, conflicts } = runOtsCrashValidation();
+    if (!isValid) return;
 
     if (conflicts.length > 0) {
       setIsOtsCrashVerified(false);
@@ -167,14 +176,35 @@ export function TabOts({
     setSuccess("");
 
     if (!isOtsCrashVerified) {
-      showAlert("⚠️ Silakan klik tombol 'Bebas Crash' terlebih dahulu sebelum menyimpan!");
-      return;
+      const { isValid, conflicts } = runOtsCrashValidation();
+      if (!isValid) return;
+
+      if (conflicts.length > 0) {
+        setIsOtsCrashVerified(false);
+        setModalCrashData({
+          isOpen: true,
+          isSafe: false,
+          title: "Jadwal OTS Bentrok!",
+          conflicts,
+        });
+        return;
+      }
+      setIsOtsCrashVerified(true);
     }
 
     setLoading(true);
 
     try {
       for (const item of otsForms) {
+        // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
+        const cleanStart = item.jamMulaiLive.includes("T")
+          ? item.jamMulaiLive
+          : `${item.tanggal}T${item.jamMulaiLive.length === 5 ? item.jamMulaiLive + ":00" : item.jamMulaiLive}+07:00`;
+
+        const cleanEnd = item.jamSelesaiLive.includes("T")
+          ? item.jamSelesaiLive
+          : `${item.tanggal}T${item.jamSelesaiLive.length === 5 ? item.jamSelesaiLive + ":00" : item.jamSelesaiLive}+07:00`;
+
         const payload = {
           idJadwal: item.idJadwal || generateNewScheduleId("OTS", item.tanggal),
           tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : new Date().toISOString(),
@@ -182,20 +212,17 @@ export function TabOts({
           idOts: item.otsId || null,
           cabangStudio: item.cabangStudio,
           nomorStudio: item.nomorStudio,
-          jamMulaiLive: item.jamMulaiLive.includes("T") ? item.jamMulaiLive : `${item.tanggal}T${item.jamMulaiLive}:00.000Z`,
-          jamSelesaiLive: item.jamSelesaiLive.includes("T") ? item.jamSelesaiLive : `${item.tanggal}T${item.jamSelesaiLive}:00.000Z`,
+          jamMulaiLive: cleanStart,
+          jamSelesaiLive: cleanEnd,
           catatanOts: item.catatanOts || null,
           filePendukungOtsDriveId: (item.filesOts || []).filter(Boolean).join(", ") || null,
           status: "TERJADWAL",
         };
 
-        await fetch("/api/jadwal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await sendJson("/api/jadwal", "POST", payload);
       }
       setSuccess(`✅ Berhasil menyimpan ${otsForms.length} Jadwal OTS!`);
+      toast.success(`Berhasil menyimpan ${otsForms.length} Jadwal OTS!`);
       setIsOtsCrashVerified(false);
       setOtsForms([
         {
@@ -216,8 +243,10 @@ export function TabOts({
         },
       ]);
       fetchData();
-    } catch {
-      setError("Terjadi kesalahan koneksi saat menyimpan Jadwal OTS.");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan koneksi saat menyimpan Jadwal OTS.";
+      setError(errMsg);
+      toast.error(errMsg, "Gagal Menyimpan Jadwal");
     } finally {
       setLoading(false);
     }
@@ -327,21 +356,36 @@ export function TabOts({
 
       {/* FORM CARDS */}
       <form onSubmit={submitOtsSchedules} className="space-y-4">
-        {otsForms.map((item, idx) => (
+        {otsForms.map((item, idx) => {
+          const isCollapsed = item.isCollapsed;
+          const otsName = item.otsNama || "Pilih Staff";
+          const tanggalLabel = item.tanggal ? formatDateSafe(item.tanggal) : "--/--/----";
+          const jamLabel = item.jamMulaiLive ? `${item.jamMulaiLive || "--:--"} - ${item.jamSelesaiLive || "--:--"}` : "--:-- - --:--";
+
+          return (
           <div
             key={item.id}
-            className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4 relative"
+            className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4"
           >
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-7 h-7 bg-[#941A0B] text-white rounded-lg flex items-center justify-center text-xs font-bold">
-                  {idx + 1}
-                </span>
-                <span className="font-mono text-xs font-bold text-slate-700">
-                  {item.idJadwal}
-                </span>
+            {/* Accordion Header (ref: cardOts header) */}
+            <div
+              onClick={() => updateOtsField(idx, "isCollapsed", !isCollapsed)}
+              className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                  #{idx + 1}
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                    Penugasan OTS {otsName !== "Pilih Staff" ? `- ${otsName}` : "Baru"}
+                  </h3>
+                  <span className="text-[11px] font-normal text-slate-500 mt-0.5 inline-block">
+                    {tanggalLabel} | {jamLabel}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   onClick={() => handleDuplicateOtsForm(item)}
@@ -354,142 +398,183 @@ export function TabOts({
                   <button
                     type="button"
                     onClick={() => handleRemoveOtsForm(item.id)}
-                    className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold transition"
+                    className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
                     title="Hapus Form"
                   >
                     <i className="fa-solid fa-trash" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => updateOtsField(idx, "isCollapsed", !isCollapsed)}
+                  className="text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                >
+                  <i className={`fa-solid ${isCollapsed ? "fa-chevron-down" : "fa-chevron-up"}`} />
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Tanggal */}
-              <div>
-                <label className={labelCls}>Tanggal Kerja *</label>
-                <FlatpickrPicker
-                  value={item.tanggal}
-                  placeholder="Pilih Tanggal..."
-                  options={{ mode: "single", dateFormat: "Y-m-d" }}
-                  onChange={(dateStr) => updateOtsField(idx, "tanggal", dateStr)}
-                />
+            {/* Accordion Body (ref: bodyOts sections) */}
+            {!isCollapsed && (
+            <div className="p-5 sm:p-6 space-y-6 block">
+              {/* Row 1: Tanggal + Cabang Studio (ref grid md:2) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Penugasan *</label>
+                  <FlatpickrPicker
+                    value={item.tanggal}
+                    placeholder="Pilih Tanggal..."
+                    options={{ mode: "single", dateFormat: "Y-m-d" }}
+                    onChange={(dateStr) => updateOtsField(idx, "tanggal", dateStr)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cabang Studio *</label>
+                  <select
+                    value={item.cabangStudio || ""}
+                    onChange={(e) => updateOtsField(idx, "cabangStudio", e.target.value)}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    required
+                  >
+                    <option value="" disabled>Pilih Cabang</option>
+                    <option value="Timoho">Timoho</option>
+                    <option value="Berbah">Berbah</option>
+                    <option value="Wiyoro">Wiyoro</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Personel OTS */}
-              <div>
-                <label className={labelCls}>Personel OTS *</label>
-                <select
-                  value={item.otsKaryawanId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const o = otsStaff.find((x) => x.id === id);
-                    updateOtsField(idx, "otsKaryawanId", id);
-                    updateOtsField(idx, "otsId", o?.idKaryawan || "");
-                    updateOtsField(idx, "otsNama", o?.namaLengkap || "");
-                  }}
-                  className={selectCls}
-                  required
-                >
-                  <option value="">-- Pilih Staff OTS --</option>
-                  {otsStaff.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.namaLengkap} ({o.idKaryawan})
-                    </option>
-                  ))}
-                </select>
+              {/* Row 2: Cari Staff OTS + auto ID/Nama (ref bordered-top grid) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cari Staff OTS *</label>
+                  <select
+                    value={item.otsKaryawanId}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const o = otsStaff.find((x) => x.id === id);
+                      updateOtsField(idx, "otsKaryawanId", id);
+                      updateOtsField(idx, "otsId", o?.idKaryawan || "");
+                      updateOtsField(idx, "otsNama", o?.namaLengkap || "");
+                    }}
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    required
+                  >
+                    <option value="">-- Cari Staff OTS --</option>
+                    {otsStaff.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.namaLengkap} ({o.idKaryawan})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">ID OTS (Auto)</label>
+                    <input
+                      type="text"
+                      value={item.otsId || ""}
+                      readOnly
+                      className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nama OTS</label>
+                    <input
+                      type="text"
+                      value={item.otsNama || ""}
+                      readOnly
+                      className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* Cabang & Studio */}
-              <div>
-                <label className={labelCls}>Cabang & Studio</label>
-                <select
-                  value={`${item.cabangStudio}|${item.nomorStudio}`}
-                  onChange={(e) => {
-                    const [c, n] = e.target.value.split("|");
-                    updateOtsField(idx, "cabangStudio", c);
-                    updateOtsField(idx, "nomorStudio", n);
-                  }}
-                  className={selectCls}
-                >
-                  {STUDIOS.map((s) => (
-                    <option key={s.name} value={`${s.cabang}|${s.no}`}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
+              {/* Row 3: Shift + Jam Masuk/Keluar + Catatan (ref grid md:2, inner grid-cols-3) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Pilih Shift</label>
+                    <select
+                      value={item.shiftOts || ""}
+                      onChange={(e) => {
+                        const shift = e.target.value;
+                        const times = applyShiftOts(shift);
+                        updateOtsField(idx, "shiftOts", shift);
+                        if (times.masuk) updateOtsField(idx, "jamMulaiLive", times.masuk);
+                        if (times.keluar) updateOtsField(idx, "jamSelesaiLive", times.keluar);
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    >
+                      <option value="">Kustom</option>
+                      <option value="07:00-15:00">07:00-15:00</option>
+                      <option value="15:00-23:00">15:00-23:00</option>
+                      <option value="23:00-07:00">23:00-07:00</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Masuk *</label>
+                    <FlatpickrTimeInput
+                      id={`O_JAM_MASUK_${idx + 1}`}
+                      className="px-2 py-2.5"
+                      value={item.jamMulaiLive}
+                      onChange={(val) => {
+                        updateOtsField(idx, "jamMulaiLive", val);
+                        // Auto-fill end time +8 hours (mirrors ref-deploy calculateEndTimeOts)
+                        const auto = calculateEndTime(val, 8);
+                        if (auto) updateOtsField(idx, "jamSelesaiLive", auto);
+                        // Custom manual time clears the preset shift
+                        if (item.shiftOts) updateOtsField(idx, "shiftOts", "");
+                      }}
+                      placeholder="Jam Masuk"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Keluar *</label>
+                    <FlatpickrTimeInput
+                      id={`O_JAM_KELUAR_${idx + 1}`}
+                      className="px-2 py-2.5"
+                      value={item.jamSelesaiLive}
+                      onChange={(val) => updateOtsField(idx, "jamSelesaiLive", val)}
+                      placeholder="Jam Keluar"
+                      required
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan Pekerjaan</label>
+                  <textarea
+                    rows={3}
+                    value={item.catatanOts || ""}
+                    onChange={(e) => updateOtsField(idx, "catatanOts", e.target.value)}
+                    placeholder="Catatan penugasan khusus, kendala teknis, dll..."
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
               </div>
 
-              {/* Shift Preset */}
-              <div>
-                <label className={labelCls}>Preset Shift</label>
-                <select
-                  value={item.shiftOts || ""}
-                  onChange={(e) => {
-                    const shift = e.target.value;
-                    const times = applyShiftOts(shift);
-                    updateOtsField(idx, "shiftOts", shift);
-                    if (times.masuk) updateOtsField(idx, "jamMulaiLive", times.masuk);
-                    if (times.keluar) updateOtsField(idx, "jamSelesaiLive", times.keluar);
-                  }}
-                  className={selectCls}
-                >
-                  <option value="">Kustom (Manual)</option>
-                  <option value="07:00-15:00">Shift Pagi (07:00 - 15:00)</option>
-                  <option value="15:00-23:00">Shift Siang (15:00 - 23:00)</option>
-                  <option value="23:00-07:00">Shift Malam (23:00 - 07:00)</option>
-                </select>
-              </div>
-
-              {/* Jam Masuk */}
-              <div>
-                <label className={labelCls}>Jam Masuk *</label>
-                <input
-                  type="time"
-                  value={item.jamMulaiLive}
-                  onChange={(e) => updateOtsField(idx, "jamMulaiLive", e.target.value)}
-                  className={inputCls}
-                  required
-                />
-              </div>
-
-              {/* Jam Keluar */}
-              <div>
-                <label className={labelCls}>Jam Keluar *</label>
-                <input
-                  type="time"
-                  value={item.jamSelesaiLive}
-                  onChange={(e) => updateOtsField(idx, "jamSelesaiLive", e.target.value)}
-                  className={inputCls}
-                  required
-                />
-              </div>
-
-              {/* Link File Google Drive */}
-              <div className="sm:col-span-2">
-                <label className={labelCls}>Link File Pendukung (Google Drive)</label>
-                <input
-                  type="text"
-                  value={item.filesOts?.[0] || ""}
-                  onChange={(e) => updateOtsField(idx, "filesOts", [e.target.value])}
-                  placeholder="https://drive.google.com/..."
-                  className={inputCls}
-                />
+              {/* Row 4: File Pendukung (ref mt-5 pt-5 border-t) */}
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <label className="block text-sm font-semibold text-slate-700 mb-1.5">File Pendukung</label>
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={item.filesOts?.[0] || ""}
+                    onChange={(e) => updateOtsField(idx, "filesOts", [e.target.value])}
+                    placeholder="https://drive.google.com/..."
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2">
+                  Paste link Google Drive atau dokumen pendukung penugasan.
+                </p>
               </div>
             </div>
-
-            {/* Catatan OTS */}
-            <div>
-              <label className={labelCls}>Catatan Penugasan OTS</label>
-              <textarea
-                rows={2}
-                value={item.catatanOts || ""}
-                onChange={(e) => updateOtsField(idx, "catatanOts", e.target.value)}
-                placeholder="Catatan penugasan khusus, kendala teknis, dll..."
-                className={inputCls}
-              />
-            </div>
+            )}
           </div>
-        ))}
+          );
+        })}
 
         {/* Action Buttons */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -511,14 +596,14 @@ export function TabOts({
             </button>
             <button
               type="submit"
-              disabled={loading || !isOtsCrashVerified}
+              disabled={loading}
               className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs text-white ${
-                isOtsCrashVerified && !loading
-                  ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                  : "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-200"
+                loading
+                  ? "bg-slate-400 cursor-wait"
+                  : "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
               }`}
             >
-              <i className="fa-solid fa-cloud-arrow-up" />
+              <i className={`fa-solid ${loading ? "fa-spinner fa-spin" : "fa-cloud-arrow-up"}`} />
               <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal OTS"}</span>
             </button>
           </div>

@@ -9,6 +9,10 @@ import {
 } from "@/lib/utils/schedule-helpers";
 import { calcDurationHours } from "@/lib/utils/date-format";
 import FlatpickrPicker from "@/components/ui/flatpickr-picker";
+import { FlatpickrTimeInput } from "./flatpickr-time-input";
+import { calculateEndTime } from "@/lib/utils/schedule-helpers";
+import { toast } from "@/components/ui/toast";
+import { sendJson } from "@/lib/api-client";
 
 export function TabMarketplace({
   streamers = [],
@@ -56,16 +60,6 @@ export function TabMarketplace({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  // =========================================================================
-  // HELPER: HITUNG JAM SELESAI OTOMATIS (+2 JAM)
-  // =========================================================================
-  function calculateEndTime(startVal: string): string {
-    if (!startVal) return "";
-    const [h, m] = startVal.split(":").map(Number);
-    const endH = (h + 2) % 24;
-    return `${String(endH).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`;
-  }
 
   // =========================================================================
   // FORM ACTIONS
@@ -126,7 +120,7 @@ export function TabMarketplace({
 
       if (field === "jamMulaiLive") {
         if (value && !item.jamSelesaiLive) {
-          item.jamSelesaiLive = calculateEndTime(value);
+          item.jamSelesaiLive = calculateEndTime(value, 2);
         }
         if (value && item.jamSelesaiLive) {
           item.durasi = calcDurationHours(value, item.jamSelesaiLive);
@@ -302,10 +296,10 @@ export function TabMarketplace({
   }
 
   // --- Bebas Crash Check ---
-  function checkBebasCrashMarketplace() {
+  function runMarketplaceCrashValidation(): { isValid: boolean; conflicts: any[] } {
     if (marketplaceForms.length === 0) {
       showAlert("Tidak ada formulir aktif untuk diperiksa.");
-      return;
+      return { isValid: false, conflicts: [] };
     }
 
     for (let i = 0; i < marketplaceForms.length; i++) {
@@ -314,7 +308,7 @@ export function TabMarketplace({
         showAlert(
           `⚠️ VALIDASI GAGAL:\nKolom wajib pada Form Marketplace #${i + 1} belum Anda isi.`
         );
-        return;
+        return { isValid: false, conflicts: [] };
       }
     }
 
@@ -360,6 +354,13 @@ export function TabMarketplace({
       }
     }
 
+    return { isValid: true, conflicts };
+  }
+
+  function checkBebasCrashMarketplace() {
+    const { isValid, conflicts } = runMarketplaceCrashValidation();
+    if (!isValid) return;
+
     if (conflicts.length > 0) {
       setIsMarketplaceCrashVerified(false);
       setModalCrashData({
@@ -386,10 +387,20 @@ export function TabMarketplace({
     setSuccess("");
 
     if (!isMarketplaceCrashVerified) {
-      showAlert(
-        "⚠️ Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu untuk memastikan tidak ada tabrakan jadwal!"
-      );
-      return;
+      const { isValid, conflicts } = runMarketplaceCrashValidation();
+      if (!isValid) return;
+
+      if (conflicts.length > 0) {
+        setIsMarketplaceCrashVerified(false);
+        setModalCrashData({
+          isOpen: true,
+          isSafe: false,
+          title: `Ditemukan ${conflicts.length} Pengajuan Bentrok!`,
+          conflicts,
+        });
+        return;
+      }
+      setIsMarketplaceCrashVerified(true);
     }
 
     setLoading(true);
@@ -405,20 +416,21 @@ export function TabMarketplace({
           );
         }
 
-        const jamMulaiIso = item.jamMulaiLive.includes("T")
+        // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
+        const cleanStart = item.jamMulaiLive.includes("T")
           ? item.jamMulaiLive
-          : `${item.tanggal}T${item.jamMulaiLive}:00.000Z`;
-        const jamSelesaiIso = item.jamSelesaiLive.includes("T")
+          : `${item.tanggal}T${item.jamMulaiLive.length === 5 ? item.jamMulaiLive + ":00" : item.jamMulaiLive}+07:00`;
+        const cleanEnd = item.jamSelesaiLive.includes("T")
           ? item.jamSelesaiLive
-          : `${item.tanggal}T${item.jamSelesaiLive}:00.000Z`;
+          : `${item.tanggal}T${item.jamSelesaiLive.length === 5 ? item.jamSelesaiLive + ":00" : item.jamSelesaiLive}+07:00`;
 
         const payload = {
           idJadwal: item.idJadwal || generateNewScheduleId("MKT", item.tanggal),
           tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : new Date().toISOString(),
           platform: item.platform || matchedClient?.platform || "Shopee Live",
           clientId: item.clientId || matchedClient?.id || null,
-          jamMulaiLive: jamMulaiIso,
-          jamSelesaiLive: jamSelesaiIso,
+          jamMulaiLive: cleanStart,
+          jamSelesaiLive: cleanEnd,
           kuotaHost: item.kuota || 1,
           judulLive: item.judulLive || null,
           promoLive: item.promoLive || null,
@@ -436,19 +448,13 @@ export function TabMarketplace({
           status: "TERJADWAL",
         };
 
-        await fetch("/api/jadwal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await sendJson("/api/jadwal", "POST", payload);
       }
 
       setSuccess(
         `✅ BERHASIL:\nBerhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`
       );
-      showAlert(
-        `✅ BERHASIL:\nBerhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`
-      );
+      toast.success(`Berhasil mengirimkan ${marketplaceForms.length} Pengajuan Jadwal Marketplace!`);
       setIsMarketplaceCrashVerified(false);
       setMarketplaceForms([
         {
@@ -472,9 +478,10 @@ export function TabMarketplace({
         },
       ]);
       fetchData();
-    } catch {
-      setError("Gagal mengirimkan pengajuan marketplace.");
-      showAlert("❌ GAGAL: Terjadi kesalahan saat mengirim pengajuan marketplace.");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Gagal mengirimkan pengajuan marketplace.";
+      setError(errMsg);
+      toast.error(errMsg, "Gagal Mengirim Pengajuan");
     } finally {
       setLoading(false);
     }
@@ -632,14 +639,16 @@ export function TabMarketplace({
                           <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Jam Mulai *
                           </label>
-                          <input
-                            type="text"
+                          <FlatpickrTimeInput
+                            id={`M_JAM_MULAI_${idx + 1}`}
                             value={item.jamMulaiLive}
-                            onChange={(e) =>
-                              updateFormField(idx, "jamMulaiLive", e.target.value)
-                            }
-                            placeholder="Contoh: 10:00"
-                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white font-mono"
+                            onChange={(val) => {
+                              updateFormField(idx, "jamMulaiLive", val);
+                              // Auto-fill end time +2 hours (mirrors ref-deploy calculateEndTimeMarketplace)
+                              const auto = calculateEndTime(val, 2);
+                              if (auto) updateFormField(idx, "jamSelesaiLive", auto);
+                            }}
+                            placeholder="Pilih Jam Mulai"
                             required
                           />
                         </div>
@@ -647,14 +656,11 @@ export function TabMarketplace({
                           <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                             Jam Selesai *
                           </label>
-                          <input
-                            type="text"
+                          <FlatpickrTimeInput
+                            id={`M_JAM_SELESAI_${idx + 1}`}
                             value={item.jamSelesaiLive}
-                            onChange={(e) =>
-                              updateFormField(idx, "jamSelesaiLive", e.target.value)
-                            }
-                            placeholder="Contoh: 12:00"
-                            className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white font-mono"
+                            onChange={(val) => updateFormField(idx, "jamSelesaiLive", val)}
+                            placeholder="Pilih Jam Selesai"
                             required
                           />
                         </div>
@@ -1027,14 +1033,14 @@ export function TabMarketplace({
             </button>
             <button
               type="submit"
-              disabled={loading || !isMarketplaceCrashVerified}
+              disabled={loading}
               className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 text-sm text-white ${
-                isMarketplaceCrashVerified && !loading
-                  ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                loading
+                  ? "bg-slate-400 cursor-wait"
+                  : "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
               }`}
             >
-              <i className="fa-solid fa-paper-plane" />
+              <i className={`fa-solid ${loading ? "fa-spinner fa-spin" : "fa-paper-plane"}`} />
               <span>{loading ? "Mengirim..." : "Kirim Semua Pengajuan"}</span>
             </button>
           </div>

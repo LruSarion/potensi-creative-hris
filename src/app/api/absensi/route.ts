@@ -5,8 +5,10 @@ export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const karyawanId = url.searchParams.get("karyawanId") ?? undefined;
   const sesi = url.searchParams.get("sesi");
+  const view = url.searchParams.get("view") ?? undefined;
+  const kategori = url.searchParams.get("kategori") ?? undefined;
   if (sesi === "aktif" && karyawanId) return getSesiAktif(karyawanId);
-  return listAbsensi({ karyawanId });
+  return listAbsensi({ karyawanId, view, kategori });
 });
 
 export const POST = apiHandler(async (req: Request) => {

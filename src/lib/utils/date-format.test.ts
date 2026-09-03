@@ -5,7 +5,6 @@ import {
   formatTimeOnly,
   formatDateOnly,
   calcDurationHours,
-  calculateEndTime,
   calcWajibHadir,
   getWajibHadirTime,
 } from "./date-format";
@@ -27,13 +26,18 @@ describe("date-format utilities", () => {
     expect(formatTimeSafe("9:05")).toBe("09:05");
   });
 
-  it("formatTimeOnly extracts time portion", () => {
-    expect(formatTimeOnly("2026-08-31T14:30:00.000Z")).toBe("14:30");
+  it("formatTimeOnly extracts time portion in WIB (Asia/Jakarta)", () => {
+    // 14:30 UTC = 21:30 WIB
+    expect(formatTimeOnly("2026-08-31T14:30:00.000Z")).toBe("21:30");
+    // 18:30 UTC = 01:30 WIB (next day)
+    expect(formatTimeOnly("2026-08-31T18:30:00.000Z")).toBe("01:30");
     expect(formatTimeOnly("18:45")).toBe("18:45");
   });
 
-  it("formatDateOnly extracts date portion", () => {
+  it("formatDateOnly extracts date portion in WIB (Asia/Jakarta)", () => {
     expect(formatDateOnly("2026-08-31T14:30:00.000Z")).toBe("2026-08-31");
+    // 18:30 UTC on 31 Aug is 01:30 on 01 Sep in WIB
+    expect(formatDateOnly("2026-08-31T18:30:00.000Z")).toBe("2026-09-01");
     expect(formatDateOnly("2026-08-31")).toBe("2026-08-31");
   });
 
@@ -41,11 +45,6 @@ describe("date-format utilities", () => {
     expect(calcDurationHours("10:00", "12:00")).toBe("2");
     expect(calcDurationHours("23:00", "07:00")).toBe("8");
     expect(calcDurationHours("10:00", "10:00")).toBe("24");
-  });
-
-  it("calculateEndTime calculates time + 2 hours", () => {
-    expect(calculateEndTime("10:00")).toBe("12:00");
-    expect(calculateEndTime("23:00")).toBe("01:00");
   });
 
   it("getWajibHadirTime calculates 15 mins prior", () => {

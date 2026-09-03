@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function TelegramConfigAdmin() {
   const [botToken, setBotToken] = useState("");
@@ -13,17 +14,15 @@ export default function TelegramConfigAdmin() {
   async function load() {
     setError("");
     try {
-      const r = await fetch("/api/telegram/config", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") {
-        setHasToken(d.data.hasToken);
-        setBotUsername(d.data.botUsername);
-        setSource(d.data.source);
-      } else {
-        setError(d.message ?? "Gagal memuat konfigurasi Telegram");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<{ hasToken: boolean; botUsername: string; source: string }>(
+        "/api/telegram/config",
+        { cache: "no-store" }
+      );
+      setHasToken(data.hasToken);
+      setBotUsername(data.botUsername);
+      setSource(data.source);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -36,22 +35,13 @@ export default function TelegramConfigAdmin() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/telegram/config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ botToken, botUsername }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Konfigurasi bot Telegram berhasil disimpan!");
-        setBotToken("");
-        setHasToken(true);
-        load();
-      } else {
-        setError(d.message ?? "Gagal menyimpan konfigurasi");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/telegram/config", "POST", { botToken, botUsername });
+      setSuccess("Konfigurasi bot Telegram berhasil disimpan!");
+      setBotToken("");
+      setHasToken(true);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -62,19 +52,12 @@ export default function TelegramConfigAdmin() {
     setSuccess("");
     setWebhookLoading(true);
     try {
-      const r = await fetch("/api/telegram/webhook/set", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ appUrl: window.location.origin }),
+      const data = await sendJson<{ webhookUrl: string }>("/api/telegram/webhook/set", "POST", {
+        appUrl: window.location.origin,
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess(`Webhook Bot berhasil diaktifkan ke: ${d.data.webhookUrl}`);
-      } else {
-        setError(d.message ?? "Gagal memasang webhook");
-      }
-    } catch {
-      setError("Gagal menghubungkan webhook");
+      setSuccess(`Webhook Bot berhasil diaktifkan ke: ${data.webhookUrl}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memasang webhook");
     } finally {
       setWebhookLoading(false);
     }

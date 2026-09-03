@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function TrainerPortalPage() {
   const [courses, setCourses] = useState<any[]>([]);
@@ -76,9 +77,8 @@ export default function TrainerPortalPage() {
   async function loadSubmissions() {
     setLoadingSubmissions(true);
     try {
-      const r = await fetch("/api/lms?view=video-submissions", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") setSubmissions(d.data ?? []);
+      const data = await fetchJson<any[]>("/api/lms?view=video-submissions", { cache: "no-store" });
+      setSubmissions(data ?? []);
     } catch {
       // ignore
     } finally {
@@ -90,20 +90,11 @@ export default function TrainerPortalPage() {
     if (!confirm(`Hapus kursus "${title}" beserta seluruh modul dan materinya?`)) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "course-delete", id }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Kursus "${title}" berhasil dihapus.`);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menghapus kursus");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "course-delete", id });
+      setSuccess(`Kursus "${title}" berhasil dihapus.`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -111,20 +102,11 @@ export default function TrainerPortalPage() {
     if (!confirm(`Hapus modul "${title}" beserta seluruh materi dan kuisnya?`)) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "module-delete", id }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Modul "${title}" berhasil dihapus.`);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menghapus modul");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "module-delete", id });
+      setSuccess(`Modul "${title}" berhasil dihapus.`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -132,20 +114,11 @@ export default function TrainerPortalPage() {
     if (!confirm(`Hapus materi lesson "${title}"?`)) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "lesson-delete", id }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Materi "${title}" berhasil dihapus.`);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menghapus materi");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "lesson-delete", id });
+      setSuccess(`Materi "${title}" berhasil dihapus.`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -153,20 +126,11 @@ export default function TrainerPortalPage() {
     if (!confirm("Hapus pertanyaan kuis ini?")) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "question-delete", id }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Pertanyaan kuis berhasil dihapus.");
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menghapus pertanyaan");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "question-delete", id });
+      setSuccess("Pertanyaan kuis berhasil dihapus.");
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -174,21 +138,19 @@ export default function TrainerPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [cRes, clRes, eRes, sRes] = await Promise.all([
-        fetch("/api/lms?view=courses").then((r) => r.json()),
-        fetch("/api/clients").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
-        fetch("/api/lms?view=enrollments").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
-        fetch("/api/employees?kategori=STREAMER").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+      const [courseData, clientData, enrollData, streamerData] = await Promise.all([
+        fetchJson<any[]>("/api/lms?view=courses"),
+        fetchJson<any[]>("/api/clients").catch(() => []),
+        fetchJson<any[]>("/api/lms?view=enrollments").catch(() => []),
+        fetchJson<any[]>("/api/employees?kategori=STREAMER").catch(() => []),
       ]);
 
-      if (cRes.status === "success") setCourses(cRes.data ?? []);
-      else setError(cRes.message ?? "Gagal memuat kursus");
-
-      if (clRes.status === "success") setClients(clRes.data ?? []);
-      if (eRes.status === "success") setEnrollments(eRes.data ?? []);
-      if (sRes.status === "success") setStreamers(sRes.data ?? []);
-    } catch {
-      setError("Koneksi gagal");
+      setCourses(courseData ?? []);
+      setClients(clientData ?? []);
+      setEnrollments(enrollData ?? []);
+      setStreamers(streamerData ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -200,22 +162,13 @@ export default function TrainerPortalPage() {
     setSuccess("");
 
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "course", ...courseForm, clientId: courseForm.clientId || null }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Kursus baru "${courseForm.title}" berhasil dibuat!`);
-        setCourseForm({ title: "", description: "", status: "ACTIVE", isCertification: false, clientId: "" });
-        setModalOpen(false);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal membuat kursus");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      await sendJson("/api/lms", "POST", { action: "course", ...courseForm, clientId: courseForm.clientId || null });
+      setSuccess(`Kursus baru "${courseForm.title}" berhasil dibuat!`);
+      setCourseForm({ title: "", description: "", status: "ACTIVE", isCertification: false, clientId: "" });
+      setModalOpen(false);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     }
   }
 
@@ -224,22 +177,13 @@ export default function TrainerPortalPage() {
     if (!selectedCourse) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "module", courseId: selectedCourse.id, ...moduleForm }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Modul baru berhasil ditambahkan!");
-        setModuleModalOpen(false);
-        setModuleForm({ title: "", order: 1, passingScore: 70 });
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menambahkan modul");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "module", courseId: selectedCourse.id, ...moduleForm });
+      setSuccess("Modul baru berhasil ditambahkan!");
+      setModuleModalOpen(false);
+      setModuleForm({ title: "", order: 1, passingScore: 70 });
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -248,22 +192,13 @@ export default function TrainerPortalPage() {
     if (!selectedModuleId) return;
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "lesson", moduleId: selectedModuleId, ...lessonForm }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Materi lesson berhasil ditambahkan!");
-        setLessonModalOpen(false);
-        setLessonForm({ title: "", content: "", videoId: "", videoDuration: 0 });
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menambahkan lesson");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "lesson", moduleId: selectedModuleId, ...lessonForm });
+      setSuccess("Materi lesson berhasil ditambahkan!");
+      setLessonModalOpen(false);
+      setLessonForm({ title: "", content: "", videoId: "", videoDuration: 0 });
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -280,22 +215,13 @@ export default function TrainerPortalPage() {
         options: questionForm.type === "MCQ" ? questionForm.options.filter((o) => o.trim() !== "") : null,
         correctAnswer: questionForm.correctAnswer,
       };
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Pertanyaan kuis berhasil ditambahkan!");
-        setQuestionModalOpen(false);
-        setQuestionForm({ moduleId: "", type: "MCQ", question: "", options: ["", "", "", ""], correctAnswer: "" });
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menambahkan pertanyaan");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", payload);
+      setSuccess("Pertanyaan kuis berhasil ditambahkan!");
+      setQuestionModalOpen(false);
+      setQuestionForm({ moduleId: "", type: "MCQ", question: "", options: ["", "", "", ""], correctAnswer: "" });
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -307,43 +233,25 @@ export default function TrainerPortalPage() {
     }
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "enroll-cohort", courseId: cohortCourseId, karyawanIds: selectedKaryawanIds }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Berhasil memdaftarkan ${d.data?.length ?? selectedKaryawanIds.length} streamer ke kursus.`);
-        setCohortModalOpen(false);
-        setSelectedKaryawanIds([]);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal mentargetkan enrollment");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      const data = await sendJson<any[]>("/api/lms", "POST", { action: "enroll-cohort", courseId: cohortCourseId, karyawanIds: selectedKaryawanIds });
+      setSuccess(`Berhasil memdaftarkan ${data?.length ?? selectedKaryawanIds.length} streamer ke kursus.`);
+      setCohortModalOpen(false);
+      setSelectedKaryawanIds([]);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
   async function handleGradeEssay(attemptId: string, score: number) {
     setError(""); setSuccess("");
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "grade", attemptId, score }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Nilai essay ${score} berhasil diberikan!`);
-        setGradingAttemptId("");
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal memberikan nilai");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/lms", "POST", { action: "grade", attemptId, score });
+      setSuccess(`Nilai essay ${score} berhasil diberikan!`);
+      setGradingAttemptId("");
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 

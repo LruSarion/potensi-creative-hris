@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type PayoutRun = {
   id: string;
@@ -37,18 +38,17 @@ export default function FinancePortalPage() {
     setError("");
     setLoading(true);
     try {
-      const [r, b, p, c] = await Promise.all([
-        fetch(`/api/finance?view=payouts&periode=${encodeURIComponent(periode)}`).then((x) => x.json()),
-        fetch(`/api/finance?view=billing&periode=${encodeURIComponent(periode)}`).then((x) => x.json()),
-        fetch(`/api/finance?view=pnl&periode=${encodeURIComponent(periode)}`).then((x) => x.json()),
-        fetch("/api/clients").then((x) => x.json()).catch(() => ({ status: "success", data: [] })),
+      const [runsData, billingData, pnlData, clientData] = await Promise.all([
+        fetchJson<PayoutRun[]>(`/api/finance?view=payouts&periode=${encodeURIComponent(periode)}`),
+        fetchJson<BillingDoc[]>(`/api/finance?view=billing&periode=${encodeURIComponent(periode)}`),
+        fetchJson<any>(`/api/finance?view=pnl&periode=${encodeURIComponent(periode)}`),
+        fetchJson<any[]>("/api/clients").catch(() => []),
       ]);
 
-      if (r.status === "success") setRuns(r.data);
-      if (b.status === "success") setBilling(b.data);
-      if (p.status === "success") setPnl(p.data);
-      if (c.status === "success") setClients(c.data);
-      else if (p.status === "error") setError(p.message ?? "Akses ditolak");
+      setRuns(runsData);
+      setBilling(billingData);
+      setPnl(pnlData);
+      setClients(clientData);
     } catch {
       setError("Gagal memuat data keuangan");
     } finally {
@@ -66,20 +66,11 @@ export default function FinancePortalPage() {
     setSuccess("");
     setLoading(true);
     try {
-      const res = await fetch("/api/finance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "payout-run", periode }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Payout Run untuk ${periode} berhasil dibuat!`);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal membuat payout run");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      await sendJson("/api/finance", "POST", { action: "payout-run", periode });
+      setSuccess(`Payout Run untuk ${periode} berhasil dibuat!`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     } finally {
       setLoading(false);
     }
@@ -87,24 +78,15 @@ export default function FinancePortalPage() {
 
   async function handleUpdatePayoutStatus(runId: string, newStatus: string) {
     try {
-      const res = await fetch("/api/finance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "payout-status",
-          id: runId,
-          status: newStatus,
-        }),
+      await sendJson("/api/finance", "POST", {
+        action: "payout-status",
+        id: runId,
+        status: newStatus,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Status payout berhasil diperbarui menjadi ${newStatus}`);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal memperbarui status payout");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      setSuccess(`Status payout berhasil diperbarui menjadi ${newStatus}`);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -116,25 +98,16 @@ export default function FinancePortalPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/finance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "billing-doc",
-          clientId: newBillingClientId,
-          periode,
-        }),
+      await sendJson("/api/finance", "POST", {
+        action: "billing-doc",
+        clientId: newBillingClientId,
+        periode,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Dokumen Billing Klien berhasil dibuat!`);
-        setBillingModalOpen(false);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal membuat billing");
-      }
-    } catch {
-      setError("Koneksi error");
+      setSuccess(`Dokumen Billing Klien berhasil dibuat!`);
+      setBillingModalOpen(false);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi error");
     } finally {
       setLoading(false);
     }

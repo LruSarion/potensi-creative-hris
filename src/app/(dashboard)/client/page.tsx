@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 interface ClientData {
   id: string;
@@ -163,12 +164,9 @@ export default function ClientPage() {
   async function loadClients() {
     setLoadingClients(true);
     try {
-      const res = await fetch("/api/clients");
-      const d = await res.json();
-      if (d.status === "success" && Array.isArray(d.data)) {
-        setClients(d.data);
-      } else if (Array.isArray(d)) {
-        setClients(d);
+      const data = await fetchJson<ClientData[]>("/api/clients");
+      if (Array.isArray(data)) {
+        setClients(data);
       }
     } catch {
       // ignore
@@ -189,12 +187,9 @@ export default function ClientPage() {
 
     setLoadingProduk(true);
     try {
-      const res = await fetch(`/api/produk?clientId=${clientId}`);
-      const d = await res.json();
-      if (d.status === "success" && Array.isArray(d.data)) {
-        setProdukList(d.data);
-      } else if (Array.isArray(d)) {
-        setProdukList(d);
+      const data = await fetchJson<any>(`/api/produk?clientId=${clientId}`);
+      if (Array.isArray(data)) {
+        setProdukList(data);
       } else {
         // Fallback dummy catalog for demo purposes
         setProdukList([
@@ -306,12 +301,7 @@ export default function ClientPage() {
           catatan: f.catatan.trim() || "",
         };
 
-        const res = await fetch("/api/clients", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (res.ok) sukses++;
+        await sendJson("/api/clients", "POST", payload).then(() => sukses++).catch(() => {});
       }
 
       if (sukses > 0) {
@@ -441,26 +431,15 @@ export default function ClientPage() {
         catatan: editClientForm.catatan.trim() || "",
       };
 
-      const res = await fetch(`/api/clients?id=${selectedEditClient.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const updated = await sendJson<any>(`/api/clients?id=${selectedEditClient.id}`, "PUT", payload);
+      showAlert("✅ Perubahan data client berhasil disimpan!");
+      await loadClients();
+      setSelectedEditClient(updated || {
+        ...selectedEditClient,
+        ...payload,
       });
-
-      const d = await res.json();
-      if (res.ok && (d.status === "success" || d.data || d.id)) {
-        showAlert("✅ Perubahan data client berhasil disimpan!");
-        await loadClients();
-        const updated = d.data || {
-          ...selectedEditClient,
-          ...payload,
-        };
-        setSelectedEditClient(updated);
-      } else {
-        showAlert(`❌ Gagal menyimpan: ${d.message || "Terjadi kesalahan."}`);
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan perubahan.");
+    } catch (err) {
+      showAlert(`❌ Gagal menyimpan: ${err instanceof Error ? err.message : "Terjadi kesalahan."}`);
     } finally {
       setSavingEditClient(false);
     }
@@ -561,24 +540,19 @@ export default function ClientPage() {
         }
         const finalVarianList = Array.from(variantSet);
 
-        const res = await fetch("/api/produk", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            clientId: selectedPlatformClientId,
-            namaProduk: p.namaProduk.trim(),
-            idProduk: p.idProduk.trim() || undefined,
-            sellerSku: p.sellerSku.trim() || undefined,
-            sku: p.sellerSku.trim() || undefined,
-            brand: p.brand.trim() || undefined,
-            varian: finalVarianList,
-            varianList: finalVarianList,
-            link: p.linkProduk.trim() || undefined,
-            linkProduk: p.linkProduk.trim() || undefined,
-            catatan: p.catatan.trim() || undefined,
-          }),
-        });
-        if (res.ok) successCount++;
+        await sendJson("/api/produk", "POST", {
+          clientId: selectedPlatformClientId,
+          namaProduk: p.namaProduk.trim(),
+          idProduk: p.idProduk.trim() || undefined,
+          sellerSku: p.sellerSku.trim() || undefined,
+          sku: p.sellerSku.trim() || undefined,
+          brand: p.brand.trim() || undefined,
+          varian: finalVarianList,
+          varianList: finalVarianList,
+          link: p.linkProduk.trim() || undefined,
+          linkProduk: p.linkProduk.trim() || undefined,
+          catatan: p.catatan.trim() || undefined,
+        }).then(() => successCount++).catch(() => {});
       }
 
       if (successCount > 0) {
@@ -670,27 +644,17 @@ export default function ClientPage() {
         payload[mappedKey] = r.value;
       }
 
-      const res = await fetch(`/api/produk?id=${selectedEditProduk.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const d = await res.json();
-      if (res.ok && (d.status === "success" || d.data)) {
-        showAlert("✅ Perubahan data produk berhasil diterapkan!");
-        setSelectedEditProduk(null);
-        setSearchEditProduk("");
-        setEditProdukRows([{ field: "", value: "" }]);
-        if (selectedPlatformClientId) {
-          await handleSelectPlatform(selectedPlatformClientId);
-        }
-        await loadClients();
-      } else {
-        showAlert(`❌ Gagal memperbarui produk: ${d.message || "Terjadi kesalahan"}`);
+      await sendJson(`/api/produk?id=${selectedEditProduk.id}`, "PUT", payload);
+      showAlert("✅ Perubahan data produk berhasil diterapkan!");
+      setSelectedEditProduk(null);
+      setSearchEditProduk("");
+      setEditProdukRows([{ field: "", value: "" }]);
+      if (selectedPlatformClientId) {
+        await handleSelectPlatform(selectedPlatformClientId);
       }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi ke server saat menyimpan produk.");
+      await loadClients();
+    } catch (err) {
+      showAlert(`❌ Gagal memperbarui produk: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
     } finally {
       setSavingEditProduk(false);
     }

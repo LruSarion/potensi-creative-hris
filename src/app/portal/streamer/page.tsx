@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function StreamerPortalPage() {
   const { data: session } = useSession();
@@ -24,12 +25,10 @@ export default function StreamerPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/marketplace?view=eligible");
-      const d = await r.json();
-      if (d.status === "success") setListings(d.data);
-      else setError(d.message ?? "Gagal memuat marketplace");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<any[]>("/api/marketplace?view=eligible");
+      setListings(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -37,13 +36,10 @@ export default function StreamerPortalPage() {
 
   async function loadProfile() {
     try {
-      const r = await fetch("/api/streamer-profile");
-      const d = await r.json();
-      if (d.status === "success") {
-        setProfile(d.data);
-        setPhotoUrl(d.data?.photoUrl ?? "");
-        setBio(d.data?.bio ?? "");
-      }
+      const data = await fetchJson<any>("/api/streamer-profile");
+      setProfile(data);
+      setPhotoUrl(data?.photoUrl ?? "");
+      setBio(data?.bio ?? "");
     } catch {
       // ignore
     }
@@ -53,20 +49,11 @@ export default function StreamerPortalPage() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/marketplace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "apply", listingId }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Lamaran Anda terkirim! Tunggu keputusan klien.");
-        load();
-      } else {
-        setError(d.message ?? "Gagal melamar");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/marketplace", "POST", { action: "apply", listingId });
+      setSuccess("Lamaran Anda terkirim! Tunggu keputusan klien.");
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 
@@ -75,20 +62,11 @@ export default function StreamerPortalPage() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/streamer-profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoUrl, bio }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Profil berhasil diperbarui! Klien kini dapat melihat foto & biodata Anda.");
-        loadProfile();
-      } else {
-        setError(d.message ?? "Gagal menyimpan profil");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/streamer-profile", "PATCH", { photoUrl, bio });
+      setSuccess("Profil berhasil diperbarui! Klien kini dapat melihat foto & biodata Anda.");
+      loadProfile();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     }
   }
 

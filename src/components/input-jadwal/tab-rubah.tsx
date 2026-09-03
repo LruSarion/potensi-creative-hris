@@ -14,8 +14,12 @@ import {
 import {
   resolvePlatformClientValue,
   applyShiftOts,
+  calculateEndTime,
 } from "@/lib/utils/schedule-helpers";
 import FlatpickrPicker from "@/components/ui/flatpickr-picker";
+import { toast } from "@/components/ui/toast";
+import { sendJson } from "@/lib/api-client";
+import { FlatpickrTimeInput } from "./flatpickr-time-input";
 import { inputCls, selectCls, labelCls, getStatusBadgeClass } from "./shared-styles";
 
 export function TabRubah({
@@ -180,25 +184,28 @@ export function TabRubah({
     setSavingEditJadwal(true);
 
     try {
+      // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
       const startTime = editJadwalForm.jamMulaiLive.includes("T")
         ? editJadwalForm.jamMulaiLive
         : `${editJadwalForm.tanggal}T${
             editJadwalForm.jamMulaiLive.length === 5
               ? `${editJadwalForm.jamMulaiLive}:00`
               : editJadwalForm.jamMulaiLive
-          }`;
+          }+07:00`;
       const endTime = editJadwalForm.jamSelesaiLive.includes("T")
         ? editJadwalForm.jamSelesaiLive
         : `${editJadwalForm.tanggal}T${
             editJadwalForm.jamSelesaiLive.length === 5
               ? `${editJadwalForm.jamSelesaiLive}:00`
               : editJadwalForm.jamSelesaiLive
-          }`;
+          }+07:00`;
 
       const validFiles = otsFileList.map((f) => f.trim()).filter(Boolean);
 
       const payload: any = {
         idJadwal: editJadwalForm.idJadwal,
+        // tanggal is a calendar-day field (UTC midnight) — keep .000Z so the
+        // day renders the same on UTC and Jakarta servers alike.
         tanggal: `${editJadwalForm.tanggal}T00:00:00.000Z`,
         platform: editJadwalForm.platform,
         clientId: editJadwalForm.clientId || undefined,
@@ -218,22 +225,14 @@ export function TabRubah({
         status: editJadwalForm.status,
       };
 
-      const res = await fetch(`/api/jadwal?id=${editJadwalForm.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const d = await res.json();
-      if (d.status === "success" || res.ok) {
-        showAlert("✅ Perubahan jadwal berhasil disimpan ke database!");
-        setSelectedEditJadwal(null);
-        setSearchEditId("");
-        fetchData();
-      } else {
-        showAlert(`❌ Gagal mengubah jadwal: ${d.message || "Terjadi kesalahan"}`);
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan kone connection saat menyimpan perubahan.");
+      await sendJson(`/api/jadwal?id=${editJadwalForm.id}`, "PUT", payload);
+      toast.success("Perubahan jadwal berhasil disimpan ke database!");
+      setSelectedEditJadwal(null);
+      setSearchEditId("");
+      fetchData();
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan";
+      toast.error(`Gagal mengubah jadwal: ${errMsg}`, "Gagal Menyimpan Perubahan");
     } finally {
       setSavingEditJadwal(false);
     }
@@ -298,8 +297,8 @@ export function TabRubah({
 
     // Filter Rentang Jam
     if (liveFilterWaktuToggle === "CUSTOM") {
-      const jMulai = (j.jamMulaiLive || "").slice(0, 5);
-      const jSelesai = (j.jamSelesaiLive || "").slice(0, 5);
+      const jMulai = formatTimeSafe(j.jamMulaiLive);
+      const jSelesai = formatTimeSafe(j.jamSelesaiLive);
       if (liveFilterJamMulai && jMulai < liveFilterJamMulai) return false;
       if (liveFilterJamAkhir && jSelesai > liveFilterJamAkhir) return false;
     }
@@ -756,11 +755,16 @@ export function TabRubah({
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Jam Mulai *
                         </label>
-                        <input
-                          type="time"
+                        <FlatpickrTimeInput
+                          id="edit_S_JAM_MULAI_LIVE"
                           value={editJadwalForm.jamMulaiLive}
-                          onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          onChange={(val) => {
+                            updateEditField("jamMulaiLive", val);
+                            // Auto-fill end time +2 hours (mirrors ref-deploy calculateEndTime)
+                            const auto = calculateEndTime(val, 2);
+                            if (auto) updateEditField("jamSelesaiLive", auto);
+                          }}
+                          placeholder="Pilih Jam Mulai"
                           required
                         />
                       </div>
@@ -768,11 +772,11 @@ export function TabRubah({
                         <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                           Jam Selesai *
                         </label>
-                        <input
-                          type="time"
+                        <FlatpickrTimeInput
+                          id="edit_S_JAM_SELESAI_LIVE"
                           value={editJadwalForm.jamSelesaiLive}
-                          onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          onChange={(val) => updateEditField("jamSelesaiLive", val)}
+                          placeholder="Pilih Jam Selesai"
                           required
                         />
                       </div>
@@ -1018,11 +1022,18 @@ export function TabRubah({
                         <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                           Masuk *
                         </label>
-                        <input
-                          type="time"
+                        <FlatpickrTimeInput
+                          id="edit_O_JAM_MASUK"
+                          className="px-2 py-2.5"
                           value={editJadwalForm.jamMulaiLive}
-                          onChange={(e) => updateEditField("jamMulaiLive", e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          onChange={(val) => {
+                            updateEditField("jamMulaiLive", val);
+                            // Auto-fill end time +8 hours for OTS (mirrors ref-deploy calculateEndTimeOts)
+                            const auto = calculateEndTime(val, 8);
+                            if (auto) updateEditField("jamSelesaiLive", auto);
+                            if (editJadwalForm.shiftOts) updateEditField("shiftOts", "");
+                          }}
+                          placeholder="Jam Masuk"
                           required
                         />
                       </div>
@@ -1030,11 +1041,12 @@ export function TabRubah({
                         <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1.5">
                           Keluar *
                         </label>
-                        <input
-                          type="time"
+                        <FlatpickrTimeInput
+                          id="edit_O_JAM_KELUAR"
+                          className="px-2 py-2.5"
                           value={editJadwalForm.jamSelesaiLive}
-                          onChange={(e) => updateEditField("jamSelesaiLive", e.target.value)}
-                          className="w-full border border-slate-300 rounded-lg px-2 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                          onChange={(val) => updateEditField("jamSelesaiLive", val)}
+                          placeholder="Jam Keluar"
                           required
                         />
                       </div>
@@ -1214,17 +1226,17 @@ export function TabRubah({
                 </select>
                 {liveFilterWaktuToggle === "CUSTOM" && (
                   <div className="flex gap-2">
-                    <input
-                      type="time"
+                    <FlatpickrTimeInput
+                      id="filter_jam_mulai"
                       value={liveFilterJamMulai}
-                      onChange={(e) => setLiveFilterJamMulai(e.target.value)}
-                      className={inputCls}
+                      onChange={(val) => setLiveFilterJamMulai(val)}
+                      placeholder="Pilih Jam Mulai"
                     />
-                    <input
-                      type="time"
+                    <FlatpickrTimeInput
+                      id="filter_jam_selesai"
                       value={liveFilterJamAkhir}
-                      onChange={(e) => setLiveFilterJamAkhir(e.target.value)}
-                      className={inputCls}
+                      onChange={(val) => setLiveFilterJamAkhir(val)}
+                      placeholder="Pilih Jam Selesai"
                     />
                   </div>
                 )}
@@ -1267,8 +1279,8 @@ export function TabRubah({
             </div>
           </div>
 
-          {/* Table */}
-          <div className="overflow-auto max-h-[500px]">
+          {/* Table — no vertical scroll: page size is 10 rows, let the page flow */}
+          <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 sticky top-0 z-10">
                 <tr>
@@ -1505,8 +1517,8 @@ export function TabRubah({
             </div>
           </div>
 
-          {/* Table Jadwal OTS */}
-          <div className="overflow-auto rounded-2xl border border-slate-200 shadow-2xs max-h-[520px]">
+          {/* Table Jadwal OTS — no vertical scroll: page size is 10 rows */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
             <table className="min-w-full text-left text-xs border-collapse">
               <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-10">
                 <tr>

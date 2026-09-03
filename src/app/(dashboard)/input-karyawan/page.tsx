@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
 import { formatDateIndo } from "@/lib/utils/date-format";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 // ─── Daftar Jabatan Baku ─────────────────────────────────────────────────────
 const JABATAN_LIST = [
@@ -247,12 +248,9 @@ export default function InputKaryawanPage() {
 
   async function loadAllEmployees() {
     try {
-      const res = await fetch("/api/employees");
-      const d = await res.json();
-      if (Array.isArray(d)) {
-        setEmployeeList(d);
-      } else if (d.status === "success" && Array.isArray(d.data)) {
-        setEmployeeList(d.data);
+      const data = await fetchJson<any>("/api/employees");
+      if (Array.isArray(data)) {
+        setEmployeeList(data);
       }
     } catch {
       // ignore
@@ -362,22 +360,12 @@ export default function InputKaryawanPage() {
         scanNpwpDriveId: f.scanNpwp || undefined,
       }));
 
-      const res = await fetch("/api/employees?action=bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items }),
-      });
-
-      const d = await res.json();
-      if (res.ok && (d.status === "success" || Array.isArray(d.data) || Array.isArray(d))) {
-        showAlert(`✅ Berhasil menyimpan ${forms.length} data karyawan baru ke sistem!`);
-        setForms([createDefaultForm(1, true)]);
-        loadAllEmployees();
-      } else {
-        showAlert(`❌ Gagal menyimpan data: ${d.message || "Terjadi kesalahan pada server"}`);
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
+      await sendJson("/api/employees?action=bulk", "POST", { items });
+      showAlert(`✅ Berhasil menyimpan ${forms.length} data karyawan baru ke sistem!`);
+      setForms([createDefaultForm(1, true)]);
+      loadAllEmployees();
+    } catch (err) {
+      showAlert(`❌ Gagal menyimpan data: ${err instanceof Error ? err.message : "Terjadi kesalahan pada server"}`);
     } finally {
       setSubmitting(false);
     }
@@ -549,22 +537,14 @@ export default function InputKaryawanPage() {
 
     setSavingEdit(true);
     try {
-      const res = await fetch(`/api/employees?id=${targetEmployee.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        showAlert(`✅ Data karyawan ${fullEditForm.namaLengkap} berhasil diperbarui secara lengkap!`);
-        await loadAllEmployees();
-        const updatedTarget = { ...targetEmployee, ...payload };
-        setTargetEmployee(updatedTarget);
-        setFullEditForm(populateEditForm(updatedTarget));
-      } else {
-        const err = await res.json();
-        showAlert(`❌ Gagal memperbarui data: ${err.message || "Terjadi kesalahan"}`);
-      }
-    } catch {
+      await sendJson(`/api/employees?id=${targetEmployee.id}`, "PATCH", payload);
+      showAlert(`✅ Data karyawan ${fullEditForm.namaLengkap} berhasil diperbarui secara lengkap!`);
+      await loadAllEmployees();
+      const updatedTarget = { ...targetEmployee, ...payload };
+      setTargetEmployee(updatedTarget);
+      setFullEditForm(populateEditForm(updatedTarget));
+    } catch (err) {
+      showAlert(`❌ Gagal memperbarui data: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
       showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
     } finally {
       setSavingEdit(false);
@@ -627,23 +607,14 @@ export default function InputKaryawanPage() {
 
     setSavingEdit(true);
     try {
-      const res = await fetch(`/api/employees?id=${targetEmployee.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
-        showAlert("✅ Data karyawan berhasil diperbarui!");
-        setTargetEmployee(null);
-        setSearchEditId("");
-        setEditRows([{ field: "", value: "" }]);
-        loadAllEmployees();
-      } else {
-        const err = await res.json();
-        showAlert(`❌ Gagal memperbarui data: ${err.message || "Terjadi kesalahan"}`);
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
+      await sendJson(`/api/employees?id=${targetEmployee.id}`, "PATCH", payload);
+      showAlert("✅ Data karyawan berhasil diperbarui!");
+      setTargetEmployee(null);
+      setSearchEditId("");
+      setEditRows([{ field: "", value: "" }]);
+      loadAllEmployees();
+    } catch (err) {
+      showAlert(`❌ Gagal memperbarui data: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
     } finally {
       setSavingEdit(false);
     }
@@ -657,26 +628,17 @@ export default function InputKaryawanPage() {
 
     setSavingPin(true);
     try {
-      const res = await fetch("/api/auth/pin", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPin: pinOld || undefined,
-          newPin: pinNew,
-          targetEmail: pinTarget.email,
-          targetUserId: pinTarget.userId || pinTarget.id,
-        }),
+      await sendJson("/api/auth/pin", "PUT", {
+        currentPin: pinOld || undefined,
+        newPin: pinNew,
+        targetEmail: pinTarget.email,
+        targetUserId: pinTarget.userId || pinTarget.id,
       });
-      const d = await res.json();
-      if (res.ok && d.status === "success") {
-        showAlert(`✅ PIN Login untuk ${pinTarget.namaLengkap} berhasil diperbarui!`);
-        setShowPinModal(false);
-        setPinOld(""); setPinNew(""); setPinConfirm(""); setPinTarget(null);
-      } else {
-        showAlert(`❌ ${d.message || "Gagal mengubah PIN."}`);
-      }
-    } catch {
-      showAlert("⚠️ Gagal mengubah PIN. Periksa koneksi server.");
+      showAlert(`✅ PIN Login untuk ${pinTarget.namaLengkap} berhasil diperbarui!`);
+      setShowPinModal(false);
+      setPinOld(""); setPinNew(""); setPinConfirm(""); setPinTarget(null);
+    } catch (err) {
+      showAlert(`❌ ${err instanceof Error ? err.message : "Gagal mengubah PIN."}`);
     } finally {
       setSavingPin(false);
     }

@@ -12,7 +12,11 @@ import {
   formatTimeSafe,
   calcDurationHours,
 } from "@/lib/utils/date-format";
+import { FlatpickrTimeInput } from "./flatpickr-time-input";
+import { calculateEndTime } from "@/lib/utils/schedule-helpers";
 import { getStatusBadgeClass } from "./shared-styles";
+import { toast } from "@/components/ui/toast";
+import { sendJson } from "@/lib/api-client";
 
 export function TabKlien({
   streamers = [],
@@ -279,16 +283,16 @@ export function TabKlien({
     updateKlienField(formIdx, "produkPrioritas", cur);
   }
 
-  function handleCheckBebasCrashKlien() {
+  function runKlienCrashValidation(): { isValid: boolean; conflicts: any[] } {
     if (klienForms.length === 0) {
       showAlert("Tidak ada formulir aktif untuk diperiksa.");
-      return;
+      return { isValid: false, conflicts: [] };
     }
     for (let i = 0; i < klienForms.length; i++) {
       const f = klienForms[i];
       if (!f.platform || !f.tanggal || !f.jamMulaiLive || !f.jamSelesaiLive) {
         showAlert(`⚠️ Form #${i + 1}: Platform, Tanggal, Jam Mulai, dan Jam Selesai wajib diisi!`);
-        return;
+        return { isValid: false, conflicts: [] };
       }
     }
 
@@ -334,6 +338,13 @@ export function TabKlien({
       }
     }
 
+    return { isValid: true, conflicts };
+  }
+
+  function handleCheckBebasCrashKlien() {
+    const { isValid, conflicts } = runKlienCrashValidation();
+    if (!isValid) return;
+
     if (conflicts.length > 0) {
       setIsKlienCrashVerified(false);
       setModalCrashData({
@@ -370,50 +381,42 @@ export function TabKlien({
 
     const [sh, sm] = startVal.split(":").map(Number);
     const [eh, em] = endVal.split(":").map(Number);
-    let startMins = sh * 60 + (sm || 0);
-    let endMins = eh * 60 + (em || 0);
-    if (endMins <= startMins) endMins += 1440;
+    let totalMins = (eh * 60 + em) - (sh * 60 + sm);
+    if (totalMins <= 0) totalMins += 1440;
 
-    const sessionDur = (endMins - startMins) / numSessions;
+    const slotMins = Math.floor(totalMins / numSessions);
+    const newItems: ScheduleFormItem[] = [];
 
-    const updated = [...klienForms];
-    const masterEnd = startMins + sessionDur;
-    updated[idx] = {
-      ...master,
-      jamSelesaiLive: minutesToTime(masterEnd),
-      durasi: calcDurationHours(master.jamMulaiLive, minutesToTime(masterEnd)),
-    };
+    for (let i = 0; i < numSessions; i++) {
+      const curStartMins = (sh * 60 + sm + i * slotMins) % 1440;
+      const curEndMins = i === numSessions - 1
+        ? (eh * 60 + em) % 1440
+        : (sh * 60 + sm + (i + 1) * slotMins) % 1440;
 
-    const newForms: ScheduleFormItem[] = [];
-    for (let i = 1; i < numSessions; i++) {
-      const curStart = startMins + i * sessionDur;
-      const curEnd = i === numSessions - 1 ? endMins : curStart + sessionDur;
-      newForms.push({
+      const formatHm = (mins: number) => {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+      };
+
+      newItems.push({
+        ...master,
         id: Date.now() + i,
         idJadwal: generateNewScheduleId("JDK", master.tanggal),
-        tanggal: master.tanggal,
-        platform: master.platform,
-        clientId: master.clientId,
-        jamMulaiLive: minutesToTime(curStart),
-        jamSelesaiLive: minutesToTime(curEnd),
-        durasi: calcDurationHours(minutesToTime(curStart), minutesToTime(curEnd)),
-        kuota: master.kuota || 1,
-        judulLive: master.judulLive || "",
-        promoLive: master.promoLive || "",
-        catatanHost: master.catatanHost || "",
-        filePendukungHost: master.filePendukungHost || "",
-        produkPrioritas: Array.isArray(master.produkPrioritas)
-          ? [...master.produkPrioritas]
-          : [],
-        isCollapsed: false,
+        jamMulaiLive: formatHm(curStartMins),
+        jamSelesaiLive: formatHm(curEndMins),
+        durasi: calcDurationHours(formatHm(curStartMins), formatHm(curEndMins)),
       });
     }
 
-    updated.splice(idx + 1, 0, ...newForms);
-    setKlienForms(updated);
+    setKlienForms((prev) => {
+      const next = [...prev];
+      next.splice(idx, 1, ...newItems);
+      return next;
+    });
     setIsKlienCrashVerified(false);
     setModalSplitKlien({ isOpen: false, formIdx: null, numSessions: 2 });
-    showAlert(`✅ Formulir berhasil dipecah menjadi ${numSessions} sesi berurutan!`);
+    showAlert(`✅ Berhasil membagi form #${idx + 1} menjadi ${numSessions} sesi berurutan.`);
   }
 
   async function submitKlienSchedules(e: React.FormEvent) {
@@ -422,9 +425,22 @@ export function TabKlien({
       setError("Tidak ada formulir aktif untuk disimpan.");
       return;
     }
+
     if (!isKlienCrashVerified) {
-      showAlert("⚠️ Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu untuk memastikan tidak ada tabrakan jadwal Klien!");
-      return;
+      const { isValid, conflicts } = runKlienCrashValidation();
+      if (!isValid) return;
+
+      if (conflicts.length > 0) {
+        setIsKlienCrashVerified(false);
+        setModalCrashData({
+          isOpen: true,
+          isSafe: false,
+          title: `Ditemukan ${conflicts.length} Jadwal Klien Bentrok!`,
+          conflicts,
+        });
+        return;
+      }
+      setIsKlienCrashVerified(true);
     }
 
     setError("");
@@ -442,20 +458,21 @@ export function TabKlien({
           );
         }
 
-        const jamMulaiIso = item.jamMulaiLive.includes("T")
+        // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
+        const cleanStart = item.jamMulaiLive.includes("T")
           ? item.jamMulaiLive
-          : `${item.tanggal}T${item.jamMulaiLive}:00.000Z`;
-        const jamSelesaiIso = item.jamSelesaiLive.includes("T")
+          : `${item.tanggal}T${item.jamMulaiLive.length === 5 ? item.jamMulaiLive + ":00" : item.jamMulaiLive}+07:00`;
+        const cleanEnd = item.jamSelesaiLive.includes("T")
           ? item.jamSelesaiLive
-          : `${item.tanggal}T${item.jamSelesaiLive}:00.000Z`;
+          : `${item.tanggal}T${item.jamSelesaiLive.length === 5 ? item.jamSelesaiLive + ":00" : item.jamSelesaiLive}+07:00`;
 
         const payload = {
           idJadwal: item.idJadwal || generateNewScheduleId("JDK", item.tanggal),
           tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : new Date().toISOString(),
           platform: item.platform || matchedClient?.platform || "Shopee Live",
           clientId: item.clientId || matchedClient?.id || null,
-          jamMulaiLive: jamMulaiIso,
-          jamSelesaiLive: jamSelesaiIso,
+          jamMulaiLive: cleanStart,
+          jamSelesaiLive: cleanEnd,
           kuotaHost: item.kuota || 1,
           judulLive: item.judulLive || null,
           promoLive: item.promoLive || null,
@@ -467,14 +484,10 @@ export function TabKlien({
           status: "TERJADWAL",
         };
 
-        await fetch("/api/jadwal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await sendJson("/api/jadwal", "POST", payload);
       }
       setSuccess(`✅ Berhasil menerbitkan ${klienForms.length} Jadwal Klien Langsung!`);
-      showAlert(`✅ BERHASIL:\nSeluruh ${klienForms.length} Jadwal Klien berhasil disimpan ke database.`);
+      toast.success(`Berhasil menerbitkan ${klienForms.length} Jadwal Klien Langsung!`);
       setIsKlienCrashVerified(false);
       setKlienForms([
         {
@@ -496,9 +509,10 @@ export function TabKlien({
         },
       ]);
       fetchData();
-    } catch {
-      setError("Gagal menyimpan Jadwal Klien.");
-      showAlert("❌ GAGAL: Terjadi kesalahan saat menyimpan Jadwal Klien.");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Gagal menyimpan Jadwal Klien.";
+      setError(errMsg);
+      toast.error(errMsg, "Gagal Menyimpan Jadwal");
     } finally {
       setLoading(false);
     }
@@ -553,29 +567,26 @@ export function TabKlien({
     setLoading(true);
     try {
       for (const item of dataKirim) {
+        // Jadwal times are WIB: send explicit +07:00 offset (see tab-streamer).
         const jamMulaiIso = item.jamMulaiLive?.includes("T")
           ? item.jamMulaiLive
-          : `${item.tanggal}T${item.jamMulaiLive}:00.000Z`;
+          : `${item.tanggal}T${item.jamMulaiLive}:00+07:00`;
         const jamSelesaiIso = item.jamSelesaiLive?.includes("T")
           ? item.jamSelesaiLive
-          : `${item.tanggal}T${item.jamSelesaiLive}:00.000Z`;
+          : `${item.tanggal}T${item.jamSelesaiLive}:00+07:00`;
 
-        await fetch("/api/jadwal", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            idJadwal: item.idJadwal,
-            tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : undefined,
-            platform: item.platform,
-            jamMulaiLive: jamMulaiIso,
-            jamSelesaiLive: jamSelesaiIso,
-            kuotaHost: item.kuota || item.kuotaHost || 1,
-            judulLive: item.judulLive,
-            promoLive: item.promoLive,
-            catatanHost: item.catatanHost,
-            filePendukungHost: item.filePendukungHost,
-            status: item.status,
-          }),
+        await sendJson("/api/jadwal", "PUT", {
+          idJadwal: item.idJadwal,
+          tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : undefined,
+          platform: item.platform,
+          jamMulaiLive: jamMulaiIso,
+          jamSelesaiLive: jamSelesaiIso,
+          kuotaHost: item.kuota || item.kuotaHost || 1,
+          judulLive: item.judulLive,
+          promoLive: item.promoLive,
+          catatanHost: item.catatanHost,
+          filePendukungHost: item.filePendukungHost,
+          status: item.status,
         });
       }
       showAlert(`✅ SINKRONISASI SELESAI\n\nBerhasil memperbarui ${dataKirim.length} Jadwal Klien.`);
@@ -608,16 +619,12 @@ export function TabKlien({
           ) || clients[0];
 
         if (matchedClient) {
-          await fetch("/api/clients", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              clientId: matchedClient.id,
-              platform: plat,
-              blacklist: item.blacklist.join("=="),
-              catatan: item.blacklist.join("=="),
-              kategori: item.priority.join("=="),
-            }),
+          await sendJson("/api/clients", "PATCH", {
+            clientId: matchedClient.id,
+            platform: plat,
+            blacklist: item.blacklist.join("=="),
+            catatan: item.blacklist.join("=="),
+            kategori: item.priority.join("=="),
           });
         }
       }
@@ -918,13 +925,16 @@ export function TabKlien({
                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                               Jam Mulai *
                             </label>
-                            <input
-                              type="time"
+                            <FlatpickrTimeInput
+                              id={`K_JAM_MULAI_${idx + 1}`}
                               value={item.jamMulaiLive}
-                              onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                              onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                              onChange={(e) => updateKlienField(idx, "jamMulaiLive", e.target.value)}
-                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+                              onChange={(val) => {
+                                updateKlienField(idx, "jamMulaiLive", val);
+                                // Auto-fill end time +2 hours (mirrors ref-deploy calculateEndTimeKlien)
+                                const auto = calculateEndTime(val, 2);
+                                if (auto) updateKlienField(idx, "jamSelesaiLive", auto);
+                              }}
+                              placeholder="Pilih Jam Mulai"
                               required
                             />
                           </div>
@@ -932,13 +942,11 @@ export function TabKlien({
                             <label className="block text-sm font-semibold text-slate-700 mb-1.5">
                               Jam Selesai *
                             </label>
-                            <input
-                              type="time"
+                            <FlatpickrTimeInput
+                              id={`K_JAM_SELESAI_${idx + 1}`}
                               value={item.jamSelesaiLive}
-                              onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                              onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                              onChange={(e) => updateKlienField(idx, "jamSelesaiLive", e.target.value)}
-                              className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white font-mono"
+                              onChange={(val) => updateKlienField(idx, "jamSelesaiLive", val)}
+                              placeholder="Pilih Jam Selesai"
                               required
                             />
                           </div>
@@ -1128,14 +1136,14 @@ export function TabKlien({
               </button>
               <button
                 type="submit"
-                disabled={loading || !isKlienCrashVerified}
+                disabled={loading}
                 className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition-all shadow-md flex items-center justify-center gap-2 ${
-                  isKlienCrashVerified && !loading
-                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed border border-slate-300"
+                  loading
+                    ? "bg-slate-400 cursor-wait text-white"
+                    : "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                 }`}
               >
-                <i className="fa-solid fa-cloud-arrow-up" />
+                <i className={`fa-solid ${loading ? "fa-spinner fa-spin" : "fa-cloud-arrow-up"}`} />
                 <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal Klien"}</span>
               </button>
             </div>
@@ -2609,33 +2617,31 @@ export function TabKlien({
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Jam Mulai Live *</label>
-                <input
-                  type="time"
+                <FlatpickrTimeInput
+                  id="modal_edit_K_JAM_MULAI"
                   value={modalEditRubahKlien.data.jamMulaiLive}
-                  onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onChange={(e) =>
+                  onChange={(val) =>
                     setModalEditRubahKlien((prev) =>
-                      prev.data ? { ...prev, data: { ...prev.data, jamMulaiLive: e.target.value } } : prev
+                      prev.data ? { ...prev, data: { ...prev.data, jamMulaiLive: val } } : prev
                     )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
+                  placeholder="Pilih Jam Mulai"
+                  required
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">Jam Selesai Live *</label>
-                <input
-                  type="time"
+                <FlatpickrTimeInput
+                  id="modal_edit_K_JAM_SELESAI"
                   value={modalEditRubahKlien.data.jamSelesaiLive}
-                  onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onFocus={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }}
-                  onChange={(e) =>
+                  onChange={(val) =>
                     setModalEditRubahKlien((prev) =>
-                      prev.data ? { ...prev, data: { ...prev.data, jamSelesaiLive: e.target.value } } : prev
+                      prev.data ? { ...prev, data: { ...prev.data, jamSelesaiLive: val } } : prev
                     )
                   }
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer bg-white"
+                  placeholder="Pilih Jam Selesai"
+                  required
                 />
               </div>
 

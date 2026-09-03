@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 export default function PayrollPage() {
   const [list, setList] = useState<any[]>([]);
@@ -22,16 +23,14 @@ export default function PayrollPage() {
     try {
       const q = periode ? `?periode=${encodeURIComponent(periode)}` : "";
       const [listRes, sumRes] = await Promise.all([
-        fetch(`/api/payroll${q}`).then((r) => r.json()),
-        fetch(`/api/payroll?summary=1&periode=${encodeURIComponent(periode)}`).then((r) => r.json()),
+        fetchJson<any[]>(`/api/payroll${q}`),
+        fetchJson<any>(`/api/payroll?summary=1&periode=${encodeURIComponent(periode)}`).catch(() => null),
       ]);
 
-      if (listRes.status === "success") setList(listRes.data);
-      else setError(listRes.message ?? "Gagal memuat daftar payroll");
-
-      if (sumRes.status === "success") setSummary(sumRes.data);
-    } catch {
-      setError("Terjadi kesalahan koneksi saat memuat payroll");
+      setList(listRes);
+      if (sumRes) setSummary(sumRes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat daftar payroll");
     } finally {
       setLoading(false);
     }
@@ -42,24 +41,15 @@ export default function PayrollPage() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/payroll", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "compute-batch",
-          periode,
-        }),
+      const data = await sendJson<any>("/api/payroll", "POST", {
+        action: "compute-batch",
+        periode,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Perhitungan payroll untuk ${periode} selesai! (${d.data.totalStreamers} streamer dihitung).`);
-        setCalcModalOpen(false);
-        loadPayroll();
-      } else {
-        setError(d.message ?? "Gagal memproses perhitungan payroll");
-      }
-    } catch {
-      setError("Gagal menghubungi server");
+      setSuccess(`Perhitungan payroll untuk ${periode} selesai! (${data.totalStreamers} streamer dihitung).`);
+      setCalcModalOpen(false);
+      loadPayroll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memproses perhitungan payroll");
     } finally {
       setLoading(false);
     }

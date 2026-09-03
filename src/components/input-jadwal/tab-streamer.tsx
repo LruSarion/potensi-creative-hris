@@ -3,10 +3,10 @@
 import React, { useState } from "react";
 import type { TabSharedProps } from "./types";
 import type { ScheduleFormItem } from "@/types/jadwal";
-import { PLATFORMS, STUDIOS } from "@/types/jadwal";
 import {
   generateNewScheduleId,
   formatRowItem,
+  calculateEndTime,
 } from "@/lib/utils/schedule-helpers";
 import {
   formatDateSafe,
@@ -15,13 +15,17 @@ import {
   getWajibHadirTime,
 } from "@/lib/utils/date-format";
 import FlatpickrPicker from "@/components/ui/flatpickr-picker";
-import { inputCls, selectCls, labelCls, getStatusBadgeClass } from "./shared-styles";
+import { toast } from "@/components/ui/toast";
+import { sendJson } from "@/lib/api-client";
+import { FlatpickrTimeInput } from "./flatpickr-time-input";
+import { labelCls, getStatusBadgeClass } from "./shared-styles";
 
 export function TabStreamer({
   streamers,
   otsStaff,
   clients,
   allJadwal,
+  platformClientOptions = [],
   infoStreamerData,
   fetchData,
   loadInfoStreamer,
@@ -36,7 +40,8 @@ export function TabStreamer({
       id: 1,
       idJadwal: generateNewScheduleId("STR"),
       tanggal: "",
-      platform: "Shopee Live",
+      platform: "",
+      clientId: "",
       streamerKaryawanId: "",
       streamerId: "",
       streamerNama: "",
@@ -138,7 +143,8 @@ export function TabStreamer({
         id: Date.now(),
         idJadwal: generateNewScheduleId("STR", last?.tanggal),
         tanggal: last?.tanggal || "",
-        platform: last?.platform || "Shopee Live",
+        platform: last?.platform || "",
+        clientId: last?.clientId || "",
         streamerKaryawanId: "",
         streamerId: "",
         streamerNama: "",
@@ -188,13 +194,17 @@ export function TabStreamer({
     setIsStreamerCrashVerified(false);
   }
 
-  function checkBebasCrashStreamer() {
+  function runStreamerCrashValidation(): { isValid: boolean; conflicts: any[] } {
     const conflicts: any[] = [];
     for (let i = 0; i < streamerForms.length; i++) {
       const f1 = streamerForms[i];
-      if (!f1.tanggal || !f1.jamMulaiLive || !f1.jamSelesaiLive) {
-        showAlert("⚠️ Pastikan Tanggal, Jam Mulai, dan Jam Selesai terisi di semua form.");
-        return;
+      if (!f1.tanggal || !f1.jamMulaiLive || !f1.jamSelesaiLive || !f1.platform) {
+        showAlert(`⚠️ Pastikan Tanggal, Platform, Jam Mulai, dan Jam Selesai terisi di Jadwal #${i + 1}.`);
+        return { isValid: false, conflicts: [] };
+      }
+      if (!f1.streamerKaryawanId) {
+        showAlert(`⚠️ Pastikan Host / Streamer telah dipilih di Jadwal #${i + 1}.`);
+        return { isValid: false, conflicts: [] };
       }
       for (let j = i + 1; j < streamerForms.length; j++) {
         const f2 = streamerForms[j];
@@ -246,6 +256,12 @@ export function TabStreamer({
         }
       }
     }
+    return { isValid: true, conflicts };
+  }
+
+  function checkBebasCrashStreamer() {
+    const { isValid, conflicts } = runStreamerCrashValidation();
+    if (!isValid) return;
 
     if (conflicts.length > 0) {
       setIsStreamerCrashVerified(false);
@@ -271,19 +287,43 @@ export function TabStreamer({
     setError("");
     setSuccess("");
 
+    // Otomatis validasi crash jika belum diverifikasi manual
     if (!isStreamerCrashVerified) {
-      showAlert("⚠️ Silakan klik tombol 'Bebas Crash' terlebih dahulu sebelum menyimpan!");
-      return;
+      const { isValid, conflicts } = runStreamerCrashValidation();
+      if (!isValid) return;
+
+      if (conflicts.length > 0) {
+        setIsStreamerCrashVerified(false);
+        setModalCrashData({
+          isOpen: true,
+          isSafe: false,
+          title: "Jadwal Streamer Bentrok!",
+          conflicts,
+        });
+        return;
+      }
+      setIsStreamerCrashVerified(true);
     }
 
     setLoading(true);
 
     try {
       for (const item of streamerForms) {
+        // Jadwal times are WIB: send explicit +07:00 offset so server-side
+        // comparisons (check-in window, late calc) see the same wall-clock.
+        const cleanStart = item.jamMulaiLive.includes("T")
+          ? item.jamMulaiLive
+          : `${item.tanggal}T${item.jamMulaiLive.length === 5 ? item.jamMulaiLive + ":00" : item.jamMulaiLive}+07:00`;
+
+        const cleanEnd = item.jamSelesaiLive.includes("T")
+          ? item.jamSelesaiLive
+          : `${item.tanggal}T${item.jamSelesaiLive.length === 5 ? item.jamSelesaiLive + ":00" : item.jamSelesaiLive}+07:00`;
+
         const payload = {
           idJadwal: item.idJadwal || generateNewScheduleId("STR", item.tanggal),
           tanggal: item.tanggal ? new Date(item.tanggal).toISOString() : new Date().toISOString(),
           platform: item.platform,
+          clientId: item.clientId || null,
           streamerKaryawanId: item.streamerKaryawanId || null,
           hostKaryawanId: item.streamerKaryawanId || null,
           idHost: item.streamerId || null,
@@ -291,8 +331,8 @@ export function TabStreamer({
           idOts: item.otsId || null,
           cabangStudio: item.cabangStudio,
           nomorStudio: item.nomorStudio,
-          jamMulaiLive: item.jamMulaiLive.includes("T") ? item.jamMulaiLive : `${item.tanggal}T${item.jamMulaiLive}:00.000Z`,
-          jamSelesaiLive: item.jamSelesaiLive.includes("T") ? item.jamSelesaiLive : `${item.tanggal}T${item.jamSelesaiLive}:00.000Z`,
+          jamMulaiLive: cleanStart,
+          jamSelesaiLive: cleanEnd,
           judulLive: item.judulLive || null,
           promoLive: item.promoLive || null,
           catatanHost: item.catatanHost || null,
@@ -302,20 +342,18 @@ export function TabStreamer({
           status: "TERJADWAL",
         };
 
-        await fetch("/api/jadwal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        await sendJson("/api/jadwal", "POST", payload);
       }
       setSuccess(`✅ Berhasil menyimpan ${streamerForms.length} Jadwal Streamer!`);
+      toast.success(`Berhasil menyimpan ${streamerForms.length} Jadwal Streamer!`);
       setIsStreamerCrashVerified(false);
       setStreamerForms([
         {
           id: 1,
           idJadwal: generateNewScheduleId("STR"),
           tanggal: "",
-          platform: "Shopee Live",
+          platform: "",
+          clientId: "",
           streamerKaryawanId: "",
           streamerId: "",
           streamerNama: "",
@@ -336,8 +374,10 @@ export function TabStreamer({
         },
       ]);
       fetchData();
-    } catch {
-      setError("Terjadi kesalahan saat menyimpan Jadwal Streamer.");
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan saat menyimpan Jadwal Streamer.";
+      setError(errMsg);
+      toast.error(errMsg, "Gagal Menyimpan Jadwal");
     } finally {
       setLoading(false);
     }
@@ -428,24 +468,16 @@ export function TabStreamer({
     setSavingInfoStreamer(true);
     try {
       const dataEdit = keys.map((k) => infoChanges[k]);
-      const res = await fetch("/api/scheduler-tools", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "editInformasiStreamerBatch",
-          data_edit: dataEdit,
-        }),
+      await sendJson("/api/scheduler-tools", "POST", {
+        action: "editInformasiStreamerBatch",
+        data_edit: dataEdit,
       });
-      const d = await res.json();
-      if (d.status === "success" || res.ok) {
-        showAlert(`✅ Berhasil menyimpan ${keys.length} perubahan libur & request streamer!`);
-        setInfoChanges({});
-        await loadInfoStreamer();
-      } else {
-        showAlert(`❌ Gagal menyimpan: ${d.message || "Terjadi kesalahan"}`);
-      }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan.");
+      showAlert(`✅ Berhasil menyimpan ${keys.length} perubahan libur & request streamer!`);
+      setInfoChanges({});
+      await loadInfoStreamer();
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan";
+      showAlert(`❌ Gagal menyimpan: ${errMsg}`);
     } finally {
       setSavingInfoStreamer(false);
     }
@@ -481,8 +513,8 @@ export function TabStreamer({
 
     // 2. Filter Rentang Jam
     if (liveFilterWaktuToggle === "CUSTOM") {
-      const jMulai = (j.jamMulaiLive || "").slice(0, 5);
-      const jSelesai = (j.jamSelesaiLive || "").slice(0, 5);
+      const jMulai = formatTimeSafe(j.jamMulaiLive);
+      const jSelesai = formatTimeSafe(j.jamSelesaiLive);
       if (liveFilterJamMulai && jMulai < liveFilterJamMulai) return false;
       if (liveFilterJamAkhir && jSelesai > liveFilterJamAkhir) return false;
     }
@@ -563,21 +595,36 @@ export function TabStreamer({
       {/* SUBVIEW 1: FORMULIR JADWAL STREAMER */}
       {streamerSubTab === "form" && (
         <form onSubmit={submitStreamerSchedules} className="space-y-4">
-          {streamerForms.map((item, idx) => (
+          {streamerForms.map((item, idx) => {
+            const isCollapsed = item.isCollapsed;
+            const hostName = item.streamerNama || "Pilih Host";
+            const tanggalLabel = item.tanggal ? formatDateSafe(item.tanggal) : "--/--/----";
+            const jamLabel = item.jamMulaiLive ? `${item.jamMulaiLive || "--:--"} - ${item.jamSelesaiLive || "--:--"}` : "--:-- - --:--";
+
+            return (
             <div
               key={item.id}
-              className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4 relative"
+              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4"
             >
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 bg-[#941A0B] text-white rounded-lg flex items-center justify-center text-xs font-bold">
-                    {idx + 1}
-                  </span>
-                  <span className="font-mono text-xs font-bold text-slate-700">
-                    {item.idJadwal}
-                  </span>
+              {/* Accordion Header (ref: cardStreamer header) */}
+              <div
+                onClick={() => updateFormField(idx, "isCollapsed", !isCollapsed)}
+                className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                    #{idx + 1}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm leading-tight">
+                      Jadwal Streamer {hostName !== "Pilih Host" ? `- ${hostName}` : "Baru"}
+                    </h3>
+                    <span className="text-[11px] font-normal text-slate-500 mt-0.5 inline-block">
+                      {tanggalLabel} | {jamLabel}
+                    </span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   <button
                     type="button"
                     onClick={() => handleDuplicateForm(item)}
@@ -590,200 +637,301 @@ export function TabStreamer({
                     <button
                       type="button"
                       onClick={() => handleRemoveForm(item.id)}
-                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold transition"
+                      className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition"
                       title="Hapus Form"
                     >
                       <i className="fa-solid fa-trash" />
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => updateFormField(idx, "isCollapsed", !isCollapsed)}
+                    className="text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                  >
+                    <i className={`fa-solid ${isCollapsed ? "fa-chevron-down" : "fa-chevron-up"}`} />
+                  </button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-                {/* Tanggal */}
-                <div>
-                  <label className={labelCls}>Tanggal Live *</label>
-                  <FlatpickrPicker
-                    value={item.tanggal}
-                    placeholder="Pilih Tanggal..."
-                    options={{ mode: "single", dateFormat: "Y-m-d" }}
-                    onChange={(dateStr) => updateFormField(idx, "tanggal", dateStr)}
-                  />
+              {/* Accordion Body (ref: bodyStreamer sections) */}
+              {!isCollapsed && (
+              <div className="p-5 sm:p-6 space-y-6 block">
+                {/* Row 1: Tanggal + Platform (ref grid md:2) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Tanggal Live *</label>
+                    <FlatpickrPicker
+                      value={item.tanggal}
+                      placeholder="Pilih Tanggal..."
+                      options={{ mode: "single", dateFormat: "Y-m-d" }}
+                      onChange={(dateStr) => updateFormField(idx, "tanggal", dateStr)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Platform Client *</label>
+                    <select
+                      value={item.platform}
+                      onChange={(e) => {
+                        const sel = e.target.value;
+                        const matched = platformClientOptions?.find((p) => p.value === sel);
+                        updateFormField(idx, "platform", sel);
+                        if (matched?.clientId) {
+                          updateFormField(idx, "clientId", matched.clientId);
+                        }
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      required
+                    >
+                      <option value="">-- Pilih Platform Client --</option>
+                      {platformClientOptions.map((p) => (
+                        <option key={`${p.clientId}-${p.value}`} value={p.value}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* Platform */}
-                <div>
-                  <label className={labelCls}>Platform *</label>
-                  <select
-                    value={item.platform}
-                    onChange={(e) => updateFormField(idx, "platform", e.target.value)}
-                    className={selectCls}
-                    required
-                  >
-                    {PLATFORMS.map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </select>
+                {/* Row 2: Cari Host + auto ID/Nama (ref bordered-top grid) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cari Host Streamer *</label>
+                    <select
+                      value={item.streamerKaryawanId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const s = streamers.find((x) => x.id === id);
+                        updateFormField(idx, "streamerKaryawanId", id);
+                        updateFormField(idx, "streamerId", s?.idKaryawan || "");
+                        updateFormField(idx, "streamerNama", s?.namaLengkap || "");
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      required
+                    >
+                      <option value="">-- Pilih Host Streamer --</option>
+                      {streamers.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.namaLengkap} ({s.idKaryawan})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">ID Host (Auto)</label>
+                      <input
+                        type="text"
+                        value={item.streamerId || ""}
+                        readOnly
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nama Streamer</label>
+                      <input
+                        type="text"
+                        value={item.streamerNama || ""}
+                        readOnly
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Host / Streamer */}
-                <div>
-                  <label className={labelCls}>Host / Streamer *</label>
-                  <select
-                    value={item.streamerKaryawanId}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const s = streamers.find((x) => x.id === id);
-                      updateFormField(idx, "streamerKaryawanId", id);
-                      updateFormField(idx, "streamerId", s?.idKaryawan || "");
-                      updateFormField(idx, "streamerNama", s?.namaLengkap || "");
-                    }}
-                    className={selectCls}
-                    required
-                  >
-                    <option value="">-- Pilih Streamer --</option>
-                    {streamers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.namaLengkap} ({s.idKaryawan})
-                      </option>
-                    ))}
-                  </select>
+                {/* Row 3: Cabang, Nomor Studio, Device (ref grid md:4) */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cabang Studio *</label>
+                    <select
+                      value={item.cabangStudio || ""}
+                      onChange={(e) => updateFormField(idx, "cabangStudio", e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      required
+                    >
+                      <option value="" disabled>Pilih Cabang</option>
+                      <option value="Timoho">Timoho</option>
+                      <option value="Berbah">Berbah</option>
+                      <option value="Wiyoro">Wiyoro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nomor Studio</label>
+                    <select
+                      value={item.nomorStudio || ""}
+                      onChange={(e) => updateFormField(idx, "nomorStudio", e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    >
+                      <option value="">Pilih Studio</option>
+                      {Array.from({ length: 8 }, (_, i) => (
+                        <option key={i} value={`Studio ${i + 1}`}>Studio {i + 1}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Device</label>
+                    <select
+                      value={item.device || ""}
+                      onChange={(e) => updateFormField(idx, "device", e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    >
+                      <option value="">Tidak Pakai</option>
+                      <option value="Iphone XR Merah">Iphone XR Merah</option>
+                      <option value="Iphone XR Putih">Iphone XR Putih</option>
+                      <option value="Iphone XR Orange">Iphone XR Orange</option>
+                    </select>
+                  </div>
                 </div>
 
-                {/* Personel OTS */}
-                <div>
-                  <label className={labelCls}>Personel OTS</label>
-                  <select
-                    value={item.otsKaryawanId || ""}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const o = otsStaff.find((x) => x.id === id);
-                      updateFormField(idx, "otsKaryawanId", id);
-                      updateFormField(idx, "otsId", o?.idKaryawan || "");
-                      updateFormField(idx, "otsNama", o?.namaLengkap || "");
-                    }}
-                    className={selectCls}
-                  >
-                    <option value="">-- Pilih Staff OTS (Opsional) --</option>
-                    {otsStaff.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.namaLengkap} ({o.idKaryawan})
-                      </option>
-                    ))}
-                  </select>
+                {/* Row 4: Jam Mulai/Selesai + File Pendukung/Catatan Host (ref grid md:2) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jam Mulai *</label>
+                      <FlatpickrTimeInput
+                        id={`S_JAM_MULAI_LIVE_${idx + 1}`}
+                        value={item.jamMulaiLive}
+                        onChange={(val) => {
+                          updateFormField(idx, "jamMulaiLive", val);
+                          // Auto-fill end time +2 hours (mirrors ref-deploy calculateEndTime)
+                          const auto = calculateEndTime(val, 2);
+                          if (auto) updateFormField(idx, "jamSelesaiLive", auto);
+                        }}
+                        placeholder="Pilih Jam Mulai"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jam Selesai *</label>
+                      <FlatpickrTimeInput
+                        id={`S_JAM_SELESAI_LIVE_${idx + 1}`}
+                        value={item.jamSelesaiLive}
+                        onChange={(val) => updateFormField(idx, "jamSelesaiLive", val)}
+                        placeholder="Pilih Jam Selesai"
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">File Pendukung Host</label>
+                      <input
+                        type="text"
+                        value={item.filePendukungHost || ""}
+                        onChange={(e) => updateFormField(idx, "filePendukungHost", e.target.value)}
+                        placeholder="Link dokumen Host..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan Host</label>
+                      <textarea
+                        rows={1}
+                        value={item.catatanHost || ""}
+                        onChange={(e) => updateFormField(idx, "catatanHost", e.target.value)}
+                        placeholder="Opsional..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Cabang & Studio */}
-                <div>
-                  <label className={labelCls}>Cabang & Studio</label>
-                  <select
-                    value={`${item.cabangStudio}|${item.nomorStudio}`}
-                    onChange={(e) => {
-                      const [c, n] = e.target.value.split("|");
-                      updateFormField(idx, "cabangStudio", c);
-                      updateFormField(idx, "nomorStudio", n);
-                    }}
-                    className={selectCls}
-                  >
-                    {STUDIOS.map((s) => (
-                      <option key={s.name} value={`${s.cabang}|${s.no}`}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                {/* Row 5: OTS Pendamping (ref blue-tinted bar) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 border-t border-b border-slate-100 py-5 bg-blue-50/30 -mx-5 px-5 sm:-mx-6 sm:px-6">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1.5">Cari Staff OTS (Pendamping)</label>
+                    <select
+                      value={item.otsKaryawanId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const o = otsStaff.find((x) => x.id === id);
+                        updateFormField(idx, "otsKaryawanId", id);
+                        updateFormField(idx, "otsId", o?.idKaryawan || "");
+                        updateFormField(idx, "otsNama", o?.namaLengkap || "");
+                      }}
+                      className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    >
+                      <option value="">Kosongkan jika tidak ada OTS...</option>
+                      {otsStaff.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.namaLengkap} ({o.idKaryawan})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">ID OTS</label>
+                      <input
+                        type="text"
+                        value={item.otsId || ""}
+                        readOnly
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-500 rounded-lg px-3 py-2 text-sm outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nama OTS</label>
+                      <input
+                        type="text"
+                        value={item.otsNama || ""}
+                        readOnly
+                        className="w-full border border-slate-200 bg-slate-100 text-slate-700 rounded-lg px-3 py-2 text-sm outline-none font-bold"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Device */}
-                <div>
-                  <label className={labelCls}>Device</label>
-                  <select
-                    value={item.device || "Tidak Pakai"}
-                    onChange={(e) => updateFormField(idx, "device", e.target.value)}
-                    className={selectCls}
-                  >
-                    <option value="Tidak Pakai">Tidak Pakai Device</option>
-                    <option value="Device 1">Device 1</option>
-                    <option value="Device 2">Device 2</option>
-                    <option value="Device 3">Device 3</option>
-                  </select>
-                </div>
-
-                {/* Jam Mulai */}
-                <div>
-                  <label className={labelCls}>Jam Mulai Live *</label>
-                  <input
-                    type="time"
-                    value={item.jamMulaiLive}
-                    onChange={(e) => updateFormField(idx, "jamMulaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Jam Selesai */}
-                <div>
-                  <label className={labelCls}>Jam Selesai Live *</label>
-                  <input
-                    type="time"
-                    value={item.jamSelesaiLive}
-                    onChange={(e) => updateFormField(idx, "jamSelesaiLive", e.target.value)}
-                    className={inputCls}
-                    required
-                  />
-                </div>
-
-                {/* Judul Live */}
-                <div>
-                  <label className={labelCls}>Judul Live</label>
-                  <input
-                    type="text"
-                    value={item.judulLive || ""}
-                    onChange={(e) => updateFormField(idx, "judulLive", e.target.value)}
-                    placeholder="e.g. Flash Sale Live"
-                    className={inputCls}
-                  />
-                </div>
-
-                {/* Promo */}
-                <div>
-                  <label className={labelCls}>Promo Live</label>
-                  <input
-                    type="text"
-                    value={item.promoLive || ""}
-                    onChange={(e) => updateFormField(idx, "promoLive", e.target.value)}
-                    placeholder="e.g. Voucher 50%"
-                    className={inputCls}
-                  />
-                </div>
-
-                {/* File Pendukung Host */}
-                <div className="sm:col-span-2">
-                  <label className={labelCls}>Link File Pendukung (Google Drive)</label>
-                  <input
-                    type="text"
-                    value={item.filePendukungHost || ""}
-                    onChange={(e) => updateFormField(idx, "filePendukungHost", e.target.value)}
-                    placeholder="https://drive.google.com/..."
-                    className={inputCls}
-                  />
+                {/* Row 6: Judul/Promo + File Pendukung/Catatan OTS (ref grid md:2) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Judul Live</label>
+                      <input
+                        type="text"
+                        value={item.judulLive || ""}
+                        onChange={(e) => updateFormField(idx, "judulLive", e.target.value)}
+                        placeholder="Judul streaming..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Promo Live</label>
+                      <textarea
+                        rows={2}
+                        value={item.promoLive || ""}
+                        onChange={(e) => updateFormField(idx, "promoLive", e.target.value)}
+                        placeholder="Detail promo..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">File Pendukung OTS</label>
+                      <input
+                        type="text"
+                        value={item.filePendukungOts || ""}
+                        onChange={(e) => updateFormField(idx, "filePendukungOts", e.target.value)}
+                        placeholder="Paste link dokumen OTS..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Catatan OTS</label>
+                      <textarea
+                        rows={2}
+                        value={item.catatanOts || ""}
+                        onChange={(e) => updateFormField(idx, "catatanOts", e.target.value)}
+                        placeholder="Instruksi untuk OTS..."
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
-
-              {/* Catatan Host */}
-              <div>
-                <label className={labelCls}>Catatan untuk Host</label>
-                <textarea
-                  rows={2}
-                  value={item.catatanHost || ""}
-                  onChange={(e) => updateFormField(idx, "catatanHost", e.target.value)}
-                  placeholder="Catatan khusus sesi live..."
-                  className={inputCls}
-                />
-              </div>
+              )}
             </div>
-          ))}
+            );
+          })}
 
           {/* Action Bar */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -805,14 +953,14 @@ export function TabStreamer({
               </button>
               <button
                 type="submit"
-                disabled={loading || !isStreamerCrashVerified}
+                disabled={loading}
                 className={`w-full sm:w-auto font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-xs text-white ${
-                  isStreamerCrashVerified && !loading
-                    ? "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
-                    : "bg-slate-300 text-slate-500 cursor-not-allowed border border-slate-200"
+                  loading
+                    ? "bg-slate-400 cursor-wait"
+                    : "bg-[#941A0B] hover:bg-[#7a1509] cursor-pointer"
                 }`}
               >
-                <i className="fa-solid fa-cloud-arrow-up" />
+                <i className={`fa-solid ${loading ? "fa-spinner fa-spin" : "fa-cloud-arrow-up"}`} />
                 <span>{loading ? "Menyimpan..." : "Simpan Semua Jadwal Streamer"}</span>
               </button>
             </div>

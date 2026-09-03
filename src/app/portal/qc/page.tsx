@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import QcLiveMonitor from "@/components/qc-live-monitor";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type Review = {
   id: string;
@@ -39,13 +40,15 @@ export default function QcPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [r, t] = await Promise.all([
-        fetch("/api/qc?view=reviews").then((x) => x.json()),
-        isManager ? fetch("/api/qc?view=trends").then((x) => x.json()) : Promise.resolve(null),
+      const [reviewData, trendData] = await Promise.all([
+        fetchJson<Review[]>("/api/qc?view=reviews"),
+        isManager ? fetchJson<any>("/api/qc?view=trends").catch((err) => {
+          setError(err instanceof Error ? err.message : "Akses ditolak");
+          return null;
+        }) : Promise.resolve(null),
       ]);
-      if (r.status === "success") setReviews(r.data);
-      if (t && t.status === "success") setTrends(t.data);
-      else if (t && t.status === "error") setError(t.message ?? "Akses ditolak");
+      setReviews(reviewData);
+      if (trendData) setTrends(trendData);
     } catch {
       setError("Gagal memuat data QC");
     } finally {
@@ -71,26 +74,17 @@ export default function QcPortalPage() {
         score: Number(score),
       }));
 
-      const res = await fetch("/api/qc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "score",
-          reviewId: scoringReview.id,
-          scores: scoresPayload,
-          remarks,
-        }),
+      await sendJson("/api/qc", "POST", {
+        action: "score",
+        reviewId: scoringReview.id,
+        scores: scoresPayload,
+        remarks,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Penilaian QC live stream berhasil disimpan!");
-        setScoringReview(null);
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal menyimpan skor QC");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      setSuccess("Penilaian QC live stream berhasil disimpan!");
+      setScoringReview(null);
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     }
   }
 

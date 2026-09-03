@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson } from "@/lib/api-client";
 
 export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<any[]>([]);
@@ -15,12 +16,10 @@ export default function PipelinePage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/marketplace?view=pipeline");
-      const d = await r.json();
-      if (d.status === "success") setPipeline(d.data);
-      else setError(d.message ?? "Gagal memuat pipeline");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<any[]>("/api/marketplace?view=pipeline");
+      setPipeline(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat pipeline");
     } finally {
       setLoading(false);
     }

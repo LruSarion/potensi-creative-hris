@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import QcLiveMonitor from "@/components/qc-live-monitor";
+import { fetchJson } from "@/lib/api-client";
 
 const CATEGORY_COLORS: Record<string, string> = {
   GROOMING: "bg-pink-100 text-pink-700",
@@ -29,12 +30,10 @@ export default function QcViolationsPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/qc-violation");
-      const d = await r.json();
-      if (d.status === "success") setViolations(d.data ?? []);
-      else setError(d.message ?? "Gagal memuat pelanggaran");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<any[]>("/api/qc-violation");
+      setViolations(data ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat pelanggaran");
     } finally {
       setLoading(false);
     }

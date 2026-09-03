@@ -6,6 +6,7 @@ import {
   resolvePlatformClientValue,
   minutesToTime,
   isTimeOverlap,
+  calculateEndTime,
 } from "./schedule-helpers";
 
 describe("schedule-helpers utilities", () => {
@@ -45,5 +46,13 @@ describe("schedule-helpers utilities", () => {
     expect(isTimeOverlap("10:00", "12:00", "11:00", "13:00")).toBe(true);
     expect(isTimeOverlap("10:00", "12:00", "12:00", "14:00")).toBe(false);
     expect(isTimeOverlap("10:00", "12:00", "13:00", "15:00")).toBe(false);
+  });
+
+  it("calculateEndTime adds offset hours wrapping midnight", () => {
+    expect(calculateEndTime("10:00", 2)).toBe("12:00");
+    expect(calculateEndTime("23:00", 2)).toBe("01:00");
+    expect(calculateEndTime("15:00", 8)).toBe("23:00");
+    expect(calculateEndTime("23:00", 8)).toBe("07:00");
+    expect(calculateEndTime("", 2)).toBe("");
   });
 });

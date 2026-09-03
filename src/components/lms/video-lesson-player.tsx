@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { sendJson } from "@/lib/api-client";
 
 type VideoQuestion = {
   id: string;
@@ -85,16 +86,12 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     const capped = Math.min(Math.max(0, sec), dur || sec);
     if (done || capped - lastReportedRef.current >= 5) {
       lastReportedRef.current = capped;
-      fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "video-watch",
-          enrollmentId,
-          lessonId: lesson.id,
-          watchSeconds: capped,
-          completed: done,
-        }),
+      sendJson("/api/lms", "POST", {
+        action: "video-watch",
+        enrollmentId,
+        lessonId: lesson.id,
+        watchSeconds: capped,
+        completed: done,
       }).catch(() => undefined);
     }
   }
@@ -233,29 +230,20 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     setSubmitting(true);
     setError("");
     try {
-      const r = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "video-submit",
-          enrollmentId,
-          lessonId: lesson.id,
-          answers: timedQuestions.map((q) => ({
-            questionId: q.id,
-            answerText: answersRef.current[q.id] ?? answers[q.id] ?? "",
-          })),
-        }),
+      const data = await sendJson<{ scorePct: number; totalQuestions: number }>("/api/lms", "POST", {
+        action: "video-submit",
+        enrollmentId,
+        lessonId: lesson.id,
+        answers: timedQuestions.map((q) => ({
+          questionId: q.id,
+          answerText: answersRef.current[q.id] ?? answers[q.id] ?? "",
+        })),
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setResult(d.data);
-        setSubmitted(true);
-        onSubmitted?.();
-      } else {
-        setError(d.message ?? "Gagal mengirim jawaban");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi saat mengirim jawaban");
+      setResult(data);
+      setSubmitted(true);
+      onSubmitted?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengirim jawaban");
     } finally {
       setSubmitting(false);
     }

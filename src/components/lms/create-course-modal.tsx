@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 interface ClientOption {
   id: string;
@@ -30,11 +31,10 @@ export default function CreateCourseModal({
   useEffect(() => {
     if (isOpen) {
       setError("");
-      fetch("/api/clients")
-        .then((r) => r.json())
-        .then((d) => {
-          if (d.status === "success" && Array.isArray(d.data)) {
-            setClients(d.data);
+      fetchJson<ClientOption[]>("/api/clients")
+        .then((data) => {
+          if (Array.isArray(data)) {
+            setClients(data);
           }
         })
         .catch(() => {});
@@ -54,32 +54,23 @@ export default function CreateCourseModal({
     setError("");
 
     try {
-      const res = await fetch("/api/lms", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "course",
-          title: title.trim(),
-          description: description.trim() || null,
-          isCertification,
-          clientId: isCertification && clientId ? clientId : null,
-          status,
-        }),
+      const data = await sendJson<any>("/api/lms", "POST", {
+        action: "course",
+        title: title.trim(),
+        description: description.trim() || null,
+        isCertification,
+        clientId: isCertification && clientId ? clientId : null,
+        status,
       });
 
-      const d = await res.json();
-      if (d.status === "success") {
-        setTitle("");
-        setDescription("");
-        setIsCertification(false);
-        setClientId("");
-        onSuccess(d.data);
-        onClose();
-      } else {
-        setError(d.message ?? "Gagal membuat kelas baru");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi saat membuat kelas");
+      setTitle("");
+      setDescription("");
+      setIsCertification(false);
+      setClientId("");
+      onSuccess(data);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat kelas baru");
     } finally {
       setSubmitting(false);
     }

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 import { computeDurationMinutes } from "@/lib/schedule-rules";
+import { STUDIOS } from "@/types/jadwal";
 
 /**
  * Streamer dashboard: all queries scoped to the authenticated streamer's own data.
@@ -14,11 +15,60 @@ async function requireStreamer(): Promise<string> {
   return user.karyawanId;
 }
 
+/** Get list of studios according to database and system configuration */
+export async function getStudioList() {
+  const inDb = await db.jadwal.findMany({
+    select: { cabangStudio: true, nomorStudio: true },
+    distinct: ["cabangStudio", "nomorStudio"],
+    where: {
+      OR: [
+        { cabangStudio: { not: null } },
+        { nomorStudio: { not: null } },
+      ],
+    },
+  });
+
+  const studioSet = new Set<string>();
+  const list: { name: string; cabang: string; no: string }[] = [];
+
+  // 1. Standard studios
+  for (const s of STUDIOS) {
+    studioSet.add(s.name.toLowerCase());
+    list.push(s);
+  }
+
+  // 2. Distinct from DB
+  for (const row of inDb) {
+    const c = (row.cabangStudio || "").trim();
+    const n = (row.nomorStudio || "").trim();
+    if (!c && !n) continue;
+    let name = "";
+    if (c && n) {
+      name = n.toLowerCase().includes(c.toLowerCase())
+        ? n
+        : `Studio ${c} ${n.replace(/^Studio\s*/i, "")}`;
+    } else {
+      name = c || n;
+    }
+    if (!studioSet.has(name.toLowerCase())) {
+      studioSet.add(name.toLowerCase());
+      list.push({ name, cabang: c || "Timoho", no: n || "01" });
+    }
+  }
+
+  return list;
+}
+
 /** My schedules (own only). */
 export async function getMyJadwal() {
   const karyawanId = await requireStreamer();
-  return db.jadwal.findMany({
-    where: { streamerKaryawanId: karyawanId },
+  const list = await db.jadwal.findMany({
+    where: {
+      OR: [
+        { streamerKaryawanId: karyawanId },
+        { hostKaryawanId: karyawanId },
+      ],
+    },
     orderBy: { tanggal: "desc" },
     include: { 
       client: true,
@@ -26,6 +76,25 @@ export async function getMyJadwal() {
         where: { tipe: "CHECK_OUT" }
       }
     },
+  });
+
+  return list.map((j) => {
+    const c = (j.cabangStudio || "").trim();
+    const n = (j.nomorStudio || "").trim();
+    let studioName = "Studio Timoho 1";
+    if (c && n) {
+      studioName = n.toLowerCase().includes(c.toLowerCase())
+        ? n
+        : `Studio ${c} ${n.replace(/^Studio\s*/i, "")}`;
+    } else if (c) {
+      studioName = `Studio ${c}`;
+    } else if (n) {
+      studioName = n;
+    }
+    return {
+      ...j,
+      studio: studioName,
+    };
   });
 }
 
@@ -44,6 +113,11 @@ export async function getMySesiAktif() {
   const lastCheckIn = await db.absensi.findFirst({
     where: { karyawanId, tipe: "CHECK_IN" },
     orderBy: { waktu: "desc" },
+    include: {
+      jadwal: {
+        include: { client: true }
+      }
+    }
   });
   if (!lastCheckIn) return null;
   const lastCheckOut = await db.absensi.findFirst({
@@ -119,12 +193,28 @@ export async function getMyDashboard() {
   const currentPeriode = `${months[now.getMonth()]} ${now.getFullYear()}`;
 
   const [karyawan, jadwalBulanIni, abensiBulanIni, incidents, tieringList] = await Promise.all([
-    db.karyawan.findUnique({ where: { id: karyawanId } }),
+    db.karyawan.findUnique({
+      where: { id: karyawanId },
+      include: { streamerProfile: true },
+    }),
     db.jadwal.findMany({
       where: {
-        streamerKaryawanId: karyawanId,
-        tanggal: { gte: startOfMonth, lt: endOfMonth },
-        status: "SELESAI",
+        AND: [
+          {
+            OR: [
+              { streamerKaryawanId: karyawanId },
+              { hostKaryawanId: karyawanId },
+            ],
+          },
+          { tanggal: { gte: startOfMonth, lt: endOfMonth } },
+          {
+            OR: [
+              { status: "SELESAI" },
+              { liveState: "CLOSED" },
+              { absensi: { some: { tipe: "CHECK_OUT" } } },
+            ],
+          },
+        ],
       },
     }),
     db.absensi.findMany({
@@ -148,16 +238,17 @@ export async function getMyDashboard() {
   // Calculate total live hours from jadwal
   const totalMinutes = jadwalBulanIni.reduce((s, j) => {
     if (j.durationSec > 0) return s + j.durationSec / 60;
-    return s + computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
+    const dur = computeDurationMinutes(j.jamMulaiLive, j.jamSelesaiLive);
+    return s + (dur > 0 ? dur : 120);
   }, 0);
   const totalJam = totalMinutes / 60;
 
-  // Find applicable tier
+  // Find applicable tier (default to Basic/first tier if hours are low)
   const activeTier = tieringList.slice().reverse().find(
     (t) => totalJam >= t.jamMinimal
-  ) ?? tieringList[0] ?? null;
+  ) ?? tieringList[0] ?? { tier: "Basic", ratePerJam: 25000, jamMinimal: 0, jamMaksimal: 80 };
 
-  const ratePerJam = activeTier ? Number(activeTier.ratePerJam) : 0;
+  const ratePerJam = activeTier ? Number(activeTier.ratePerJam) : 25000;
   const grossPay = totalJam * ratePerJam;
 
   // Total GMV from check-out records with reportedGmv
@@ -182,6 +273,7 @@ export async function getMyDashboard() {
       kontrakType: karyawan.kategori,
       endDate: karyawan.endDate,
       tags: karyawan.tags,
+      fotoUrl: karyawan.streamerProfile?.photoUrl ?? null,
     } : null,
     periode: currentPeriode,
     totalJam: Math.round(totalJam * 100) / 100,
@@ -286,13 +378,15 @@ export async function getTerbatasData() {
   const perluLapor = Array.from(perluLaporMap.values());
 
   // 2. Jeda Terbatas:
-  // Schedules for this streamer today / recently scheduled that can be instantly completed
-  const jedaTerbatas = await db.jadwal.findMany({
+  // Short-gap schedules (< 30 minutes) whose time has come (already started,
+  // still within the 8-hour reporting window) — eligible for instant Check-Out.
+  const jedaCandidates = await db.jadwal.findMany({
     where: {
       streamerKaryawanId: karyawanId,
       tanggal: { gte: startOfYesterday },
       status: { not: "SELESAI" },
       liveState: { not: "CLOSED" },
+      jamMulaiLive: { lte: now },
     },
     orderBy: { jamMulaiLive: "asc" },
     include: {
@@ -303,6 +397,15 @@ export async function getTerbatasData() {
         where: { karyawanId }
       }
     }
+  });
+
+  const thirtyMinMs = 30 * 60 * 1000;
+  const jedaTerbatas = jedaCandidates.filter((j) => {
+    // Only short-gap sessions (< 30 minutes scheduled duration)
+    const durationMs = j.jamSelesaiLive.getTime() - j.jamMulaiLive.getTime();
+    if (durationMs <= 0 || durationMs > thirtyMinMs) return false;
+    // Past the 8-hour window it escalates to Perlu Lapor instead
+    return now.getTime() <= j.jamSelesaiLive.getTime() + 8 * 60 * 60 * 1000;
   });
 
   return {

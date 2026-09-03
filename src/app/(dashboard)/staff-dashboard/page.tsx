@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
+import { formatDateSafe, formatTimeSafe, calcWajibHadir } from "@/lib/utils/date-format";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type SopTask = {
   id: string;
@@ -86,13 +88,10 @@ export default function StaffDashboardPage() {
   async function loadStats(target?: string) {
     try {
       const q = target ? `&search=${encodeURIComponent(target)}` : "";
-      const r = await fetch(`/api/staff?view=stats${q}`);
-      const d = await r.json();
-      if (d.status === "success") {
-        setStats(d.data);
-        if (target && d.data.karyawan) {
-          setMonitoredStaff(d.data.karyawan);
-        }
+      const data = await fetchJson<any>(`/api/staff?view=stats${q}`);
+      setStats(data);
+      if (target && data.karyawan) {
+        setMonitoredStaff(data.karyawan);
       }
     } catch { /* ignore */ }
   }
@@ -100,9 +99,8 @@ export default function StaffDashboardPage() {
   async function loadHistory(targetKaryawanId?: string) {
     try {
       const q = targetKaryawanId ? `&karyawanId=${encodeURIComponent(targetKaryawanId)}` : "";
-      const r = await fetch(`/api/absensi?view=history&kategori=STAFF${q}`);
-      const d = await r.json();
-      if (d.status === "success") setHistory(d.data ?? []);
+      const data = await fetchJson<any[]>(`/api/absensi?view=history&kategori=STAFF${q}`);
+      setHistory(data ?? []);
     } catch { /* ignore */ }
   }
 
@@ -110,9 +108,8 @@ export default function StaffDashboardPage() {
     setJadwalLoading(true);
     try {
       const q = targetKaryawanId ? `?karyawanId=${encodeURIComponent(targetKaryawanId)}` : "";
-      const r = await fetch(`/api/jadwal${q}`);
-      const d = await r.json();
-      if (d.status === "success") setJadwalList(d.data ?? []);
+      const data = await fetchJson<any[]>(`/api/jadwal${q}`);
+      setJadwalList(data ?? []);
     } catch { /* ignore */ }
     finally { setJadwalLoading(false); }
   }
@@ -120,9 +117,8 @@ export default function StaffDashboardPage() {
   async function loadSop() {
     setSopLoading(true);
     try {
-      const r = await fetch("/api/sop?view=checklist");
-      const d = await r.json();
-      if (d.status === "success") setSop(d.data ?? []);
+      const data = await fetchJson<SopTemplate[]>("/api/sop?view=checklist");
+      setSop(data ?? []);
     } catch { /* ignore */ }
     finally { setSopLoading(false); }
   }
@@ -132,29 +128,20 @@ export default function StaffDashboardPage() {
     setError("");
     try {
       const photoUrl = task.requiresPhoto ? (photoInputs[task.id] ?? "") : undefined;
-      const r = await fetch("/api/sop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "complete-task", taskId: task.id, completed: checked, photoUrl }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess(checked ? "Tugas SOP ditandai selesai ✓" : "Tugas SOP dibatalkan.");
-        loadSop();
-      } else {
-        setError(d.message ?? "Gagal menyimpan tugas SOP");
-      }
-    } catch { setError("Gagal menyimpan tugas SOP"); }
-    finally { setSopLoading(false); }
+      await sendJson("/api/sop", "POST", { action: "complete-task", taskId: task.id, completed: checked, photoUrl });
+      setSuccess(checked ? "Tugas SOP ditandai selesai ✓" : "Tugas SOP dibatalkan.");
+      loadSop();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan tugas SOP");
+    } finally { setSopLoading(false); }
   }
 
   async function loadSession(target?: string) {
     setLoading(true);
     try {
       const q = target ? `&search=${encodeURIComponent(target)}` : "";
-      const res = await fetch(`/api/staff?view=sesi${q}`);
-      const d = await res.json();
-      if (d.status === "success") setSesi(d.data);
+      const data = await fetchJson<any>(`/api/staff?view=sesi${q}`);
+      setSesi(data);
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }
@@ -166,32 +153,30 @@ export default function StaffDashboardPage() {
     setSuccess("");
     try {
       const q = encodeURIComponent(searchStaffInput.trim());
-      const [stRes, seRes] = await Promise.all([
-        fetch(`/api/staff?view=stats&search=${q}`).then((r) => r.json()),
-        fetch(`/api/staff?view=sesi&search=${q}`).then((r) => r.json()).catch(() => ({ status: "error" })),
+      // Sesi fetch is best-effort: absence of an active session is normal,
+      // so a failure falls back to null rather than aborting the search.
+      const [stats, sesi] = await Promise.all([
+        fetchJson<any>(`/api/staff?view=stats&search=${q}`),
+        fetchJson<any>(`/api/staff?view=sesi&search=${q}`).catch(() => null),
       ]);
 
-      if (stRes.status === "success" && stRes.data) {
-        setStats(stRes.data);
-        if (stRes.data.karyawan) {
-          setMonitoredStaff(stRes.data.karyawan);
-          loadHistory(stRes.data.karyawan.id);
-          loadJadwal(stRes.data.karyawan.id);
-          setSuccess(`Mode Pengawasan aktif untuk: ${stRes.data.karyawan.namaLengkap} (${stRes.data.karyawan.idKaryawan})`);
+      if (stats) {
+        setStats(stats);
+        if (stats.karyawan) {
+          setMonitoredStaff(stats.karyawan);
+          loadHistory(stats.karyawan.id);
+          loadJadwal(stats.karyawan.id);
+          setSuccess(`Mode Pengawasan aktif untuk: ${stats.karyawan.namaLengkap} (${stats.karyawan.idKaryawan})`);
         } else {
           setError("Staff tidak ditemukan");
         }
       } else {
-        setError(stRes.message ?? "Staff tidak ditemukan");
+        setError("Staff tidak ditemukan");
       }
 
-      if (seRes.status === "success") {
-        setSesi(seRes.data);
-      } else {
-        setSesi(null);
-      }
-    } catch {
-      setError("Gagal memuat data pengawasan staff");
+      setSesi(sesi);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat data pengawasan staff");
     } finally {
       setAdminSearchLoading(false);
     }
@@ -208,67 +193,28 @@ export default function StaffDashboardPage() {
     loadJadwal();
   }
 
-  function formatDateSafe(val: any): string {
-    if (!val) return "–";
-    const d = new Date(val);
-    if (isNaN(d.getTime())) return String(val);
-    return d.toLocaleDateString("id-ID", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    });
-  }
-
-  function formatTimeSafe(val: any): string {
-    if (!val) return "–";
-    const d = new Date(val);
-    if (isNaN(d.getTime())) {
-      if (typeof val === "string" && val.includes(":")) return val.slice(0, 5);
-      return String(val);
-    }
-    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
-  }
-
-  function calcWajibHadir(jamMulaiVal: any): string {
-    if (!jamMulaiVal) return "–";
-    const d = new Date(jamMulaiVal);
-    if (isNaN(d.getTime())) return "15 Menit Sebelum";
-    d.setMinutes(d.getMinutes() - 15);
-    return d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false }) + " WIB";
-  }
-
   async function doAbsen(tipe: "CHECK_IN" | "CHECK_OUT") {
     setError("");
     setSuccess("");
     setActionLoading(true);
     try {
-      const res = await fetch("/api/absensi", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipe, kategori: "STAFF", fotoBuktiUrl: fotoBuktiUrl || undefined }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(tipe === "CHECK_IN" ? "✅ Presensi Masuk (Check-In) berhasil dicatat!" : "✅ Presensi Pulang (Check-Out) berhasil dicatat!");
-        loadSession();
-        loadStats();
-        loadHistory();
-        setActiveTab(tipe === "CHECK_IN" ? "checkout" : "riwayat");
-      } else {
-        setError(d.message ?? "Gagal memproses absensi");
-      }
-    } catch { setError("Terjadi kesalahan koneksi"); }
-    finally { setActionLoading(false); }
+      await sendJson("/api/absensi", "POST", { tipe, kategori: "STAFF", fotoBuktiUrl: fotoBuktiUrl || undefined });
+      setSuccess(tipe === "CHECK_IN" ? "✅ Presensi Masuk (Check-In) berhasil dicatat!" : "✅ Presensi Pulang (Check-Out) berhasil dicatat!");
+      loadSession();
+      loadStats();
+      loadHistory();
+      setActiveTab(tipe === "CHECK_IN" ? "checkout" : "riwayat");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memproses absensi");
+    } finally { setActionLoading(false); }
   }
 
   async function doAdminSearch() {
     if (!adminSearch.trim()) return;
     setAdminLoading(true);
     try {
-      const r = await fetch(`/api/absensi?view=history&kategori=STAFF&search=${encodeURIComponent(adminSearch)}`);
-      const d = await r.json();
-      if (d.status === "success") setAdminResults(d.data ?? []);
+      const data = await fetchJson<any[]>(`/api/absensi?view=history&kategori=STAFF&search=${encodeURIComponent(adminSearch)}`);
+      setAdminResults(data ?? []);
     } catch { /* ignore */ }
     finally { setAdminLoading(false); }
   }

@@ -8,6 +8,7 @@ import {
   getPendingGmv,
   getTerbatasData,
   getStreamerRequestStatus,
+  getStudioList,
   submitLeaveRequest,
   submitShiftRequest,
 } from "@/lib/services/streamer";
@@ -22,6 +23,7 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "dashboard") return getMyDashboard();
   if (view === "pending-gmv") return getPendingGmv();
   if (view === "terbatas") return getTerbatasData();
+  if (view === "studios") return getStudioList();
   if (view === "request-status") return getStreamerRequestStatus();
   return getMyJadwal();
 });

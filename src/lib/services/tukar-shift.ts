@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 import type { Role } from "@/generated/prisma/enums";
+import { formatTimeSafe, formatDateOnly } from "@/lib/utils/date-format";
 
 const APPROVER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"];
 
@@ -55,13 +56,9 @@ export async function getTukarShiftFormData(roleFilter?: string) {
   });
 
   const referensiJadwal = rawJadwal.map((j) => {
-    const tglStr = j.tanggal ? new Date(j.tanggal).toISOString().split("T")[0] : "";
-    const startStr = j.jamMulaiLive
-      ? new Date(j.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })
-      : "";
-    const endStr = j.jamSelesaiLive
-      ? new Date(j.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })
-      : "";
+    const tglStr = j.tanggal ? formatDateOnly(j.tanggal) : "";
+    const startStr = j.jamMulaiLive ? formatTimeSafe(j.jamMulaiLive) : "";
+    const endStr = j.jamSelesaiLive ? formatTimeSafe(j.jamSelesaiLive) : "";
     const platform = j.platform || "Live";
     const studio = j.cabangStudio ? ` (${j.cabangStudio}${j.nomorStudio ? ` #${j.nomorStudio}` : ""})` : "";
     return `${j.idJadwal} | ${tglStr} | ${startStr} | ${endStr} | ${platform}${studio}`;

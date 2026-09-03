@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson } from "@/lib/api-client";
 
 type IncidentItem = {
   id: string;
@@ -57,19 +58,15 @@ export default function FinanceInsentifPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`/api/incidents?status=RESOLVED`).then((r) => r.json());
-      if (res.status === "success") {
-        const filtered = res.data.filter((i: any) => {
-          const d = new Date(i.createdAt);
-          const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-          return ym === periodeFilter;
-        });
-        setIncidents(filtered);
-      } else {
-        setError(res.message ?? "Gagal memuat data");
-      }
-    } catch {
-      setError("Koneksi gagal saat memuat data rekap");
+      const data = await fetchJson<IncidentItem[]>(`/api/incidents?status=RESOLVED`);
+      const filtered = data.filter((i: any) => {
+        const d = new Date(i.createdAt);
+        const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        return ym === periodeFilter;
+      });
+      setIncidents(filtered);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat data");
     } finally {
       setLoading(false);
     }

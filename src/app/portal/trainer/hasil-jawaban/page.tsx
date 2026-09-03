@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { fetchJson } from "@/lib/api-client";
 
 type Submission = {
   id: string;
@@ -49,12 +50,10 @@ export default function HasilJawabanPage() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/lms?view=video-submissions", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") setSubmissions(d.data ?? []);
-      else setError(d.message ?? "Gagal memuat hasil jawaban");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<Submission[]>("/api/lms?view=video-submissions", { cache: "no-store" });
+      setSubmissions(data ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoading(false);
     }
@@ -68,12 +67,10 @@ export default function HasilJawabanPage() {
     setLoadingDetail(true);
     setError("");
     try {
-      const r = await fetch(`/api/lms?view=video-submission-detail&watchId=${id}`, { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") setDetail(d.data);
-      else setError(d.message ?? "Gagal memuat rincian jawaban");
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<SubmissionDetail>(`/api/lms?view=video-submission-detail&watchId=${id}`, { cache: "no-store" });
+      setDetail(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
       setLoadingDetail(false);
     }

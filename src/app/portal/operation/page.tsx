@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 // ---------- Types ----------
 
@@ -157,11 +158,10 @@ function LiveBoard() {
     setLoading(true);
     try {
       const q = statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : "";
-      const res = await fetch(`/api/operations${q}`).then((x) => x.json());
-      if (res.status === "success") setItems(res.data);
-      else setError(res.message ?? "Gagal memuat data");
-    } catch {
-      setError("Terjadi kesalahan saat memuat data");
+      const data = await fetchJson<BoardItem[]>(`/api/operations${q}`);
+      setItems(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat data");
     } finally {
       setLoading(false);
     }
@@ -172,15 +172,12 @@ function LiveBoard() {
   }, [statusFilter]);
 
   async function transition(jadwalId: string, toState: string) {
-    const res = await fetch("/api/operations", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jadwalId, toState }),
-    }).then((x) => x.json());
-    if (res.status !== "success") setError(res.message ?? "Transisi gagal");
-    else {
+    try {
+      await sendJson("/api/operations", "PATCH", { jadwalId, toState });
       setError("");
       load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Transisi gagal");
     }
   }
 
@@ -279,11 +276,10 @@ function RosterBoard() {
   async function load() {
     setBusy(true);
     try {
-      const res = await fetch("/api/roster").then((x) => x.json());
-      if (res.status === "success") setShifts(res.data);
-      else setError(res.message ?? "Gagal memuat roster");
-    } catch {
-      setError("Terjadi kesalahan saat memuat roster");
+      const data = await fetchJson<RosterShift[]>("/api/roster");
+      setShifts(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat roster");
     } finally {
       setBusy(false);
     }
@@ -291,11 +287,8 @@ function RosterBoard() {
 
   useEffect(() => {
     load();
-    fetch("/api/employees")
-      .then((x) => x.json())
-      .then((r) => {
-        if (r.status === "success") setEmployees(r.data);
-      })
+    fetchJson<Employee[]>("/api/employees")
+      .then((data) => setEmployees(data))
       .catch(() => undefined);
   }, []);
 
@@ -305,23 +298,18 @@ function RosterBoard() {
       setError("Lengkapi semua field");
       return;
     }
-    const res = await fetch("/api/roster", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ karyawanId, tanggal, jamMulai, jamSelesai, role }),
-    }).then((x) => x.json());
-    if (res.status !== "success") {
-      setError(res.message ?? "Gagal membuat shift");
-    } else {
+    try {
+      await sendJson("/api/roster", "POST", { karyawanId, tanggal, jamMulai, jamSelesai, role });
       setError("");
       setShowForm(false);
       load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat shift");
     }
   }
 
   async function cancelShift(id: string) {
-    const res = await fetch(`/api/roster?id=${id}`, { method: "DELETE" }).then((x) => x.json());
-    if (res.status === "success") load();
+    await sendJson(`/api/roster?id=${id}`, "DELETE").catch(() => null);
   }
 
   const days = Array.from({ length: 7 }, (_, i) => new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + i));
@@ -467,15 +455,14 @@ function IncidentQueue() {
   async function load() {
     setBusy(true);
     try {
-      const [incRes, catRes] = await Promise.all([
-        fetch("/api/incidents").then((x) => x.json()),
-        fetch("/api/incidents?view=categories").then((x) => x.json()),
+      const [incData, catData] = await Promise.all([
+        fetchJson<Incident[]>("/api/incidents"),
+        fetchJson<ViolationCategory[]>("/api/incidents?view=categories").catch(() => null),
       ]);
-      if (incRes.status === "success") setItems(incRes.data);
-      else setError(incRes.message ?? "Gagal memuat insiden");
-      if (catRes.status === "success") setCategories(catRes.data);
-    } catch {
-      setError("Terjadi kesalahan saat memuat insiden");
+      setItems(incData);
+      if (catData) setCategories(catData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan saat memuat insiden");
     } finally {
       setBusy(false);
     }
@@ -483,9 +470,8 @@ function IncidentQueue() {
 
   useEffect(() => {
     load();
-    fetch("/api/employees")
-      .then((x) => x.json())
-      .then((r) => { if (r.status === "success") setEmployees(r.data); })
+    fetchJson<Employee[]>("/api/employees")
+      .then((data) => setEmployees(data))
       .catch(() => undefined);
   }, []);
 
@@ -494,10 +480,8 @@ function IncidentQueue() {
     if (!title) return;
     if (!proofDriveId) { setError("Link bukti (Screenshot/Screen Record) wajib diisi."); return; }
     setError("");
-    const res = await fetch("/api/incidents", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    try {
+      await sendJson("/api/incidents", "POST", {
         title,
         description: description || undefined,
         severity,
@@ -505,24 +489,17 @@ function IncidentQueue() {
         proofDriveId,
         fineApplied: fineApplied ? parseFloat(fineApplied) : undefined,
         streamerKaryawanId: streamerKaryawanId || undefined,
-      }),
-    }).then((x) => x.json());
-    if (res.status === "success") {
+      });
       setShowForm(false);
       setTitle(""); setDescription(""); setCategoryId(""); setProofDriveId(""); setFineApplied(""); setStreamerKaryawanId("");
       load();
-    } else {
-      setError(res.message ?? "Gagal membuat laporan");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat laporan");
     }
   }
 
   async function act(id: string, action: string, body?: object) {
-    const res = await fetch(`/api/incidents?id=${id}&action=${action}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: body ? JSON.stringify(body) : undefined,
-    }).then((x) => x.json());
-    if (res.status === "success") load();
+    await sendJson(`/api/incidents?id=${id}&action=${action}`, "PATCH", body).catch(() => null);
   }
 
   async function assign(id: string, assigneeId: string) {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type NotifType = { key: string; label: string; icon: string };
 
@@ -22,18 +23,18 @@ export default function TelegramConnect() {
     setLoading(true);
     setError("");
     try {
-      const r = await fetch("/api/telegram/connect", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") {
-        setConnected(d.data.connected);
-        setChatId(d.data.chatId);
-        setLink(d.data.link ?? "");
-        setConfigured(d.data.configured ?? false);
-      } else {
-        setError(d.message ?? "Gagal memuat status Telegram");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      const data = await fetchJson<{
+        connected: boolean;
+        chatId: string | null;
+        link?: string;
+        configured?: boolean;
+      }>("/api/telegram/connect", { cache: "no-store" });
+      setConnected(data.connected);
+      setChatId(data.chatId);
+      setLink(data.link ?? "");
+      setConfigured(data.configured ?? false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memuat status Telegram");
     } finally {
       setLoading(false);
     }
@@ -41,12 +42,12 @@ export default function TelegramConnect() {
 
   async function loadPrefs() {
     try {
-      const r = await fetch("/api/telegram/prefs", { cache: "no-store" });
-      const d = await r.json();
-      if (d.status === "success") {
-        setTypes(d.data.types ?? []);
-        setPrefs(d.data.prefs ?? {});
-      }
+      const data = await fetchJson<{ types?: NotifType[]; prefs?: Record<string, boolean> }>(
+        "/api/telegram/prefs",
+        { cache: "no-store" }
+      );
+      setTypes(data.types ?? []);
+      setPrefs(data.prefs ?? {});
     } catch {
       // ignore
     }
@@ -67,16 +68,10 @@ export default function TelegramConnect() {
     setError("");
     setSuccess("");
     try {
-      const r = await fetch("/api/telegram/prefs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prefs }),
-      });
-      const d = await r.json();
-      if (d.status === "success") setSuccess("Preferensi notifikasi Telegram disimpan.");
-      else setError(d.message ?? "Gagal menyimpan preferensi");
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/telegram/prefs", "POST", { prefs });
+      setSuccess("Preferensi notifikasi Telegram disimpan.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal menyimpan preferensi");
     } finally {
       setSavingPrefs(false);
     }
@@ -87,22 +82,13 @@ export default function TelegramConnect() {
     if (!confirmed) return;
     setError("");
     try {
-      const r = await fetch("/api/telegram/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "disconnect" }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setConnected(false);
-        setChatId(null);
-        setLink("");
-        setSuccess("Koneksi Telegram diputuskan.");
-      } else {
-        setError(d.message ?? "Gagal memutuskan koneksi");
-      }
-    } catch {
-      setError("Koneksi gagal");
+      await sendJson("/api/telegram/connect", "POST", { action: "disconnect" });
+      setConnected(false);
+      setChatId(null);
+      setLink("");
+      setSuccess("Koneksi Telegram diputuskan.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memutuskan koneksi");
     }
   }
 

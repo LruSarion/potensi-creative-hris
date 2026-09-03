@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { sendJson } from "@/lib/api-client";
 
 export default function ChangePinModal({
   isOpen,
@@ -36,27 +37,18 @@ export default function ChangePinModal({
 
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/pin", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPin, newPin }),
-      });
-      const data = await res.json();
+      const data = await sendJson<{ message?: string }>("/api/auth/pin", "PUT", { currentPin, newPin });
 
-      if (data.status === "success") {
-        setSuccess(data.message || "PIN berhasil diubah!");
-        setCurrentPin("");
-        setNewPin("");
-        setConfirmPin("");
-        setTimeout(() => {
-          onClose();
-          setSuccess("");
-        }, 1500);
-      } else {
-        setError(data.message || "Gagal mengubah PIN.");
-      }
-    } catch {
-      setError("Terjadi kesalahan jaringan.");
+      setSuccess(data.message || "PIN berhasil diubah!");
+      setCurrentPin("");
+      setNewPin("");
+      setConfirmPin("");
+      setTimeout(() => {
+        onClose();
+        setSuccess("");
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal mengubah PIN.");
     } finally {
       setLoading(false);
     }
@@ -101,7 +93,7 @@ export default function ChangePinModal({
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              PIN Lama (Default: 123456 / 1234)
+              PIN Lama (Default akun baru: 123456)
             </label>
             <input
               type={showPins ? "text" : "password"}

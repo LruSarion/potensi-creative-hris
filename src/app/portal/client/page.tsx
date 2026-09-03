@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchJson, sendJson } from "@/lib/api-client";
 
 type Jadwal = {
   id: string;
@@ -69,24 +70,21 @@ export default function ClientPortalPage() {
     setLoading(true);
     setError("");
     try {
-      const [kpiRes, schRes, fbRes, strRes, listRes, shRes] = await Promise.all([
-        fetch("/api/client-portal?view=kpi").then((r) => r.json()),
-        fetch("/api/client-portal?view=schedules").then((r) => r.json()),
-        fetch("/api/client-portal?view=feedback").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
-        fetch("/api/streamer-directory").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
-        fetch("/api/marketplace?view=listings").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
-        fetch("/api/marketplace?view=shortlist").then((r) => r.json()).catch(() => ({ status: "success", data: [] })),
+      const [kpi, schedules, feedbackData, streamerData, listingData, shData] = await Promise.all([
+        fetchJson<any>("/api/client-portal?view=kpi"),
+        fetchJson<Jadwal[]>("/api/client-portal?view=schedules"),
+        fetchJson<FeedbackItem[]>("/api/client-portal?view=feedback").catch(() => []),
+        fetchJson<any[]>("/api/streamer-directory").catch(() => []),
+        fetchJson<any[]>("/api/marketplace?view=listings").catch(() => []),
+        fetchJson<any[]>("/api/marketplace?view=shortlist").catch(() => []),
       ]);
 
-      if (kpiRes.status === "success") setKpi(kpiRes.data);
-      if (schRes.status === "success") setSchedules(schRes.data);
-      if (fbRes.status === "success") setFeedbackList(fbRes.data);
-      if (strRes.status === "success") setStreamers(strRes.data);
-      if (listRes.status === "success") setListings(listRes.data);
-      if (shRes.status === "success") {
-        setShortlist(new Set((shRes.data ?? []).map((x: any) => x.streamerId)));
-      }
-      else if (kpiRes.status === "error") setError(kpiRes.message ?? "Akses ditolak");
+      setKpi(kpi);
+      setSchedules(schedules);
+      setFeedbackList(feedbackData);
+      setStreamers(streamerData);
+      setListings(listingData);
+      setShortlist(new Set((shData ?? []).map((x: any) => x.streamerId)));
     } catch {
       setError("Gagal memuat data portal brand partner");
     } finally {
@@ -96,20 +94,16 @@ export default function ClientPortalPage() {
 
   async function toggleShortlist(streamerId: string) {
     try {
-      const r = await fetch("/api/marketplace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "toggle-shortlist", streamerKaryawanId: streamerId }),
+      const d = await sendJson<{ shortlisted: boolean }>("/api/marketplace", "POST", {
+        action: "toggle-shortlist",
+        streamerKaryawanId: streamerId,
       });
-      const d = await r.json();
-      if (d.status === "success") {
-        setShortlist((prev) => {
-          const next = new Set(prev);
-          if (d.data.shortlisted) next.add(streamerId); else next.delete(streamerId);
-          return next;
-        });
-        setSuccess(d.data.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.");
-      }
+      setShortlist((prev) => {
+        const next = new Set(prev);
+        if (d.shortlisted) next.add(streamerId); else next.delete(streamerId);
+        return next;
+      });
+      setSuccess(d.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.");
     } catch {
       setError("Gagal memperbarui shortlist");
     }
@@ -117,20 +111,11 @@ export default function ClientPortalPage() {
 
   async function rateExperience(experienceId: string, rating: number) {
     try {
-      const r = await fetch("/api/experience-rate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ experienceId, rating }),
-      });
-      const d = await r.json();
-      if (d.status === "success") {
-        setSuccess("Penilaian berhasil disimpan!");
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal memberi penilaian");
-      }
-    } catch {
-      setError("Gagal memberi penilaian");
+      await sendJson("/api/experience-rate", "POST", { experienceId, rating });
+      setSuccess("Penilaian berhasil disimpan!");
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal memberi penilaian");
     }
   }
 
@@ -144,31 +129,22 @@ export default function ClientPortalPage() {
     setSuccess("");
 
     try {
-      const res = await fetch("/api/client-portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "feedback",
-          feedback: feedbackForm,
-        }),
+      await sendJson("/api/client-portal", "POST", {
+        action: "feedback",
+        feedback: feedbackForm,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess("Terima kasih! Feedback & saran Anda berhasil disampaikan kepada tim manajemen agency.");
-        setFeedbackForm({
-          targetType: "STREAMER",
-          targetName: "",
-          category: "STREAMER_PERFORMANCE",
-          rating: 5,
-          message: "",
-          suggestions: "",
-        });
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal mengirim feedback");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      setSuccess("Terima kasih! Feedback & saran Anda berhasil disampaikan kepada tim manajemen agency.");
+      setFeedbackForm({
+        targetType: "STREAMER",
+        targetName: "",
+        category: "STREAMER_PERFORMANCE",
+        rating: 5,
+        message: "",
+        suggestions: "",
+      });
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     }
   }
 
@@ -178,34 +154,25 @@ export default function ClientPortalPage() {
     setSuccess("");
 
     try {
-      const res = await fetch("/api/client-portal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "propose",
-          ...proposeForm,
-        }),
+      await sendJson("/api/client-portal", "POST", {
+        action: "propose",
+        ...proposeForm,
       });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(`Pengajuan jadwal live "${proposeForm.judulLive}" berhasil dikirim untuk approval Tim Operations.`);
-        setProposeForm({
-          idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
-          tanggal: new Date().toISOString().slice(0, 10),
-          jamMulai: "10:00",
-          jamSelesai: "12:00",
-          platform: "Shopee Live",
-          judulLive: "",
-          promoLive: "",
-          catatan: "",
-        });
-        setActiveTab("schedules");
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal mengajukan jadwal");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      setSuccess(`Pengajuan jadwal live "${proposeForm.judulLive}" berhasil dikirim untuk approval Tim Operations.`);
+      setProposeForm({
+        idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
+        tanggal: new Date().toISOString().slice(0, 10),
+        jamMulai: "10:00",
+        jamSelesai: "12:00",
+        platform: "Shopee Live",
+        judulLive: "",
+        promoLive: "",
+        catatan: "",
+      });
+      setActiveTab("schedules");
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     }
   }
 
@@ -213,20 +180,11 @@ export default function ClientPortalPage() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/marketplace", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "decide", applicationId, decision }),
-      });
-      const d = await res.json();
-      if (d.status === "success") {
-        setSuccess(decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.");
-        loadData();
-      } else {
-        setError(d.message ?? "Gagal memproses lamaran");
-      }
-    } catch {
-      setError("Terjadi kesalahan koneksi");
+      await sendJson("/api/marketplace", "POST", { action: "decide", applicationId, decision });
+      setSuccess(decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.");
+      loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
     }
   }
 
