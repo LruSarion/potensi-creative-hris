@@ -206,55 +206,58 @@ export function TabStreamer({
         showAlert(`⚠️ Pastikan Host / Streamer telah dipilih di Jadwal #${i + 1}.`);
         return { isValid: false, conflicts: [] };
       }
-      for (let j = i + 1; j < streamerForms.length; j++) {
-        const f2 = streamerForms[j];
-        if (f1.tanggal !== f2.tanggal) continue;
+      // TODO(batas-cekout): pemeriksaan bentrok (studio/streamer/OTS) dinonaktifkan
+      // sementara — akan diaktifkan kembali sebagai validasi "cekout terbatas".
+      // for (let j = i + 1; j < streamerForms.length; j++) {
+      //   const f2 = streamerForms[j];
+      //   if (f1.tanggal !== f2.tanggal) continue;
 
-        const s1 = f1.jamMulaiLive;
-        const e1 = f1.jamSelesaiLive;
-        const s2 = f2.jamMulaiLive;
-        const e2 = f2.jamSelesaiLive;
-        const isOverlap = s1 < e2 && s2 < e1;
+      //   const s1 = f1.jamMulaiLive;
+      //   const e1 = f1.jamSelesaiLive;
+      //   const s2 = f2.jamMulaiLive;
+      //   const e2 = f2.jamSelesaiLive;
+      //   const isOverlap = s1 < e2 && s2 < e1;
 
-        if (isOverlap) {
-          if (
-            f1.streamerKaryawanId &&
-            f2.streamerKaryawanId &&
-            f1.streamerKaryawanId === f2.streamerKaryawanId
-          ) {
-            conflicts.push({
-              type: `Host / Streamer (${f1.streamerNama || "Streamer"})`,
-              form1: i + 1,
-              form2: j + 1,
-              info1: `Tgl ${f1.tanggal} [${s1} - ${e1}] - ${f1.platform}`,
-              info2: `Tgl ${f2.tanggal} [${s2} - ${e2}] - ${f2.platform}`,
-            });
-          }
-          if (
-            f1.cabangStudio === f2.cabangStudio &&
-            f1.nomorStudio &&
-            f1.nomorStudio === f2.nomorStudio &&
-            f1.nomorStudio !== "Pilih Studio"
-          ) {
-            conflicts.push({
-              type: `Studio (${f1.cabangStudio} - ${f1.nomorStudio})`,
-              form1: i + 1,
-              form2: j + 1,
-              info1: `Tgl ${f1.tanggal} [${s1} - ${e1}]`,
-              info2: `Tgl ${f2.tanggal} [${s2} - ${e2}]`,
-            });
-          }
-          if (f1.otsKaryawanId && f2.otsKaryawanId && f1.otsKaryawanId === f2.otsKaryawanId) {
-            conflicts.push({
-              type: `Personel OTS (${f1.otsNama || "Staff"})`,
-              form1: i + 1,
-              form2: j + 1,
-              info1: `Tgl ${f1.tanggal} [${s1} - ${e1}]`,
-              info2: `Tgl ${f2.tanggal} [${s2} - ${e2}]`,
-            });
-          }
-        }
-      }
+      //   if (isOverlap) {
+      //     if (
+      //       f1.streamerKaryawanId &&
+      //       f2.streamerKaryawanId &&
+      //       f1.streamerKaryawanId === f2.streamerKaryawanId
+      //     ) {
+      //       conflicts.push({
+      //         type: `Host / Streamer (${f1.streamerNama || "Streamer"})`,
+      //         form1: i + 1,
+      //         form2: j + 1,
+      //         info1: `Tgl ${f1.tanggal} [${s1} - ${e1}] - ${f1.platform}`,
+      //         info2: `Tgl ${f2.tanggal} [${s2} - ${e2}] - ${f2.platform}`,
+      //       });
+      //     }
+      //     if (
+      //       f1.cabangStudio === f2.cabangStudio &&
+      //       f1.nomorStudio &&
+      //       f1.nomorStudio === f2.nomorStudio &&
+      //       f1.nomorStudio !== "Pilih Studio"
+      //     ) {
+      //       conflicts.push({
+      //         type: `Studio (${f1.cabangStudio} - ${f1.nomorStudio})`,
+      //         form1: i + 1,
+      //         form2: j + 1,
+      //         info1: `Tgl ${f1.tanggal} [${s1} - ${e1}]`,
+      //         info2: `Tgl ${f2.tanggal} [${s2} - ${e2}]`,
+      //       });
+      //     }
+      //     if (f1.otsKaryawanId && f2.otsKaryawanId && f1.otsKaryawanId === f2.otsKaryawanId) {
+      //       conflicts.push({
+      //         type: `Personel OTS (${f1.otsNama || "Staff"})`,
+      //         form1: i + 1,
+      //         form2: j + 1,
+      //         info1: `Tgl ${f1.tanggal} [${s1} - ${e1}]`,
+      //         info2: `Tgl ${f2.tanggal} [${s2} - ${e2}]`,
+      //       });
+      //     }
+      //   }
+      // }
+      void f1;
     }
     return { isValid: true, conflicts };
   }

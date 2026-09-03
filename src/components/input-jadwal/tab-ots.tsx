@@ -121,28 +121,31 @@ export function TabOts({
         showAlert(`⚠️ Pastikan Tanggal, Jam Masuk, dan Jam Keluar terisi di Jadwal #${i + 1}.`);
         return { isValid: false, conflicts: [] };
       }
-      for (let j = i + 1; j < otsForms.length; j++) {
-        const d2 = otsForms[j];
-        if (d1.tanggal !== d2.tanggal) continue;
+      // TODO(batas-cekout): pemeriksaan bentrok OTS dinonaktifkan sementara —
+      // akan diaktifkan kembali sebagai validasi "cekout terbatas".
+      // for (let j = i + 1; j < otsForms.length; j++) {
+      //   const d2 = otsForms[j];
+      //   if (d1.tanggal !== d2.tanggal) continue;
 
-        const s1 = d1.jamMulaiLive;
-        const e1 = d1.jamSelesaiLive;
-        const s2 = d2.jamMulaiLive;
-        const e2 = d2.jamSelesaiLive;
-        const isOverlap = s1 < e2 && s2 < e1;
+      //   const s1 = d1.jamMulaiLive;
+      //   const e1 = d1.jamSelesaiLive;
+      //   const s2 = d2.jamMulaiLive;
+      //   const e2 = d2.jamSelesaiLive;
+      //   const isOverlap = s1 < e2 && s2 < e1;
 
-        if (isOverlap) {
-          if (d1.otsKaryawanId && d2.otsKaryawanId && d1.otsKaryawanId === d2.otsKaryawanId) {
-            conflicts.push({
-              type: `Personel OTS (${d1.otsNama || "Staff"})`,
-              form1: i + 1,
-              form2: j + 1,
-              info1: `Tgl ${d1.tanggal} [${s1} - ${e1}] - Cabang: ${d1.cabangStudio}`,
-              info2: `Tgl ${d2.tanggal} [${s2} - ${e2}] - Cabang: ${d2.cabangStudio}`,
-            });
-          }
-        }
-      }
+      //   if (isOverlap) {
+      //     if (d1.otsKaryawanId && d2.otsKaryawanId && d1.otsKaryawanId === d2.otsKaryawanId) {
+      //       conflicts.push({
+      //         type: `Personel OTS (${d1.otsNama || "Staff"})`,
+      //         form1: i + 1,
+      //         form2: j + 1,
+      //         info1: `Tgl ${d1.tanggal} [${s1} - ${e1}] - Cabang: ${d1.cabangStudio}`,
+      //         info2: `Tgl ${d2.tanggal} [${s2} - ${e2}] - Cabang: ${d2.cabangStudio}`,
+      //       });
+      //     }
+      //   }
+      // }
+      void d1;
     }
     return { isValid: true, conflicts };
   }

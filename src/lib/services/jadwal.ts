@@ -107,23 +107,27 @@ async function assertTokenJedaOk(
     }
   }
 
+  // TODO(batas-cekout): aturan jeda pergantian studio/branch dinonaktifkan
+  // sementara — akan diaktifkan kembali sebagai validasi "cekout terbatas".
   // (B) Transition gap: context-aware (same studio / same branch / cross branch).
-  const result = validateTokenJeda(
-    start,
-    others.map((o) => ({
-      start: o.jamMulaiLive,
-      end: o.jamSelesaiLive,
-      studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
-    })),
-    config.restGapMinutes ?? TOKEN_JEDA_MINUTES,
-    config,
-    nextStudio
-  );
-  if (result === "TIDAK") {
-    throw AppError.conflict(
-      `Streamer tidak dapat dijadwalkan: perlu jeda pergantian studio/branch sebelum sesi ini.`
-    );
-  }
+  // const result = validateTokenJeda(
+  //   start,
+  //   others.map((o) => ({
+  //     start: o.jamMulaiLive,
+  //     end: o.jamSelesaiLive,
+  //     studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
+  //   })),
+  //   config.restGapMinutes ?? TOKEN_JEDA_MINUTES,
+  //   config,
+  //   nextStudio
+  // );
+  // if (result === "TIDAK") {
+  //   throw AppError.conflict(
+  //     `Streamer tidak dapat dijadwalkan: perlu jeda pergantian studio/branch sebelum sesi ini.`
+  //   );
+  // }
+  void nextStudio;
+  void config;
 }
 
 /**
@@ -323,20 +327,23 @@ export async function createJadwalBatch(rows: JadwalInput[]) {
             throw AppError.conflict(`Batch dibatalkan: sesi ${parsed.idJadwal} bentrok dengan ${o.idJadwal} untuk streamer yang sama.`);
           }
         }
-        const result = validateTokenJeda(
-          start,
-          others.map((o) => ({
-            start: o.jamMulaiLive,
-            end: o.jamSelesaiLive,
-            studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
-          })),
-          transitionConfig.restGapMinutes ?? TOKEN_JEDA_MINUTES,
-          transitionConfig,
-          nextStudio
-        );
-        if (result === "TIDAK") {
-          throw AppError.conflict(`Batch dibatalkan: bentrok jeda pergantian studio/branch untuk ${parsed.idJadwal}`);
-        }
+        // TODO(batas-cekout): aturan jeda pergantian studio/branch dinonaktifkan
+        // sementara — akan diaktifkan kembali sebagai validasi "cekout terbatas".
+        // const result = validateTokenJeda(
+        //   start,
+        //   others.map((o) => ({
+        //     start: o.jamMulaiLive,
+        //     end: o.jamSelesaiLive,
+        //     studio: { cabang: o.cabangStudio, nomor: o.nomorStudio },
+        //   })),
+        //   transitionConfig.restGapMinutes ?? TOKEN_JEDA_MINUTES,
+        //   transitionConfig,
+        //   nextStudio
+        // );
+        // if (result === "TIDAK") {
+        //   throw AppError.conflict(`Batch dibatalkan: bentrok jeda pergantian studio/branch untuk ${parsed.idJadwal}`);
+        // }
+        void nextStudio;
       }
 
       const row = await tx.jadwal.create({
