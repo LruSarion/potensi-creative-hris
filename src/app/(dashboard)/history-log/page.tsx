@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { formatLogEntry } from "@/lib/log-formatter";
 import { fetchJson } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 // Badge color map for action types
 function getActionBadge(aksi: string) {
@@ -117,12 +118,11 @@ export default function HistoryLogPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading && list.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="text-center py-12 text-slate-500 italic">
-                    <i className="fa-solid fa-spinner fa-spin mr-2"></i>
-                    Memuat rekam jejak...
-                  </td>
-                </tr>
+                <TableLoadingState
+                  colSpan={5}
+                  text="Memuat rekam jejak aktivitas (Audit Trail)..."
+                  subtext="Menyelaraskan riwayat aksi pengguna dari server..."
+                />
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="text-center py-12 text-slate-500 font-medium">

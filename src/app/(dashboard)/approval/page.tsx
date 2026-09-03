@@ -3,7 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 type MainTab = "marketplace" | "lembur" | "izin" | "shift";
 type MarketplaceSubTab = "jadwal" | "approved" | "online" | "cleaning" | "riwayat";
@@ -39,7 +41,7 @@ interface ApprovalItem {
 
 export default function ApprovalPage() {
   const { data: session } = useSession();
-  const { showAlert, showConfirm } = useAlert();
+  const { showConfirm } = useAlert();
   const userRole = (session?.user?.role || "").toUpperCase();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT"].includes(userRole);
 
@@ -189,17 +191,17 @@ export default function ApprovalPage() {
         `/api/approval?id=${item.id}&action=${approve ? "approve" : "reject"}&type=${item.type}`,
         "PATCH"
       );
-      showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      toast.success(`Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat memproses pengajuan."));
     }
   }
 
   // Bulk Approve Jadwal (Pengajuan tab)
   async function handleBulkApproveJadwal() {
     if (selectedIds.length === 0) {
-      showAlert("⚠️ Pilih minimal 1 jadwal yang akan disetujui.");
+      toast.warning("Pilih minimal 1 jadwal yang akan disetujui.");
       return;
     }
 
@@ -211,59 +213,59 @@ export default function ApprovalPage() {
 
     try {
       await sendJson("/api/approval?action=bulk_approve", "POST", { items: payload });
-      showAlert(`✅ Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
+      toast.success(`Berhasil menyetujui ${selectedIds.length} jadwal terpilih!`);
       setSelectedIds([]);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menyetujui jadwal terpilih."));
     }
   }
 
   // Publish to Marketplace (Approved tab)
   async function handlePublishSelected() {
     if (selectedIds.length === 0) {
-      showAlert("⚠️ Pilih jadwal yang akan diterbitkan ke Marketplace.");
+      toast.warning("Pilih jadwal yang akan diterbitkan ke Marketplace.");
       return;
     }
     try {
       await sendJson("/api/approval?action=publish", "POST", { ids: selectedIds });
-      showAlert(`✅ Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
+      toast.success(`Berhasil menerbitkan ${selectedIds.length} jadwal ke Marketplace!`);
       setSelectedIds([]);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menerbitkan jadwal ke Marketplace."));
     }
   }
 
   // Send to Cleaning (Online tab)
   async function handleSendToCleaningSelected() {
     if (selectedIds.length === 0) {
-      showAlert("⚠️ Pilih sesi yang akan dikirim ke Cleaning.");
+      toast.warning("Pilih sesi yang akan dikirim ke Cleaning.");
       return;
     }
     try {
       await sendJson("/api/approval?action=send_cleaning", "POST", { ids: selectedIds });
-      showAlert(`✅ Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
+      toast.success(`Berhasil mengirim ${selectedIds.length} sesi ke Cleaning!`);
       setSelectedIds([]);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal mengirim sesi ke Cleaning."));
     }
   }
 
   // Pull back to Approved (Cleaning tab)
   async function handlePullToApprovedSelected() {
     if (selectedIds.length === 0) {
-      showAlert("⚠️ Pilih jadwal yang akan ditarik ke Approved.");
+      toast.warning("Pilih jadwal yang akan ditarik ke Approved.");
       return;
     }
     try {
       await sendJson("/api/approval?action=pull_approved", "POST", { ids: selectedIds });
-      showAlert(`✅ Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
+      toast.success(`Berhasil menarik ${selectedIds.length} jadwal kembali ke status Approved!`);
       setSelectedIds([]);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menarik jadwal kembali ke Approved."));
     }
   }
 
@@ -295,11 +297,11 @@ export default function ApprovalPage() {
         id: editingItem.id,
         data: editForm,
       });
-      showAlert("✅ Data pengajuan klien berhasil diperbarui!");
+      toast.success("Data pengajuan klien berhasil diperbarui!");
       setEditingItem(null);
       loadData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal memperbarui data pengajuan klien."));
     }
   }
 
@@ -643,12 +645,11 @@ export default function ApprovalPage() {
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
-                    <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
-                    Memuat data approval...
-                  </td>
-                </tr>
+                <TableLoadingState
+                  colSpan={mainTab === "marketplace" && mkSubTab !== "riwayat" ? 6 : 5}
+                  text="Memuat antrean data approval..."
+                  subtext="Menyelaraskan data pengajuan jadwal, lembur, izin & shift dari server..."
+                />
               ) : currentFilteredList.length > 0 ? (
                 currentFilteredList.map((item) => {
                   const isChecked = selectedIds.includes(item.id);

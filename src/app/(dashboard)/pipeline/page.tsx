@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 export default function PipelinePage() {
   const [pipeline, setPipeline] = useState<any[]>([]);
@@ -38,22 +39,32 @@ export default function PipelinePage() {
         <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4">⚠ {error}</div>
       )}
 
-      {loading ? (
-        <p className="text-xs text-slate-500">Memuat pipeline...</p>
-      ) : (
-        <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+      <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+            <tr>
+              <th className="px-4 py-3">Proyek / Listing</th>
+              <th className="px-4 py-3">Klien</th>
+              <th className="px-4 py-3">Jadwal Terkait</th>
+              <th className="px-4 py-3">Pelamar (Streamer)</th>
+              <th className="px-4 py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <TableLoadingState
+                colSpan={5}
+                text="Memuat bursa pipeline marketplace..."
+                subtext="Menyelaraskan alur proyek dan status lamaran streamer..."
+              />
+            ) : pipeline.length === 0 ? (
               <tr>
-                <th className="px-4 py-3">Proyek / Listing</th>
-                <th className="px-4 py-3">Klien</th>
-                <th className="px-4 py-3">Jadwal Terkait</th>
-                <th className="px-4 py-3">Pelamar (Streamer)</th>
-                <th className="px-4 py-3">Status</th>
+                <td colSpan={5} className="p-10 text-center text-slate-400 text-xs">
+                  Belum ada proyek dalam pipeline.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {pipeline.map((l) => (
+            ) : (
+              pipeline.map((l) => (
                 <tr key={l.id} className="hover:bg-slate-50/80 transition">
                   <td className="px-4 py-3">
                     <div className="font-bold text-slate-800">{l.title}</div>
@@ -110,16 +121,11 @@ export default function PipelinePage() {
                     </span>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {pipeline.length === 0 && (
-            <div className="p-10 text-center text-slate-400 text-xs">
-              Belum ada proyek dalam pipeline.
-            </div>
-          )}
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

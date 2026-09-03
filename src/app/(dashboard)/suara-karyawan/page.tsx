@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
-import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function SuaraKaryawanPage() {
   const { data: session } = useSession();
-  const { showAlert } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"buat" | "riwayat">("buat");
@@ -51,7 +51,7 @@ export default function SuaraKaryawanPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      showAlert("⚠️ Ukuran berkas maksimal 5MB.");
+      toast.warning("Ukuran berkas maksimal 5MB.");
       return;
     }
     compressImage(file, (b64) => {
@@ -91,7 +91,7 @@ export default function SuaraKaryawanPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formSuara.deskripsi) {
-      showAlert("⚠️ Deskripsi laporan wajib diisi.");
+      toast.warning("Deskripsi laporan wajib diisi.");
       return;
     }
 
@@ -105,7 +105,7 @@ export default function SuaraKaryawanPage() {
         lampiranDriveId: formSuara.buktiB64 || undefined,
       });
 
-      showAlert("✅ Laporan suara karyawan berhasil dikirim ke manajemen!");
+      toast.success("Laporan suara karyawan berhasil dikirim ke manajemen!");
       setFormSuara({
         kategori: "KELUHAN",
         deskripsi: "",
@@ -116,7 +116,7 @@ export default function SuaraKaryawanPage() {
       loadHistory();
       setActiveTab("riwayat");
     } catch (err) {
-      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengirim laporan"));
+      toast.error(errorMessage(err, "Gagal mengirim laporan"));
     } finally {
       setSubmitting(false);
     }
@@ -310,12 +310,11 @@ export default function SuaraKaryawanPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {loadingHistory ? (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
-                      Memuat data laporan...
-                    </td>
-                  </tr>
+                  <TableLoadingState
+                    colSpan={5}
+                    text="Memuat riwayat laporan & aspirasi..."
+                    subtext="Menyelaraskan data masukan karyawan dari server..."
+                  />
                 ) : history.length > 0 ? (
                   history.map((h, idx) => {
                     const dateStr = h.createdAt ? new Date(h.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "–";

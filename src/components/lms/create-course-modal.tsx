@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 interface ClientOption {
   id: string;
@@ -46,6 +47,7 @@ export default function CreateCourseModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) {
+      toast.warning("Judul kelas/kursus wajib diisi");
       setError("Judul kelas/kursus wajib diisi");
       return;
     }
@@ -63,6 +65,7 @@ export default function CreateCourseModal({
         status,
       });
 
+      toast.success("Kelas/kursus baru berhasil dibuat!");
       setTitle("");
       setDescription("");
       setIsCertification(false);
@@ -70,7 +73,9 @@ export default function CreateCourseModal({
       onSuccess(data);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal membuat kelas baru");
+      const msg = errorMessage(err, "Gagal membuat kelas baru");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
 import { formatDateSafe, formatTimeSafe, calcWajibHadir } from "@/lib/utils/date-format";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type SopTask = {
   id: string;
@@ -199,13 +200,17 @@ export default function StaffDashboardPage() {
     setActionLoading(true);
     try {
       await sendJson("/api/absensi", "POST", { tipe, kategori: "STAFF", fotoBuktiUrl: fotoBuktiUrl || undefined });
-      setSuccess(tipe === "CHECK_IN" ? "✅ Presensi Masuk (Check-In) berhasil dicatat!" : "✅ Presensi Pulang (Check-Out) berhasil dicatat!");
+      const msg = tipe === "CHECK_IN" ? "Presensi Masuk (Check-In) berhasil dicatat!" : "Presensi Pulang (Check-Out) berhasil dicatat!";
+      toast.success(msg);
+      setSuccess("✅ " + msg);
       loadSession();
       loadStats();
       loadHistory();
       setActiveTab(tipe === "CHECK_IN" ? "checkout" : "riwayat");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memproses absensi");
+      const msg = errorMessage(err, "Gagal memproses absensi");
+      toast.error(msg);
+      setError(msg);
     } finally { setActionLoading(false); }
   }
 

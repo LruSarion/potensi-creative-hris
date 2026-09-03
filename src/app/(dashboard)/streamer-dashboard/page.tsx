@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import type { LocationCoordinates } from "@/components/streamer-dashboard/live-camera-checkin";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
 import { StreamerListView } from "@/components/streamer-dashboard/streamer-list-view";
 import { STUDIOS } from "@/types/jadwal";
@@ -214,12 +215,15 @@ export default function StreamerDashboardPage() {
     setSuccess("");
     try {
       await sendJson("/api/streamer", "POST", { action: "leave-request", tanggal: leaveDate, alasan: leaveReason });
+      toast.success("Pengajuan Libur berhasil dikirim! Menunggu persetujuan Eksekutif.");
       setSuccess("✅ Pengajuan Libur berhasil dikirim! Menunggu persetujuan Eksekutif.");
       setLeaveDate("");
       setLeaveReason("");
       loadRequestStatus();
     } catch (err) {
-      setError(errorMessage(err, "Gagal mengirim pengajuan libur"));
+      const msg = errorMessage(err, "Gagal mengirim pengajuan libur");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmittingRequest(false);
     }
@@ -233,12 +237,15 @@ export default function StreamerDashboardPage() {
     setSuccess("");
     try {
       await sendJson("/api/streamer", "POST", { action: "shift-request", tanggal: shiftDate, sesi: selectedSesi, catatan: shiftNote });
+      toast.success("Request Sesi Live berhasil dikirim! Menunggu konfirmasi Eksekutif.");
       setSuccess("✅ Request Sesi Live berhasil dikirim! Menunggu konfirmasi Eksekutif.");
       setShiftDate("");
       setShiftNote("");
       loadRequestStatus();
     } catch (err) {
-      setError(errorMessage(err, "Gagal mengirim request sesi live"));
+      const msg = errorMessage(err, "Gagal mengirim request sesi live");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmittingRequest(false);
     }
@@ -246,21 +253,26 @@ export default function StreamerDashboardPage() {
 
   async function handleCheckIn() {
     if (!selectedJadwalId) {
+      toast.warning("Pilih jadwal live yang akan di-checkin terlebih dahulu.");
       setError("Pilih jadwal live yang akan di-checkin");
       return;
     }
 
     if (!hasCamera || cameraError) {
-      setError(cameraError || "Perangkat Anda tidak memiliki kamera. Presensi check-in wajib menggunakan kamera aktif.");
+      const msg = cameraError || "Perangkat Anda tidak memiliki kamera. Presensi check-in wajib menggunakan kamera aktif.";
+      toast.warning(msg);
+      setError(msg);
       return;
     }
 
     if (!fotoBuktiUrl) {
+      toast.warning("Foto selfie presensi wajib diambil langsung melalui kamera.");
       setError("Foto selfie presensi wajib diambil langsung melalui kamera.");
       return;
     }
 
     if (!checkInLocation) {
+      toast.warning("Akses lokasi (GPS) wajib diaktifkan dan terdeteksi untuk melakukan presensi check-in.");
       setError("Akses lokasi (GPS) wajib diaktifkan dan terdeteksi untuk melakukan presensi check-in.");
       return;
     }
@@ -268,7 +280,9 @@ export default function StreamerDashboardPage() {
     // Dynamic late check
     const lateStatus = getLateCheckInStatus(selectedJadwalDetail);
     if (lateStatus.isLate && !alasanTerlambat.trim()) {
-      setError(`Sesi ini terlambat ${lateStatus.lateDurationText} dari jadwal (${lateStatus.scheduledTimeText} WIB). Harap isi Alasan Keterlambatan.`);
+      const msg = `Sesi ini terlambat ${lateStatus.lateDurationText} dari jadwal (${lateStatus.scheduledTimeText} WIB). Harap isi Alasan Keterlambatan.`;
+      toast.warning(msg);
+      setError(msg);
       return;
     }
 
@@ -285,6 +299,7 @@ export default function StreamerDashboardPage() {
         lokasi: checkInLocation.formattedText,
         isTerusan: !!activeSession,
       });
+      toast.success("Presensi Check-In berhasil! Status sesi live sekarang ON-AIR.");
       setSuccess("✅ Presensi Check-In berhasil! Status sesi live sekarang ON-AIR.");
       setSelectedJadwalId("");
       setSelectedJadwalDetail(null);
@@ -294,7 +309,9 @@ export default function StreamerDashboardPage() {
       loadData();
       setActiveTab("jadwal");
     } catch (e) {
-      setError(errorMessage(e, "Koneksi gagal saat presensi"));
+      const msg = errorMessage(e, "Koneksi gagal saat presensi");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setActionLoading(false);
     }
@@ -302,22 +319,28 @@ export default function StreamerDashboardPage() {
 
   async function handleCheckOutSubmit() {
     if (!reportedGmv) {
+      toast.warning("Harap isi total nominal GMV income untuk sesi ini.");
       setError("Harap isi total nominal GMV income untuk sesi ini.");
       return;
     }
     if (!checkoutFotoGmv) {
+      toast.warning("Foto bukti GMV wajib dilampirkan.");
       setError("Foto bukti GMV wajib dilampirkan (bisa melalui kamera atau upload file galeri).");
       return;
     }
     if (!checkoutHasCamera || checkoutCameraError) {
-      setError(checkoutCameraError || "Perangkat Anda tidak memiliki kamera. Presensi selfie check-out wajib menggunakan kamera aktif.");
+      const msg = checkoutCameraError || "Perangkat Anda tidak memiliki kamera. Presensi selfie check-out wajib menggunakan kamera aktif.";
+      toast.warning(msg);
+      setError(msg);
       return;
     }
     if (!checkoutFotoUrl) {
+      toast.warning("Foto selfie bukti check-out wajib diambil langsung melalui kamera.");
       setError("Foto selfie bukti check-out wajib diambil langsung melalui kamera.");
       return;
     }
     if (!checkoutLocation) {
+      toast.warning("Akses lokasi (GPS) wajib diaktifkan dan terdeteksi untuk melakukan presensi check-out.");
       setError("Akses lokasi (GPS) wajib diaktifkan dan terdeteksi untuk melakukan presensi check-out.");
       return;
     }
@@ -336,6 +359,7 @@ export default function StreamerDashboardPage() {
         lokasi: checkoutLocation.formattedText,
         reportedGmv: parseFloat(reportedGmv),
       });
+      toast.success("Presensi Check-Out berhasil! Sesi streaming tersimpan ke rekap payroll.");
       setSuccess("✅ Presensi Check-Out berhasil! Sesi streaming tersimpan ke rekap payroll.");
       setReportedGmv("");
       setCheckoutFotoGmv("");
@@ -345,7 +369,9 @@ export default function StreamerDashboardPage() {
       loadData();
       setActiveTab("riwayat");
     } catch (err) {
-      setError(errorMessage(err, "Koneksi gagal saat check-out"));
+      const msg = errorMessage(err, "Koneksi gagal saat check-out");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setActionLoading(false);
     }
@@ -443,11 +469,11 @@ export default function StreamerDashboardPage() {
         lokasiGmv: formTerbatasLocGmv.formattedText,
         lokasiKeluar: formTerbatasLocKeluar.formattedText,
       });
-      setSuccess(
-        selectedTerbatasJadwal.tipeForm === "PULANG_TELAT"
-          ? "✅ Pengiriman Data Berhasil! Keterlambatan telah dilaporkan ke HR dan omset GMV tersimpan."
-          : "✅ Pengiriman Data Berhasil! Sesi Jeda Terbatas Sukses Terdata!"
-      );
+      const successMsg = selectedTerbatasJadwal.tipeForm === "PULANG_TELAT"
+        ? "Pengiriman Data Berhasil! Keterlambatan telah dilaporkan ke HR dan omset GMV tersimpan."
+        : "Pengiriman Data Berhasil! Sesi Jeda Terbatas Sukses Terdata!";
+      toast.success(successMsg);
+      setSuccess("✅ " + successMsg);
       setSelectedTerbatasJadwal(null);
       setFormTerbatasGmv("");
       setFormTerbatasCatatan("");
@@ -457,7 +483,9 @@ export default function StreamerDashboardPage() {
       setFormTerbatasLocKeluar(null);
       loadData();
     } catch (err) {
-      setError(errorMessage(err, "Koneksi gagal saat mengirim data"));
+      const msg = errorMessage(err, "Koneksi gagal saat mengirim data");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmittingTerbatas(false);
     }
@@ -954,6 +982,7 @@ export default function StreamerDashboardPage() {
       {activeTab === "riwayat" && (
         <>
           <TabRiwayat
+            loading={loading}
             filteredHistory={filteredHistory}
             paginatedHistory={paginatedHistory}
             totalPagesHistory={totalPagesHistory}

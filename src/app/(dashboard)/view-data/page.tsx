@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SectionLoader } from "@/components/ui/loading-states";
 
 export default function ViewDataPage() {
   const [data, setData] = useState<any>(null);
@@ -41,10 +42,11 @@ export default function ViewDataPage() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center flex flex-col items-center justify-center gap-3">
-          <i className="fa-solid fa-circle-notch fa-spin text-4xl text-blue-600"></i>
-          <p className="text-base font-bold text-slate-800">Menarik Master Data...</p>
-          <p className="text-xs text-slate-400">Menyelaraskan data karyawan, jadwal, absensi & payroll dari server</p>
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12">
+          <SectionLoader
+            text="Menarik Master Data Operasional..."
+            subtext="Menyelaraskan data karyawan, jadwal, absensi & payroll dari server..."
+          />
         </div>
       </div>
     );

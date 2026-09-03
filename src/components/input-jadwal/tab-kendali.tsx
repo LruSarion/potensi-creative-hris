@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import type { TabSharedProps } from "./types";
+import { toast } from "@/components/ui/toast";
 
 export function TabKendali({
   kendaliConfig,
@@ -46,19 +47,19 @@ export function TabKendali({
       });
       const d = await res.json();
       if (d.status === "success" || d.success) {
-        showAlert(
-          `✅ Pengaturan ${
+        toast.success(
+          `Pengaturan ${
             fitur === "LIBUR" ? "Pengajuan Libur" : "Pengajuan Sesi Live"
           } berhasil diubah ke status ${status}!`
         );
         await loadKendaliConfig();
       } else {
-        showAlert(`❌ Gagal mengubah status fitur: ${d.message || "Terjadi kesalahan"}`);
+        toast.error(`Gagal mengubah status fitur: ${d.message || "Terjadi kesalahan"}`);
         if (fitur === "LIBUR") setLocalLiburStatus(liburIsOn ? "ON" : "OFF");
         if (fitur === "SHIFT") setLocalShiftStatus(shiftIsOn ? "ON" : "OFF");
       }
     } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi saat mengubah status fitur.");
+      toast.error("Terjadi kesalahan koneksi saat mengubah status fitur.");
     } finally {
       setLoadingAction(null);
     }

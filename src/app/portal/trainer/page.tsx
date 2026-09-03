@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState, SectionLoader, CardSkeleton } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function TrainerPortalPage() {
   const [courses, setCourses] = useState<any[]>([]);
@@ -91,10 +93,14 @@ export default function TrainerPortalPage() {
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "course-delete", id });
-      setSuccess(`Kursus "${title}" berhasil dihapus.`);
+      const msg = `Kursus "${title}" berhasil dihapus.`;
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -103,10 +109,14 @@ export default function TrainerPortalPage() {
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "module-delete", id });
-      setSuccess(`Modul "${title}" berhasil dihapus.`);
+      const msg = `Modul "${title}" berhasil dihapus.`;
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -115,10 +125,14 @@ export default function TrainerPortalPage() {
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "lesson-delete", id });
-      setSuccess(`Materi "${title}" berhasil dihapus.`);
+      const msg = `Materi "${title}" berhasil dihapus.`;
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -127,10 +141,14 @@ export default function TrainerPortalPage() {
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "question-delete", id });
-      setSuccess("Pertanyaan kuis berhasil dihapus.");
+      const msg = "Pertanyaan kuis berhasil dihapus.";
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -158,53 +176,81 @@ export default function TrainerPortalPage() {
 
   async function handleCreateCourse(e: React.FormEvent) {
     e.preventDefault();
+    if (!courseForm.title.trim()) {
+      toast.warning("Judul kursus wajib diisi.");
+      return;
+    }
     setError("");
     setSuccess("");
 
     try {
       await sendJson("/api/lms", "POST", { action: "course", ...courseForm, clientId: courseForm.clientId || null });
-      setSuccess(`Kursus baru "${courseForm.title}" berhasil dibuat!`);
+      const msg = `Kursus baru "${courseForm.title}" berhasil dibuat!`;
+      toast.success(msg);
+      setSuccess(msg);
       setCourseForm({ title: "", description: "", status: "ACTIVE", isCertification: false, clientId: "" });
       setModalOpen(false);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
+      const msg = errorMessage(err, "Terjadi kesalahan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleAddModule(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedCourse) return;
+    if (!moduleForm.title.trim()) {
+      toast.warning("Judul modul wajib diisi.");
+      return;
+    }
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "module", courseId: selectedCourse.id, ...moduleForm });
-      setSuccess("Modul baru berhasil ditambahkan!");
+      const msg = "Modul baru berhasil ditambahkan!";
+      toast.success(msg);
+      setSuccess(msg);
       setModuleModalOpen(false);
       setModuleForm({ title: "", order: 1, passingScore: 70 });
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleAddLesson(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedModuleId) return;
+    if (!lessonForm.title.trim()) {
+      toast.warning("Judul materi lesson wajib diisi.");
+      return;
+    }
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "lesson", moduleId: selectedModuleId, ...lessonForm });
-      setSuccess("Materi lesson berhasil ditambahkan!");
+      const msg = "Materi lesson berhasil ditambahkan!";
+      toast.success(msg);
+      setSuccess(msg);
       setLessonModalOpen(false);
       setLessonForm({ title: "", content: "", videoId: "", videoDuration: 0 });
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleAddQuestion(e: React.FormEvent) {
     e.preventDefault();
     if (!questionForm.moduleId) return;
+    if (!questionForm.question.trim()) {
+      toast.warning("Pertanyaan kuis wajib diisi.");
+      return;
+    }
     setError(""); setSuccess("");
     try {
       const payload = {
@@ -216,30 +262,39 @@ export default function TrainerPortalPage() {
         correctAnswer: questionForm.correctAnswer,
       };
       await sendJson("/api/lms", "POST", payload);
-      setSuccess("Pertanyaan kuis berhasil ditambahkan!");
+      const msg = "Pertanyaan kuis berhasil ditambahkan!";
+      toast.success(msg);
+      setSuccess(msg);
       setQuestionModalOpen(false);
       setQuestionForm({ moduleId: "", type: "MCQ", question: "", options: ["", "", "", ""], correctAnswer: "" });
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleEnrollCohort(e: React.FormEvent) {
     e.preventDefault();
     if (!cohortCourseId || selectedKaryawanIds.length === 0) {
+      toast.warning("Pilih kursus dan minimal satu streamer.");
       setError("Pilih kursus dan minimal satu streamer.");
       return;
     }
     setError(""); setSuccess("");
     try {
       const data = await sendJson<any[]>("/api/lms", "POST", { action: "enroll-cohort", courseId: cohortCourseId, karyawanIds: selectedKaryawanIds });
-      setSuccess(`Berhasil memdaftarkan ${data?.length ?? selectedKaryawanIds.length} streamer ke kursus.`);
+      const msg = `Berhasil mendaftarkan ${data?.length ?? selectedKaryawanIds.length} streamer ke kursus.`;
+      toast.success(msg);
+      setSuccess(msg);
       setCohortModalOpen(false);
       setSelectedKaryawanIds([]);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -247,11 +302,15 @@ export default function TrainerPortalPage() {
     setError(""); setSuccess("");
     try {
       await sendJson("/api/lms", "POST", { action: "grade", attemptId, score });
-      setSuccess(`Nilai essay ${score} berhasil diberikan!`);
+      const msg = `Nilai essay ${score} berhasil diberikan!`;
+      toast.success(msg);
+      setSuccess(msg);
       setGradingAttemptId("");
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -360,9 +419,17 @@ export default function TrainerPortalPage() {
 
       {/* Tab: Courses List */}
       {activeTab === "courses" && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((c) => (
+        loading ? (
+          <CardSkeleton count={3} />
+        ) : courses.length === 0 ? (
+          <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs space-y-2">
+            <i className="fa-solid fa-graduation-cap text-3xl text-slate-300 block" />
+            <p>Belum ada materi kursus akademi yang dibuat.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {courses.map((c) => (
               <div
                 key={c.id}
                 className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 hover:shadow-md hover:border-blue-300 transition flex flex-col justify-between"
@@ -541,16 +608,10 @@ export default function TrainerPortalPage() {
                   <span className="font-bold text-emerald-600">✓ Aktif di Portal Streamer</span>
                 </div>
               </div>
-            ))}
-          </div>
-
-          {courses.length === 0 && !loading && (
-            <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 text-slate-400 text-xs space-y-2">
-              <i className="fa-solid fa-graduation-cap text-3xl text-slate-300 block" />
-              <p>Belum ada materi kursus akademi yang dibuat.</p>
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )
       )}
 
       {/* Tab: Enrollments / Streamer Progress */}
@@ -577,50 +638,59 @@ export default function TrainerPortalPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {enrollments.map((e: any) => (
-                  <tr key={e.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-800">
-                      {e.karyawan?.namaLengkap ?? "—"}
-                      <div className="text-[10px] text-slate-400 font-normal">{e.karyawan?.idKaryawan}</div>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-700">{e.course?.title}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-blue-600 rounded-full" style={{ width: `${e.progressPct}%` }} />
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-600">{e.progressPct}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          e.status === "COMPLETED"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : e.status === "IN_PROGRESS"
-                            ? "bg-blue-50 text-blue-700 border-blue-200"
-                            : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        {e.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {e.certificates && e.certificates.length > 0 ? (
-                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                          <i className="fa-solid fa-certificate" /> {e.certificates[0].code}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[10px]">—</span>
-                      )}
-                    </td>
+                {loading ? (
+                  <TableLoadingState
+                    colSpan={5}
+                    text="Memuat data penugasan kursus..."
+                    subtext="Menyelaraskan progress belajar dan sertifikat streamer..."
+                  />
+                ) : enrollments.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-xs text-slate-400">Belum ada data penugasan kursus.</td>
                   </tr>
-                ))}
+                ) : (
+                  enrollments.map((e: any) => (
+                    <tr key={e.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 font-bold text-slate-800">
+                        {e.karyawan?.namaLengkap ?? "—"}
+                        <div className="text-[10px] text-slate-400 font-normal">{e.karyawan?.idKaryawan}</div>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-700">{e.course?.title}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-600 rounded-full" style={{ width: `${e.progressPct}%` }} />
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-600">{e.progressPct}%</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                            e.status === "COMPLETED"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : e.status === "IN_PROGRESS"
+                              ? "bg-blue-50 text-blue-700 border-blue-200"
+                              : "bg-slate-100 text-slate-600 border-slate-200"
+                          }`}
+                        >
+                          {e.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {e.certificates && e.certificates.length > 0 ? (
+                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                            <i className="fa-solid fa-certificate" /> {e.certificates[0].code}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
-            {enrollments.length === 0 && (
-              <div className="p-8 text-center text-xs text-slate-400">Belum ada data penugasan kursus.</div>
-            )}
           </div>
         </div>
       )}
@@ -645,10 +715,10 @@ export default function TrainerPortalPage() {
           </div>
 
           {loadingSubmissions ? (
-            <div className="p-8 text-center text-xs text-slate-400">
-              <i className="fa-solid fa-spinner animate-spin text-purple-500 text-lg block mb-2" />
-              Memuat data pengerjaan ujian...
-            </div>
+            <SectionLoader
+              text="Memuat data pengerjaan ujian streamer..."
+              subtext="Menyelaraskan rekapan kuis dan submission modul dari server..."
+            />
           ) : submissions.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-400">
               Belum ada data pengerjaan ujian atau quiz dari streamer.

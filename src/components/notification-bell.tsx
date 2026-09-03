@@ -4,7 +4,8 @@ import { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 export type Notification = {
   id: string;
@@ -144,7 +145,9 @@ export default function NotificationBell() {
     );
     try {
       await sendJson("/api/integration", "POST", { action: "markAllRead" });
-    } catch {
+      toast.success("Semua notifikasi ditandai sudah dibaca.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menandai notifikasi"));
       load();
     }
   }
@@ -156,7 +159,8 @@ export default function NotificationBell() {
     setItems((prev) => prev.filter((it) => it.id !== id));
     try {
       await sendJson("/api/integration", "POST", { action: "delete", id });
-    } catch {
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menghapus notifikasi"));
       load();
     }
   }
@@ -167,7 +171,9 @@ export default function NotificationBell() {
     setItems([]);
     try {
       await sendJson("/api/integration", "POST", { action: "clearAll" });
-    } catch {
+      toast.success("Semua notifikasi berhasil dibersihkan.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal membersihkan notifikasi"));
       load();
     }
   }
@@ -176,7 +182,10 @@ export default function NotificationBell() {
     setLoading(true);
     try {
       await fetchJson("/api/notifications/test?type=bell");
+      toast.success("Notifikasi uji coba berhasil dikirim!");
       await load();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal mengirim notifikasi tes"));
     } finally {
       setLoading(false);
     }

@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { formatDateIndo } from "@/lib/utils/date-format";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 export interface StreamerProfileCardData {
   karyawan: {
@@ -83,12 +84,12 @@ export function StreamerProfileCardOverview({
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Harap pilih file gambar (JPG/PNG/WebP).");
+      toast.warning("Harap pilih file gambar (JPG/PNG/WebP).");
       return;
     }
 
     if (file.size > 4 * 1024 * 1024) {
-      alert("Ukuran gambar maksimal 4MB.");
+      toast.warning("Ukuran gambar maksimal 4MB.");
       return;
     }
 
@@ -102,6 +103,7 @@ export function StreamerProfileCardOverview({
           karyawanId: targetId,
           photoUrl: base64,
         });
+        toast.success("Foto profil berhasil diperbarui!");
         setData((prev) =>
           prev && prev.karyawan
             ? {
@@ -111,7 +113,7 @@ export function StreamerProfileCardOverview({
             : prev
         );
       } catch (err) {
-        alert(err instanceof Error ? err.message : "Gagal mengunggah foto profil");
+        toast.error(errorMessage(err, "Gagal mengunggah foto profil"));
       } finally {
         setUploadingPhoto(false);
       }

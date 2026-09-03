@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { fetchJson } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 export interface StreamerListItem {
   id: string;
@@ -205,26 +206,27 @@ export function StreamerListView({
           </div>
         )}
 
-        {loading ? (
-          <div className="p-12 text-center flex flex-col items-center justify-center gap-3">
-            <i className="fa-solid fa-circle-notch fa-spin text-3xl text-[#941A0B]" />
-            <p className="text-xs font-bold text-slate-600">Memuat data host streamer dari database...</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto min-h-[360px]">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="px-4 py-3.5 text-center w-12">No</th>
-                  <th className="px-4 py-3.5">Host Streamer</th>
-                  <th className="px-4 py-3.5">Jabatan / Kategori</th>
-                  <th className="px-4 py-3.5 text-center">Sesi Selesai Bulan Ini</th>
-                  <th className="px-4 py-3.5 text-center">Status</th>
-                  <th className="px-4 py-3.5 text-center w-36">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((s, idx) => {
+        <div className="overflow-x-auto min-h-[360px]">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-50 text-slate-700 font-extrabold border-b border-slate-200 uppercase tracking-wider text-[11px]">
+              <tr>
+                <th className="px-4 py-3.5 text-center w-12">No</th>
+                <th className="px-4 py-3.5">Host Streamer</th>
+                <th className="px-4 py-3.5">Jabatan / Kategori</th>
+                <th className="px-4 py-3.5 text-center">Sesi Selesai Bulan Ini</th>
+                <th className="px-4 py-3.5 text-center">Status</th>
+                <th className="px-4 py-3.5 text-center w-36">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <TableLoadingState
+                  colSpan={6}
+                  text="Memuat data host streamer dari database..."
+                  subtext="Menyelaraskan profil dan rekap performa sesi..."
+                />
+              ) : (
+                filtered.map((s, idx) => {
                   const isSelf = currentKaryawanId && currentKaryawanId === s.id;
                   const photoSrc = s.fotoUrl || s.photoUrl;
                   const completedCount = s.totalSessionsMonth ?? s.totalSessions ?? 0;
@@ -248,60 +250,53 @@ export function StreamerListView({
                                 src={photoSrc}
                                 alt={s.namaLengkap}
                                 fill
+                                sizes="40px"
                                 className="object-cover"
                                 unoptimized
                               />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center text-slate-400 font-black text-sm bg-slate-100">
-                                {s.namaLengkap.charAt(0).toUpperCase()}
+                              <div className="w-full h-full flex items-center justify-center bg-[#941A0B]/10 text-[#941A0B] font-bold text-sm">
+                                {s.namaLengkap.slice(0, 2).toUpperCase()}
                               </div>
                             )}
                           </div>
                           <div>
-                            <div className="font-extrabold text-slate-900 group-hover:text-[#941A0B] transition flex items-center gap-1.5">
+                            <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
                               <span>{s.namaLengkap}</span>
                               {isSelf && (
-                                <span className="bg-[#941A0B]/10 text-[#941A0B] text-[9px] font-black px-1.5 py-0.5 rounded">
+                                <span className="bg-[#941A0B] text-white text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">
                                   Anda
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400 font-mono font-bold">
-                              ID Host: <span className="text-slate-600">{s.idKaryawan}</span>
+                            <div className="text-[11px] text-slate-400 font-mono font-medium mt-0.5">
+                              {s.idKaryawan}
                             </div>
                           </div>
                         </div>
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-800">
-                          {s.jabatan || "Host Streamer"}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-semibold uppercase">
-                          {s.kategori || "STREAMER"}
-                        </div>
+                        <div className="font-bold text-slate-700 text-xs">{s.jabatan || "Live Streamer"}</div>
+                        <div className="text-[11px] text-slate-400 font-medium">{s.kategori || "Host"}</div>
                       </td>
 
                       <td className="px-4 py-3.5 text-center">
-                        <span className="inline-block px-3 py-1 rounded-full text-xs font-black bg-blue-50 text-blue-700 border border-blue-200/80 shadow-2xs">
+                        <span className="font-extrabold text-sm text-slate-800 bg-slate-100 px-3 py-1 rounded-lg">
                           {completedCount} Sesi
                         </span>
-                        {s.totalHoursMonth ? (
-                          <span className="text-[10px] text-slate-400 block font-medium mt-0.5">
-                            ({s.totalHoursMonth} Jam)
-                          </span>
-                        ) : null}
                       </td>
 
                       <td className="px-4 py-3.5 text-center">
                         <span
-                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide border ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border shadow-2xs ${
                             isAktif
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                               : "bg-slate-100 text-slate-500 border-slate-200"
                           }`}
                         >
-                          {isAktif ? "AKTIF" : "NON-AKTIF"}
+                          <span className={`w-1.5 h-1.5 rounded-full ${isAktif ? "bg-emerald-500" : "bg-slate-400"}`} />
+                          <span>{s.statusAktif || "AKTIF"}</span>
                         </span>
                       </td>
 
@@ -317,18 +312,18 @@ export function StreamerListView({
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
+                })
+              )}
+            </tbody>
+          </table>
 
-            {filtered.length === 0 && (
-              <div className="p-12 text-center text-slate-400 text-xs">
-                <i className="fa-solid fa-user-slash text-3xl mb-2 block text-slate-300" />
-                <span>Tidak ada host streamer yang cocok dengan kriteria pencarian.</span>
-              </div>
-            )}
-          </div>
-        )}
+          {filtered.length === 0 && !loading && (
+            <div className="p-12 text-center text-slate-400 text-xs">
+              <i className="fa-solid fa-user-slash text-3xl mb-2 block text-slate-300" />
+              <span>Tidak ada host streamer yang cocok dengan kriteria pencarian.</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

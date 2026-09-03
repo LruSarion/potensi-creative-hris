@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { requireRole } from "@/lib/auth-helpers";
-import type { Role } from "@/generated/prisma/enums";
-
-const ADMIN_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"];
 
 const suaraSchema = z.object({
   kategori: z.string().optional().nullable(),
@@ -14,15 +11,16 @@ const suaraSchema = z.object({
 export type SuaraInput = z.infer<typeof suaraSchema>;
 
 /**
- * Submit anonymous feedback. Submitter identity is NOT stored —
- * this preserves anonymity at the data layer.
+ * Submit feedback. Stores the submitter's userId so each user can see
+ * their own riwayat; the list endpoint never exposes identity to others.
  */
 export async function submitSuara(input: SuaraInput) {
-  await requireRole();
+  const user = await requireRole();
   const parsed = suaraSchema.parse(input);
   return db.logAktivitas.create({
     data: {
       aksi: "SUARA_KARYAWAN",
+      userId: user.id,
       detail: JSON.stringify({
         kategori: parsed.kategori ?? null,
         pesan: parsed.pesan,
@@ -33,12 +31,18 @@ export async function submitSuara(input: SuaraInput) {
 }
 
 /**
- * List feedback (admin only). Returns only content — no submitter identity.
+ * List feedback. SUPER_ADMIN sees all submissions; every other role sees
+ * only their own. Returned rows contain content only — no submitter identity.
+ * (Entries created before userId tracking have userId = null and are visible
+ * to SUPER_ADMIN only.)
  */
 export async function listSuara() {
-  await requireRole(...ADMIN_ROLES);
+  const user = await requireRole();
   const rows = await db.logAktivitas.findMany({
-    where: { aksi: "SUARA_KARYAWAN" },
+    where: {
+      aksi: "SUARA_KARYAWAN",
+      ...(user.role === "SUPER_ADMIN" ? {} : { userId: user.id }),
+    },
     orderBy: { createdAt: "desc" },
   });
   return rows

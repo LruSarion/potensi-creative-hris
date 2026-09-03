@@ -1,9 +1,11 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { CardSkeleton } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function StreamerPortalPage() {
   const { data: session } = useSession();
@@ -50,10 +52,14 @@ export default function StreamerPortalPage() {
     setSuccess("");
     try {
       await sendJson("/api/marketplace", "POST", { action: "apply", listingId });
-      setSuccess("Lamaran Anda terkirim! Tunggu keputusan klien.");
+      const msg = "Lamaran Anda terkirim! Tunggu keputusan klien.";
+      toast.success(msg);
+      setSuccess(msg);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -63,10 +69,14 @@ export default function StreamerPortalPage() {
     setSuccess("");
     try {
       await sendJson("/api/streamer-profile", "PATCH", { photoUrl, bio });
-      setSuccess("Profil berhasil diperbarui! Klien kini dapat melihat foto & biodata Anda.");
+      const msg = "Profil berhasil diperbarui! Klien kini dapat melihat foto & biodata Anda.";
+      toast.success(msg);
+      setSuccess(msg);
       loadProfile();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -112,7 +122,7 @@ export default function StreamerPortalPage() {
 
       {activeTab === "marketplace" && (
         loading ? (
-          <p className="text-xs text-slate-500">Memuat marketplace...</p>
+          <CardSkeleton count={4} gridCls="grid grid-cols-1 md:grid-cols-2 gap-4" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {listings.map((l) => (

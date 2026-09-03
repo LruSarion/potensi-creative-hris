@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 export default function StreamerDirectoryPage() {
   const [streamers, setStreamers] = useState<any[]>([]);
@@ -62,23 +63,33 @@ export default function StreamerDirectoryPage() {
         <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4">⚠ {error}</div>
       )}
 
-      {loading ? (
-        <p className="text-xs text-slate-500">Memuat...</p>
-      ) : (
-        <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+      <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
+            <tr>
+              <th className="px-4 py-3">Streamer</th>
+              <th className="px-4 py-3">Rating</th>
+              <th className="px-4 py-3">Sesi</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Sertifikasi Brand</th>
+              <th className="px-4 py-3 text-center w-28">Aksi</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <TableLoadingState
+                colSpan={6}
+                text="Memuat direktori host streamer..."
+                subtext="Menyelaraskan metrik rating, total sesi, dan sertifikasi brand..."
+              />
+            ) : filtered.length === 0 ? (
               <tr>
-                <th className="px-4 py-3">Streamer</th>
-                <th className="px-4 py-3">Rating</th>
-                <th className="px-4 py-3">Sesi</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Sertifikasi Brand</th>
-                <th className="px-4 py-3 text-center w-28">Aksi</th>
+                <td colSpan={6} className="p-8 text-center text-slate-400 text-xs">
+                  Tidak ada streamer ditemukan.
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((s) => (
+            ) : (
+              filtered.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50/80 transition">
                   <td className="px-4 py-3">
                     <div className="font-bold text-slate-800">{s.namaLengkap}</div>
@@ -124,14 +135,11 @@ export default function StreamerDirectoryPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {filtered.length === 0 && (
-            <div className="p-8 text-center text-slate-400 text-xs">Tidak ada streamer ditemukan.</div>
-          )}
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {/* Streamer Detail Modal */}
       {selectedStreamerId && (

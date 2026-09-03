@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fetchJson } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 type IncidentItem = {
   id: string;
@@ -209,7 +210,11 @@ export default function FinanceInsentifPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {loading ? (
-                    <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Memuat data...</td></tr>
+                    <TableLoadingState
+                      colSpan={7}
+                      text="Memuat data insentif & denda pelanggaran..."
+                      subtext="Menyelaraskan laporan insiden periode terkait dari server..."
+                    />
                   ) : incidents.length === 0 ? (
                     <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-400">Tidak ada pelanggaran pada {monthLabel(periodeFilter)}.</td></tr>
                   ) : incidents.map((i) => (

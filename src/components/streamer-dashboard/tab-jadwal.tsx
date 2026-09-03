@@ -9,6 +9,7 @@ import {
   formatDateSafe,
   formatTimeSafe,
 } from "@/lib/utils/date-format";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 export function TabJadwal({
   jadwal,
@@ -45,7 +46,14 @@ export function TabJadwal({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {jadwal.map((j) => (
+            {loading ? (
+              <TableLoadingState
+                colSpan={7}
+                text="Memuat jadwal live streaming Anda..."
+                subtext="Menyelaraskan data sesi siaran dan status on air..."
+              />
+            ) : (
+              jadwal.map((j) => (
               <tr key={j.id} className="hover:bg-slate-50/80 transition">
                 <td className="px-4 py-3.5 font-mono font-bold text-slate-700">{j.idJadwal}</td>
                 <td className="px-4 py-3">
@@ -84,23 +92,25 @@ export function TabJadwal({
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-2">
-                    <a
-                      href={generateGoogleCalendarUrl({
-                        title: `🔴 Live Streaming: ${j.client?.namaClient ?? "Brand Partner"} (${j.platform ?? "Shopee Live"})`,
-                        description: `Jadwal Siaran Live Streaming Agency Potensi Creative\nID Sesi: ${j.idJadwal}\nStudio: ${j.studio ?? "Studio 1"}\nPengingat otomatis diset: 30 mnt & 15 mnt sebelum siaran.`,
-                        location: `Studio ${j.studio ?? "Studio 1"}, Potensi Creative`,
-                        startTime: j.jamMulaiLive,
-                        endTime: j.jamSelesaiLive,
-                        reminderMinutes: [30, 15],
-                      })}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      title="Tambah Pengingat Google Calendar (Pop-up 30m & 15m)"
-                      className="px-2.5 py-1 bg-[#941A0B]/10 hover:bg-[#941A0B]/15 text-[#941A0B] border border-[#941A0B]/20 rounded-lg text-xs font-semibold transition flex items-center gap-1"
-                    >
-                      <i className="fa-solid fa-calendar-plus text-[#941A0B]" />
-                      <span className="hidden sm:inline">Sync GCal</span>
-                    </a>
+                    {j.status !== "SELESAI" && j.liveState !== "CLOSED" && (
+                      <a
+                        href={generateGoogleCalendarUrl({
+                          title: `🔴 Live Streaming: ${j.client?.namaClient ?? "Brand Partner"} (${j.platform ?? "Shopee Live"})`,
+                          description: `Jadwal Siaran Live Streaming Agency Potensi Creative\nID Sesi: ${j.idJadwal}\nStudio: ${j.studio ?? "Studio 1"}\nPengingat otomatis diset: 30 mnt & 15 mnt sebelum siaran.`,
+                          location: `Studio ${j.studio ?? "Studio 1"}, Potensi Creative`,
+                          startTime: j.jamMulaiLive,
+                          endTime: j.jamSelesaiLive,
+                          reminderMinutes: [30, 15],
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Tambah Pengingat Google Calendar (Pop-up 30m & 15m)"
+                        className="px-2.5 py-1 bg-[#941A0B]/10 hover:bg-[#941A0B]/15 text-[#941A0B] border border-[#941A0B]/20 rounded-lg text-xs font-semibold transition flex items-center gap-1"
+                      >
+                        <i className="fa-solid fa-calendar-plus text-[#941A0B]" />
+                        <span className="hidden sm:inline">Sync GCal</span>
+                      </a>
+                    )}
 
                     {j.liveState === "LIVE" ? (
                       <button
@@ -123,7 +133,7 @@ export function TabJadwal({
                 </td>
 
               </tr>
-            ))}
+            )))}
           </tbody>
         </table>
         {jadwal.length === 0 && !loading && (

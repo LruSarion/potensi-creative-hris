@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 interface KPIRow {
   rowIndex: number;
@@ -37,7 +38,6 @@ interface KPIRow {
 
 export default function PenilaianSDMPage() {
   const { data: session } = useSession();
-  const { showAlert } = useAlert();
   const userRole = (session?.user?.role || "").toUpperCase();
   const isRater = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"].includes(userRole);
 
@@ -266,11 +266,11 @@ export default function PenilaianSDMPage() {
     setSavingBatch(true);
     try {
       await sendJson("/api/penilaian-sdm?action=batch", "POST", { items: itemsToSave });
-      showAlert(`✅ Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
+      toast.success(`Berhasil menyimpan ${itemsToSave.length} data penilaian KPI ke server!`);
       setPendingChanges({});
       fetchMatrixData();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat menyimpan penilaian KPI."));
     } finally {
       setSavingBatch(false);
     }
@@ -471,12 +471,11 @@ export default function PenilaianSDMPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {loading ? (
-                  <tr>
-                    <td colSpan={isRater ? 13 : 12} className="px-4 py-16 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-3xl text-blue-500 mb-3 block" />
-                      <span>Memuat matriks data KPI {activeTab === "ots" ? "OTS" : "Streamer"}...</span>
-                    </td>
-                  </tr>
+                  <TableLoadingState
+                    colSpan={isRater ? 13 : 12}
+                    text={`Memuat matriks data KPI ${activeTab === "ots" ? "OTS" : "Streamer"}...`}
+                    subtext="Menyelaraskan indikator penilaian dan bobot KPI terkini..."
+                  />
                 ) : paginatedRows.length > 0 ? (
                   paginatedRows.map((row, idx) => {
                     const currentPending = pendingChanges[row.karyawanDbId] || {};

@@ -3,11 +3,13 @@
 import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function PengajuanIzinPage() {
   const { data: session } = useSession();
-  const { showAlert, showConfirm } = useAlert();
+  const { showConfirm } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"ajukan" | "riwayat">("ajukan");
@@ -29,9 +31,31 @@ export default function PengajuanIzinPage() {
   // Modal zoom
   const [previewModalImg, setPreviewModalImg] = useState<string | null>(null);
 
+  // Employees for Admin & Submitter
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [selectedKaryawanId, setSelectedKaryawanId] = useState("");
+
+  // Search & Status filters for Riwayat
+  const [searchFilter, setSearchFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+
   useEffect(() => {
     loadHistory();
-  }, []);
+    if (isAdmin) {
+      loadEmployees();
+    }
+  }, [isAdmin]);
+
+  async function loadEmployees() {
+    try {
+      const data = await fetchJson<any[]>("/api/employees");
+      if (Array.isArray(data)) {
+        setEmployees(data);
+      }
+    } catch {
+      // ignore
+    }
+  }
 
   async function loadHistory() {
     try {
@@ -51,7 +75,7 @@ export default function PengajuanIzinPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      showAlert("⚠️ Ukuran berkas maksimal 5MB.");
+      toast.warning("Ukuran berkas maksimal 5MB.");
       return;
     }
 
@@ -65,21 +89,23 @@ export default function PengajuanIzinPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!formIzin.alasan.trim()) {
-      showAlert("⚠️ Mohon isi alasan pengajuan cuti/izin.");
+      toast.warning("Mohon isi alasan pengajuan cuti/izin.");
       return;
     }
 
     setSubmitting(true);
     try {
       await sendJson("/api/izin", "POST", {
+        karyawanId: isAdmin && selectedKaryawanId ? selectedKaryawanId : undefined,
         tipeIzin: formIzin.jenis,
+        jenis: formIzin.jenis,
         tanggalMulai: new Date(formIzin.tanggalMulai).toISOString(),
         tanggalSelesai: new Date(formIzin.tanggalSelesai).toISOString(),
         alasan: formIzin.alasan,
         lampiranDriveId: formIzin.buktiB64 || undefined,
       });
 
-      showAlert("✅ Pengajuan cuti / izin berhasil dikirim!");
+      toast.success("Pengajuan cuti / izin berhasil dikirim!");
       setFormIzin({
         jenis: "CUTI TAHUNAN",
         tanggalMulai: new Date().toISOString().split("T")[0],
@@ -87,10 +113,11 @@ export default function PengajuanIzinPage() {
         alasan: "",
         buktiB64: "",
       });
+      setSelectedKaryawanId("");
       loadHistory();
       setActiveTab("riwayat");
     } catch (err) {
-      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengajukan izin"));
+      toast.error(errorMessage(err, "Gagal mengajukan izin"));
     } finally {
       setSubmitting(false);
     }
@@ -101,12 +128,25 @@ export default function PengajuanIzinPage() {
     if (!confirmed) return;
     try {
       await sendJson(`/api/izin?id=${id}&approve=${approve}`, "PATCH");
-      showAlert(`✅ Pengajuan berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      toast.success(approve ? "Pengajuan cuti/izin berhasil disetujui!" : "Pengajuan cuti/izin berhasil ditolak.");
       loadHistory();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat memproses izin."));
     }
   }
+
+  const selectedEmp = employees.find((emp) => emp.id === selectedKaryawanId);
+
+  const filteredHistory = history.filter((h) => {
+    if (statusFilter !== "ALL" && h.status !== statusFilter) return false;
+    if (!searchFilter.trim()) return true;
+    const q = searchFilter.toLowerCase();
+    const nama = (h.karyawan?.namaLengkap || "").toLowerCase();
+    const idKaryawan = (h.karyawan?.idKaryawan || h.karyawanId || "").toLowerCase();
+    const alasan = (h.alasan || "").toLowerCase();
+    const jenis = (h.tipeIzin || h.jenis || "").toLowerCase();
+    return nama.includes(q) || idKaryawan.includes(q) || alasan.includes(q) || jenis.includes(q);
+  });
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto pb-12">
@@ -160,6 +200,80 @@ export default function PengajuanIzinPage() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Informasi Pemohon */}
+            {isAdmin ? (
+              <div className="bg-slate-50/80 border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+                      <i className="fa-solid fa-user-gear text-blue-600 mr-1.5" />
+                      Pemohon / Karyawan Yang Mengajukan
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Sebagai Administrator, Anda dapat mengajukan permohonan atas nama diri sendiri atau karyawan lain.
+                    </p>
+                  </div>
+                  {selectedEmp && (
+                    <span className="text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 px-2.5 py-1 rounded-lg self-start sm:self-auto">
+                      {selectedEmp.kategori || selectedEmp.jabatan || "Karyawan"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <select
+                      value={selectedKaryawanId}
+                      onChange={(e) => setSelectedKaryawanId(e.target.value)}
+                      className="w-full border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
+                    >
+                      <option value="">-- Diri Sendiri ({session?.user?.name || "Akun Saya"}) --</option>
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.namaLengkap} ({emp.idKaryawan || "No ID"}) - {emp.jabatan || emp.kategori || "Staff"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {selectedEmp ? (
+                    <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-xl px-3.5 py-2 shadow-2xs">
+                      <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {selectedEmp.fotoUrl ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={selectedEmp.fotoUrl} alt={selectedEmp.namaLengkap} className="w-full h-full object-cover" />
+                        ) : (
+                          <span>{selectedEmp.namaLengkap.slice(0, 2).toUpperCase()}</span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-900 truncate">{selectedEmp.namaLengkap}</div>
+                        <div className="text-[11px] text-slate-500 font-mono">{selectedEmp.idKaryawan || "–"} • {selectedEmp.jabatan || selectedEmp.kategori || "Staff"}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-xs text-slate-600 bg-white border border-slate-200 rounded-xl px-3.5 py-2 font-medium shadow-2xs">
+                      <i className="fa-solid fa-circle-user text-blue-600 text-sm" />
+                      <span>Pengajuan dicatat untuk akun Anda: <strong>{session?.user?.name || "Super Admin"}</strong></span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-blue-50/70 border border-blue-200/80 rounded-2xl p-4 flex items-center gap-3 text-xs text-blue-900">
+                <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center flex-shrink-0 font-bold shadow-xs">
+                  <i className="fa-solid fa-id-card text-sm" />
+                </div>
+                <div>
+                  <div className="font-bold text-sm text-blue-950">
+                    Informasi Pemohon: {session?.user?.name || "Karyawan"}
+                  </div>
+                  <div className="text-blue-700 text-[11px] mt-0.5">
+                    Permohonan cuti/izin ini diajukan atas nama Anda dan akan ditinjau oleh Manajemen / Tim HRIS.
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5">Jenis Izin <span className="text-red-500">*</span></label>
@@ -267,19 +381,50 @@ export default function PengajuanIzinPage() {
       {/* TAB 2: RIWAYAT */}
       {activeTab === "riwayat" && (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
             <div>
               <h3 className="font-bold text-base text-slate-900">Riwayat Cuti & Izin</h3>
               <p className="text-xs text-slate-400 mt-0.5">Daftar rekap dan status permohonan izin Anda.</p>
             </div>
-            <button
-              type="button"
-              onClick={loadHistory}
-              className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition text-xs"
-              title="Refresh Data"
-            >
-              <i className="fa-solid fa-rotate-right" />
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-lg">
+                Total: {filteredHistory.length} Pengajuan
+              </span>
+              <button
+                type="button"
+                onClick={loadHistory}
+                className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-slate-100 transition text-xs cursor-pointer"
+                title="Refresh Data"
+              >
+                <i className="fa-solid fa-rotate-right" />
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Status Filter */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="flex-1 w-full flex items-center gap-2">
+              <div className="relative flex-1">
+                <i className="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
+                <input
+                  type="text"
+                  value={searchFilter}
+                  onChange={(e) => setSearchFilter(e.target.value)}
+                  placeholder={isAdmin ? "Cari nama pemohon, ID karyawan, jenis izin, atau alasan..." : "Cari jenis izin atau alasan..."}
+                  className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50 font-medium"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50 font-semibold cursor-pointer"
+              >
+                <option value="ALL">Semua Status</option>
+                <option value="PENDING">Menunggu</option>
+                <option value="APPROVED">Disetujui</option>
+                <option value="REJECTED">Ditolak</option>
+              </select>
+            </div>
           </div>
 
           <div className="overflow-x-auto rounded-2xl border border-slate-200 shadow-2xs">
@@ -287,31 +432,62 @@ export default function PengajuanIzinPage() {
               <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3">TANGGAL PENGAJUAN</th>
+                  {isAdmin && <th className="px-4 py-3 min-w-[200px]">PEMOHON / KARYAWAN</th>}
                   <th className="px-4 py-3">JENIS IZIN</th>
                   <th className="px-4 py-3">RENTANG WAKTU</th>
                   <th className="px-4 py-3">ALASAN</th>
                   <th className="px-4 py-3 text-center">LAMPIRAN</th>
                   <th className="px-4 py-3 text-center">STATUS</th>
-                  {isAdmin && <th className="px-4 py-3 text-center">AKSI ADMIN</th>}
+                  {isAdmin && <th className="px-4 py-3 text-center min-w-[130px]">AKSI ADMIN</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {loadingHistory ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
-                      Memuat riwayat izin...
-                    </td>
-                  </tr>
-                ) : history.length > 0 ? (
-                  history.map((h, idx) => {
+                  <TableLoadingState
+                    colSpan={isAdmin ? 8 : 6}
+                    text="Memuat riwayat permohonan izin & cuti..."
+                    subtext="Menyelaraskan data status persetujuan dari server..."
+                  />
+                ) : filteredHistory.length > 0 ? (
+                  filteredHistory.map((h, idx) => {
                     const startStr = h.tanggalMulai ? new Date(h.tanggalMulai).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "";
                     const endStr = h.tanggalSelesai ? new Date(h.tanggalSelesai).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "";
                     const createdStr = h.createdAt ? new Date(h.createdAt).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "";
 
                     return (
                       <tr key={h.id || idx} className="hover:bg-slate-50 transition">
-                        <td className="px-4 py-3 font-medium text-slate-500">{createdStr}</td>
+                        <td className="px-4 py-3 font-medium text-slate-500 whitespace-nowrap">{createdStr}</td>
+                        {isAdmin && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0 border border-blue-200 overflow-hidden shadow-2xs">
+                                {h.karyawan?.fotoUrl ? (
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  <img
+                                    src={h.karyawan.fotoUrl}
+                                    alt={h.karyawan.namaLengkap}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span>{(h.karyawan?.namaLengkap || "?").slice(0, 2).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 text-xs truncate">
+                                  {h.karyawan?.namaLengkap || "–"}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  <span className="bg-slate-100 px-1 py-0.2 rounded font-semibold text-slate-700">
+                                    {h.karyawan?.idKaryawan || h.karyawanId || "–"}
+                                  </span>
+                                  {h.karyawan?.jabatan && (
+                                    <span className="text-slate-500 font-sans truncate">• {h.karyawan.jabatan}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        )}
                         <td className="px-4 py-3 font-bold text-slate-900">{h.tipeIzin || h.jenis || "IZIN"}</td>
                         <td className="px-4 py-3 align-top">
                           <span className="font-semibold text-slate-800">{startStr}</span>
@@ -372,9 +548,11 @@ export default function PengajuanIzinPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={isAdmin ? 7 : 6} className="px-4 py-12 text-center text-slate-400 italic">
+                    <td colSpan={isAdmin ? 8 : 6} className="px-4 py-12 text-center text-slate-400 italic">
                       <i className="fa-regular fa-folder-open text-3xl mb-2 block text-slate-300" />
-                      Belum ada riwayat permohonan cuti / izin tersimpan.
+                      {searchFilter || statusFilter !== "ALL"
+                        ? "Tidak ada data permohonan yang sesuai dengan filter pencarian."
+                        : "Belum ada riwayat permohonan cuti / izin tersimpan."}
                     </td>
                   </tr>
                 )}

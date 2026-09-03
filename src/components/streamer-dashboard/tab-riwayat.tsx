@@ -9,8 +9,10 @@ import {
   formatDateSafe,
   formatTimeSafe,
 } from "@/lib/utils/date-format";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 export function TabRiwayat({
+  loading = false,
   filteredHistory,
   paginatedHistory,
   totalPagesHistory,
@@ -33,6 +35,7 @@ export function TabRiwayat({
   onReportGmv,
   onShowBukti,
 }: {
+  loading?: boolean;
   filteredHistory: AbsensiHistory[];
   paginatedHistory: AbsensiHistory[];
   totalPagesHistory: number;
@@ -170,7 +173,13 @@ export function TabRiwayat({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-slate-700">
-            {paginatedHistory.map((h, idx) => {
+            {loading ? (
+              <TableLoadingState
+                colSpan={8}
+                text="Memuat riwayat siaran live..."
+                subtext="Menyelaraskan data sesi presensi, jam live, dan laporan GMV..."
+              />
+            ) : paginatedHistory.map((h, idx) => {
               const globalIdx = (pageHistory - 1) * rowsPerPageHistory + idx + 1;
               const bgRow = idx % 2 === 0 ? "bg-white" : "bg-slate-50/60";
 
@@ -296,7 +305,7 @@ export function TabRiwayat({
             })}
           </tbody>
         </table>
-        {filteredHistory.length === 0 && (
+        {filteredHistory.length === 0 && !loading && (
           <div className="p-8 text-center text-slate-400 text-xs flex flex-col items-center justify-center min-h-[350px]">
             <i className="fa-solid fa-box-open text-3xl text-slate-300 mb-2" />
             <p>Tidak ada riwayat presensi yang sesuai dengan filter.</p>

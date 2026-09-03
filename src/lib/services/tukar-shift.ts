@@ -64,12 +64,35 @@ export async function getTukarShiftFormData(roleFilter?: string) {
     return `${j.idJadwal} | ${tglStr} | ${startStr} | ${endStr} | ${platform}${studio}`;
   });
 
-  // 2. Fetch employee list (candidates for replacement)
+  // 2. Fetch employee list (candidates for replacement).
+  //    For streamers: only active streamer hosts, excluding the requester
+  //    themselves (can't swap with self). Admins still see everyone.
+  const isStreamerSelf =
+    user.role === "STREAMER" && !!user.karyawanId;
+  const streamerCondition = {
+    statusAktif: "AKTIF" as const,
+    OR: [
+      { kategori: { contains: "STREAMER", mode: "insensitive" as const } },
+      { kategori: { contains: "Host", mode: "insensitive" as const } },
+      { jabatan: { contains: "Streamer", mode: "insensitive" as const } },
+      { jabatan: { contains: "Host", mode: "insensitive" as const } },
+      { tipeJadwal: "LIVE" as const },
+      { user: { role: "STREAMER" as const } },
+    ],
+  };
+  const karyawanWhere: Record<string, unknown> = isStreamerSelf
+    ? {
+        ...tenantWhere(user),
+        ...streamerCondition,
+        id: { not: user.karyawanId },
+      }
+    : {
+        ...tenantWhere(user),
+        statusAktif: "AKTIF",
+      };
+
   const rawKaryawan = await db.karyawan.findMany({
-    where: {
-      ...tenantWhere(user),
-      statusAktif: "AKTIF",
-    },
+    where: karyawanWhere,
     orderBy: { namaLengkap: "asc" },
   });
 

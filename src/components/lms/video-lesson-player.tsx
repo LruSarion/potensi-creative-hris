@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { sendJson } from "@/lib/api-client";
+import { sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type VideoQuestion = {
   id: string;
@@ -241,9 +242,12 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
       });
       setResult(data);
       setSubmitted(true);
+      toast.success(`Jawaban terkirim! Skor Anda: ${data.scorePct}%`);
       onSubmitted?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal mengirim jawaban");
+      const msg = errorMessage(err, "Gagal mengirim jawaban");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

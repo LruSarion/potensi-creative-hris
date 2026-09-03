@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import QcLiveMonitor from "@/components/qc-live-monitor";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 type Review = {
   id: string;
@@ -80,11 +82,15 @@ export default function QcPortalPage() {
         scores: scoresPayload,
         remarks,
       });
-      setSuccess("Penilaian QC live stream berhasil disimpan!");
+      const msg = "Penilaian QC live stream berhasil disimpan!";
+      toast.success(msg);
+      setSuccess(msg);
       setScoringReview(null);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
+      const msg = errorMessage(err, "Terjadi kesalahan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -170,55 +176,64 @@ export default function QcPortalPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {reviews.map((r) => (
-                <tr key={r.id} className="hover:bg-slate-50/80 transition">
-                  <td className="px-4 py-3.5">
-                    <div className="font-bold text-slate-800">{r.jadwal?.idJadwal ?? "Sesi"}</div>
-                    <div className="text-[11px] text-slate-500">
-                      {r.jadwal?.client?.namaClient ?? "Brand Partner"} • {r.jadwal?.platform ?? "Shopee"}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-slate-700">
-                    {r.jadwal?.streamerKaryawan?.namaLengkap ?? "Host Agency"}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-medium">
-                      {r.rubric.name}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-bold text-slate-900">
-                    {r.totalScore != null ? `${r.totalScore} Poin` : "-"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        r.status === "PASS"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : r.status === "FAIL"
-                          ? "bg-red-50 text-red-700 border-red-200"
-                          : "bg-amber-50 text-amber-700 border-amber-200"
-                      }`}
-                    >
-                      {r.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => openScoringModal(r)}
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-sm"
-                    >
-                      {r.status === "PENDING" ? "Audit Sesi" : "Nilai Ulang"}
-                    </button>
+              {loading ? (
+                <TableLoadingState
+                  colSpan={6}
+                  text="Memuat daftar rekaman live untuk diaudit..."
+                  subtext="Menyelaraskan sesi live, rubrik penilaian, dan skor audit..."
+                />
+              ) : reviews.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-400 text-xs">
+                    Belum ada antrean review rekaman sesi live.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                reviews.map((r) => (
+                  <tr key={r.id} className="hover:bg-slate-50/80 transition">
+                    <td className="px-4 py-3.5">
+                      <div className="font-bold text-slate-800">{r.jadwal?.idJadwal ?? "Sesi"}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {r.jadwal?.client?.namaClient ?? "Brand Partner"} • {r.jadwal?.platform ?? "Shopee"}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-700">
+                      {r.jadwal?.streamerKaryawan?.namaLengkap ?? "Host Agency"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[11px] font-medium">
+                        {r.rubric.name}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-bold text-slate-900">
+                      {r.totalScore != null ? `${r.totalScore} Poin` : "-"}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          r.status === "PASS"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : r.status === "FAIL"
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : "bg-amber-50 text-amber-700 border-amber-200"
+                        }`}
+                      >
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => openScoringModal(r)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition shadow-sm"
+                      >
+                        {r.status === "PENDING" ? "Audit Sesi" : "Nilai Ulang"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
-          {reviews.length === 0 && !loading && (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              Belum ada antrean review rekaman sesi live.
-            </div>
-          )}
         </div>
       </div>
 

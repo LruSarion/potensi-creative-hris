@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 export default function TelegramConfigAdmin() {
   const [botToken, setBotToken] = useState("");
@@ -36,12 +37,16 @@ export default function TelegramConfigAdmin() {
     setSuccess("");
     try {
       await sendJson("/api/telegram/config", "POST", { botToken, botUsername });
-      setSuccess("Konfigurasi bot Telegram berhasil disimpan!");
+      const msg = "Konfigurasi bot Telegram berhasil disimpan!";
+      toast.success(msg);
+      setSuccess(msg);
       setBotToken("");
       setHasToken(true);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Koneksi gagal");
+      const msg = errorMessage(err, "Koneksi gagal");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -55,9 +60,13 @@ export default function TelegramConfigAdmin() {
       const data = await sendJson<{ webhookUrl: string }>("/api/telegram/webhook/set", "POST", {
         appUrl: window.location.origin,
       });
-      setSuccess(`Webhook Bot berhasil diaktifkan ke: ${data.webhookUrl}`);
+      const msg = `Webhook Bot berhasil diaktifkan ke: ${data.webhookUrl}`;
+      toast.success(msg);
+      setSuccess(msg);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memasang webhook");
+      const msg = errorMessage(err, "Gagal memasang webhook");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setWebhookLoading(false);
     }

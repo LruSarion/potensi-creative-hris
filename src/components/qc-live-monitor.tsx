@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import CameraCapture from "@/components/camera-capture";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 /**
  * QC Live Monitor — for QC reviewers to record live-streaming violations
@@ -114,10 +115,12 @@ export default function QcLiveMonitor() {
     setError("");
     setSuccess("");
     if (!selectedStreamer) {
+      toast.warning("Pilih streamer yang sedang live terlebih dahulu");
       setError("Pilih streamer yang sedang live terlebih dahulu");
       return;
     }
     if (!category) {
+      toast.warning("Pilih jenis pelanggaran");
       setError("Pilih jenis pelanggaran");
       return;
     }
@@ -132,6 +135,7 @@ export default function QcLiveMonitor() {
         photoUrl: photoUrl || null,
         videoUrl: videoUrl || null,
       });
+      toast.success("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
       setSuccess("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
       setCategory("");
       setPhotoUrl("");
@@ -139,7 +143,9 @@ export default function QcLiveMonitor() {
       setDescription("");
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal mencatat pelanggaran");
+      const msg = errorMessage(err, "Gagal mencatat pelanggaran");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSubmitting(false);
     }

@@ -3,11 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function PengajuanLemburPage() {
   const { data: session } = useSession();
-  const { showAlert, showConfirm } = useAlert();
+  const { showConfirm } = useAlert();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role || "");
 
   const [activeTab, setActiveTab] = useState<"ajukan" | "mulai" | "selesai" | "riwayat">("ajukan");
@@ -110,7 +112,7 @@ export default function PengajuanLemburPage() {
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
     } catch {
-      showAlert("⚠️ Gagal mengakses kamera perangkat.");
+      toast.error("Gagal mengakses kamera perangkat.");
       setCameraActiveFor(null);
     }
   }
@@ -141,7 +143,7 @@ export default function PengajuanLemburPage() {
   async function handleAjukan(e: React.FormEvent) {
     e.preventDefault();
     if (!formAjukan.kegiatan) {
-      showAlert("⚠️ Kegiatan / alasan lembur wajib diisi.");
+      toast.warning("Kegiatan / alasan lembur wajib diisi.");
       return;
     }
 
@@ -157,7 +159,7 @@ export default function PengajuanLemburPage() {
         alasan: `[SPV: ${formAjukan.spv}] ${formAjukan.kegiatan}`,
       });
 
-      showAlert("✅ Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
+      toast.success("Pengajuan lembur berhasil dikirim! Menunggu persetujuan SPV / Admin.");
       setFormAjukan({
         tanggal: new Date().toISOString().split("T")[0],
         spv: "Raihan",
@@ -168,7 +170,7 @@ export default function PengajuanLemburPage() {
       loadHistory();
       setActiveTab("riwayat");
     } catch (err) {
-      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal mengajukan lembur"));
+      toast.error(errorMessage(err, "Gagal mengajukan lembur"));
     } finally {
       setSubmittingAjukan(false);
     }
@@ -177,7 +179,7 @@ export default function PengajuanLemburPage() {
   async function handleMulai(e: React.FormEvent) {
     e.preventDefault();
     if (!formMulai.idLembur || !formMulai.fotoB64) {
-      showAlert("⚠️ ID Lembur dan Foto Masuk wajib diisi.");
+      toast.warning("ID Lembur dan Foto Masuk wajib diisi.");
       return;
     }
 
@@ -187,11 +189,11 @@ export default function PengajuanLemburPage() {
         buktiDriveId: formMulai.fotoB64,
       });
 
-      showAlert("✅ Absen mulai lembur berhasil dicatat!");
+      toast.success("Absen mulai lembur berhasil dicatat!");
       loadHistory();
       setActiveTab("selesai");
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat mencatat mulai lembur."));
     } finally {
       setSubmittingMulai(false);
     }
@@ -200,7 +202,7 @@ export default function PengajuanLemburPage() {
   async function handleSelesai(e: React.FormEvent) {
     e.preventDefault();
     if (!formSelesai.idLembur || !formSelesai.fotoB64 || !formSelesai.catatan) {
-      showAlert("⚠️ ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
+      toast.warning("ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
       return;
     }
 
@@ -211,11 +213,11 @@ export default function PengajuanLemburPage() {
         alasan: formSelesai.catatan,
       });
 
-      showAlert("✅ Absen selesai lembur dan laporan akhir berhasil dikirim!");
+      toast.success("Absen selesai lembur dan laporan akhir berhasil dikirim!");
       loadHistory();
       setActiveTab("riwayat");
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat menyelesaikan lembur."));
     } finally {
       setSubmittingSelesai(false);
     }
@@ -226,10 +228,10 @@ export default function PengajuanLemburPage() {
     if (!confirmed) return;
     try {
       await sendJson(`/api/lembur?id=${id}&approve=${approve}`, "PATCH");
-      showAlert(`✅ Lembur berhasil ${approve ? "disetujui" : "ditolak"}!`);
+      toast.success(approve ? "Pengajuan lembur berhasil disetujui!" : "Pengajuan lembur berhasil ditolak.");
       loadHistory();
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat memproses lembur."));
     }
   }
 
@@ -605,6 +607,7 @@ export default function PengajuanLemburPage() {
               <thead className="bg-slate-100 text-slate-600 font-bold border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3">ID LEMBUR</th>
+                  {isAdmin && <th className="px-4 py-3 min-w-[180px]">PEMOHON</th>}
                   <th className="px-4 py-3">TANGGAL & JAM</th>
                   <th className="px-4 py-3">KEGIATAN / DETAIL</th>
                   <th className="px-4 py-3 text-center">BUKTI FOTO</th>
@@ -614,12 +617,11 @@ export default function PengajuanLemburPage() {
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {loadingHistory ? (
-                  <tr>
-                    <td colSpan={isAdmin ? 6 : 5} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
-                      Memuat riwayat lembur...
-                    </td>
-                  </tr>
+                  <TableLoadingState
+                    colSpan={isAdmin ? 7 : 5}
+                    text="Memuat riwayat pengajuan lembur..."
+                    subtext="Menyelaraskan data sesi dan status persetujuan..."
+                  />
                 ) : history.length > 0 ? (
                   history.map((h, idx) => {
                     const startStr = h.jamMulai ? new Date(h.jamMulai).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "";
@@ -629,6 +631,37 @@ export default function PengajuanLemburPage() {
                     return (
                       <tr key={h.id || idx} className="hover:bg-slate-50 transition">
                         <td className="px-4 py-3 font-mono font-bold text-slate-800">{h.id}</td>
+                        {isAdmin && (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 font-black text-xs flex items-center justify-center flex-shrink-0 border border-blue-200 overflow-hidden shadow-2xs">
+                                {h.karyawan?.fotoUrl ? (
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  <img
+                                    src={h.karyawan.fotoUrl}
+                                    alt={h.karyawan.namaLengkap}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  <span>{(h.karyawan?.namaLengkap || "?").slice(0, 2).toUpperCase()}</span>
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-slate-900 text-xs truncate">
+                                  {h.karyawan?.namaLengkap || "–"}
+                                </div>
+                                <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                  <span className="bg-slate-100 px-1 py-0.2 rounded font-semibold text-slate-700">
+                                    {h.karyawan?.idKaryawan || h.karyawanId || "–"}
+                                  </span>
+                                  {h.karyawan?.jabatan && (
+                                    <span className="text-slate-500 font-sans truncate">• {h.karyawan.jabatan}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        )}
                         <td className="px-4 py-3 align-top">
                           <div className="font-bold text-slate-900">{dateStr}</div>
                           <div className="text-[11px] text-emerald-600 font-mono mt-0.5">{startStr} - {endStr} WIB</div>
@@ -688,7 +721,7 @@ export default function PengajuanLemburPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={isAdmin ? 6 : 5} className="px-4 py-12 text-center text-slate-400 italic">
+                    <td colSpan={isAdmin ? 7 : 5} className="px-4 py-12 text-center text-slate-400 italic">
                       <i className="fa-regular fa-folder-open text-3xl mb-2 block text-slate-300" />
                       Belum ada riwayat pengajuan lembur tersimpan.
                     </td>

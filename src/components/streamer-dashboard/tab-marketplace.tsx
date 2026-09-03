@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { fetchJson, sendJson } from "@/lib/api-client";
+import { CardSkeleton } from "@/components/ui/loading-states";
 
 type MarketplaceListing = {
   id: string;
@@ -259,15 +260,7 @@ export default function TabMarketplace({ onNavigateToLms }: TabMarketplaceProps)
 
       {/* Loading state */}
       {loading ? (
-        <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-4 shadow-sm">
-          <div className="w-14 h-14 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center text-2xl mx-auto animate-pulse">
-            <i className="fa-solid fa-store" />
-          </div>
-          <h3 className="font-bold text-slate-800 text-base">Memuat Bursa Proyek Marketplace...</h3>
-          <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            Menyelaraskan data proyek brand, kualifikasi sertifikasi, dan kuota host streamer.
-          </p>
-        </div>
+        <CardSkeleton count={6} />
       ) : filteredListings.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-3 shadow-xs">
           <div className="w-16 h-16 rounded-3xl bg-slate-100 text-slate-400 flex items-center justify-center text-3xl mx-auto">

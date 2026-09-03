@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
 import { fetchJson } from "@/lib/api-client";
+import { SectionLoader } from "@/components/ui/loading-states";
 
 type GmvData = {
   totalGmv: number;
@@ -145,10 +146,11 @@ export default function AnalyticsGmvPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="text-sm text-slate-400 flex items-center gap-2">
-            <i className="fa-solid fa-spinner animate-spin text-emerald-500" /> Memuat data GMV...
-          </div>
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-12">
+          <SectionLoader
+            text="Menghitung analitik GMV & performa siaran..."
+            subtext="Menyelaraskan data omzet per brand klien, platform, dan streamer dari server..."
+          />
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">

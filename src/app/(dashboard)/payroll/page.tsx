@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 export default function PayrollPage() {
   const [list, setList] = useState<any[]>([]);
@@ -45,11 +47,15 @@ export default function PayrollPage() {
         action: "compute-batch",
         periode,
       });
-      setSuccess(`Perhitungan payroll untuk ${periode} selesai! (${data.totalStreamers} streamer dihitung).`);
+      const msg = `Perhitungan payroll untuk ${periode} selesai! (${data.totalStreamers} streamer dihitung).`;
+      toast.success(msg);
+      setSuccess(msg);
       setCalcModalOpen(false);
       loadPayroll();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memproses perhitungan payroll");
+      const msg = errorMessage(err, "Gagal memproses perhitungan payroll");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -195,8 +201,15 @@ export default function PayrollPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {list.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/80 transition">
+              {loading ? (
+                <TableLoadingState
+                  colSpan={7}
+                  text="Memuat data rekap payroll..."
+                  subtext="Menyelaraskan jam live, insentif tier, dan perhitungan gaji dari server..."
+                />
+              ) : (
+                list.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50/80 transition">
                   <td className="px-4 py-3.5">
                     <div className="font-semibold text-slate-800">
                       {p.karyawan?.namaLengkap ?? p.karyawanId}
@@ -237,7 +250,7 @@ export default function PayrollPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
           {list.length === 0 && !loading && (

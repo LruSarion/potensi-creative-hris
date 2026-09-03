@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 interface ClientData {
   id: string;
@@ -130,7 +131,6 @@ export default function ClientPage() {
   // Tab 3: Rubah Data Client State
   const [searchEditId, setSearchEditId] = useState("");
   const [selectedEditClientId, setSelectedEditClientId] = useState("");
-  const { showAlert } = useAlert();
   const [selectedEditClient, setSelectedEditClient] = useState<ClientData | null>(null);
   const [editClientForm, setEditClientForm] = useState<FormClientItem>(createDefaultClientForm(1, true));
   const [savingEditClient, setSavingEditClient] = useState(false);
@@ -235,7 +235,7 @@ export default function ClientPage() {
   // Multi-Form Handlers for Client Registration
   function handleAddClientForm() {
     if (clientForms.length >= 5) {
-      showAlert("⚠️ Maksimal 5 data client dalam satu kali proses pendaftaran.");
+      toast.warning("Maksimal 5 data client dalam satu kali proses pendaftaran.");
       return;
     }
     const updated = clientForms.map((f) => ({ ...f, isExpanded: false }));
@@ -245,7 +245,7 @@ export default function ClientPage() {
 
   function handleRemoveClientForm(id: number) {
     if (clientForms.length <= 1) {
-      showAlert("⚠️ Minimal harus ada 1 formulir registrasi.");
+      toast.warning("Minimal harus ada 1 formulir registrasi.");
       return;
     }
     setClientForms(clientForms.filter((f) => f.id !== id));
@@ -259,23 +259,23 @@ export default function ClientPage() {
     e.preventDefault();
     for (const f of clientForms) {
       if (!f.namaMerk.trim() || f.namaMerk.trim().length < 2) {
-        showAlert(`⚠️ Mohon isi Nama Merk / Brand (minimal 2 karakter) pada Formulir #${f.id}`);
+        toast.warning(`Mohon isi Nama Merk / Brand (minimal 2 karakter) pada Formulir #${f.id}`);
         return;
       }
       if (!f.nomorTeleponSuffix.trim() || f.nomorTeleponSuffix.trim().length < 8) {
-        showAlert(`⚠️ Mohon isi Nomor WhatsApp yang valid (minimal 8 digit) pada Formulir #${f.id}`);
+        toast.warning(`Mohon isi Nomor WhatsApp yang valid (minimal 8 digit) pada Formulir #${f.id}`);
         return;
       }
       if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
-        showAlert(`⚠️ Format email bisnis tidak valid pada Formulir #${f.id} (Contoh: contact@brand.com)`);
+        toast.warning(`Format email bisnis tidak valid pada Formulir #${f.id} (Contoh: contact@brand.com)`);
         return;
       }
       if (f.kategori === "Lainnya" && !f.manualKategori.trim()) {
-        showAlert(`⚠️ Mohon tuliskan nama Kategori manual pada Formulir #${f.id}`);
+        toast.warning(`Mohon tuliskan nama Kategori manual pada Formulir #${f.id}`);
         return;
       }
       if (f.marketplace1 === "Lainnya" && !f.manualMp1.trim()) {
-        showAlert(`⚠️ Mohon tuliskan nama Marketplace 1 manual pada Formulir #${f.id}`);
+        toast.warning(`Mohon tuliskan nama Marketplace 1 manual pada Formulir #${f.id}`);
         return;
       }
     }
@@ -305,15 +305,15 @@ export default function ClientPage() {
       }
 
       if (sukses > 0) {
-        showAlert(`✅ Berhasil menyimpan ${sukses} data client baru ke sistem!`);
+        toast.success(`Berhasil menyimpan ${sukses} data client baru ke sistem!`);
         setClientForms([createDefaultClientForm(1, true)]);
         await loadClients();
         setActiveTab("daftar");
       } else {
-        showAlert("❌ Gagal menyimpan data client. Periksa isian form.");
+        toast.error("Gagal menyimpan data client. Periksa isian form.");
       }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan koneksi saat menyimpan data client.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat menyimpan data client."));
     } finally {
       setSubmittingClients(false);
     }
@@ -397,7 +397,7 @@ export default function ClientPage() {
         isExpanded: true,
       });
     } else {
-      showAlert("⚠️ Data client tidak ditemukan. Pastikan memilih dari daftar saran.");
+      toast.warning("Data client tidak ditemukan. Pastikan memilih dari daftar saran.");
     }
   }
 
@@ -406,7 +406,7 @@ export default function ClientPage() {
     if (!selectedEditClient) return;
 
     if (!editClientForm.namaMerk.trim()) {
-      showAlert("⚠️ Mohon isi Nama Merk / Brand client.");
+      toast.warning("Mohon isi Nama Merk / Brand client.");
       return;
     }
 
@@ -432,14 +432,14 @@ export default function ClientPage() {
       };
 
       const updated = await sendJson<any>(`/api/clients?id=${selectedEditClient.id}`, "PUT", payload);
-      showAlert("✅ Perubahan data client berhasil disimpan!");
+      toast.success("Perubahan data client berhasil disimpan!");
       await loadClients();
       setSelectedEditClient(updated || {
         ...selectedEditClient,
         ...payload,
       });
     } catch (err) {
-      showAlert(`❌ Gagal menyimpan: ${err instanceof Error ? err.message : "Terjadi kesalahan."}`);
+      toast.error(errorMessage(err, "Gagal menyimpan perubahan data client."));
     } finally {
       setSavingEditClient(false);
     }
@@ -448,7 +448,7 @@ export default function ClientPage() {
   // Multi-Form Handlers for Products
   function handleAddProdukForm() {
     if (produkForms.length >= 10) {
-      showAlert("⚠️ Maksimal 10 produk dalam satu kali penginputan.");
+      toast.warning("Maksimal 10 produk dalam satu kali penginputan.");
       return;
     }
     const updated = produkForms.map((f) => ({ ...f, isExpanded: false }));
@@ -499,25 +499,25 @@ export default function ClientPage() {
   async function handleSubmitProdukMaster(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedPlatformClientId) {
-      showAlert("⚠️ Pilih Platform Klien di bagian atas terlebih dahulu sebelum menambahkan produk.");
+      toast.warning("Pilih Platform Klien di bagian atas terlebih dahulu sebelum menambahkan produk.");
       return;
     }
 
     for (const p of produkForms) {
       if (!p.namaProduk.trim() || p.namaProduk.trim().length < 2) {
-        showAlert(`⚠️ Mohon isi Nama Produk Lengkap (minimal 2 karakter) pada Baris #${p.id}`);
+        toast.warning(`Mohon isi Nama Produk Lengkap (minimal 2 karakter) pada Baris #${p.id}`);
         return;
       }
       if (!p.sellerSku.trim()) {
-        showAlert(`⚠️ Mohon isi Seller SKU pada Baris #${p.id} (Contoh: SKU-GLOW-01)`);
+        toast.warning(`Mohon isi Seller SKU pada Baris #${p.id} (Contoh: SKU-GLOW-01)`);
         return;
       }
       if (!p.brand.trim()) {
-        showAlert(`⚠️ Mohon isi Brand / Merk pada Baris #${p.id}`);
+        toast.warning(`Mohon isi Brand / Merk pada Baris #${p.id}`);
         return;
       }
       if (p.linkProduk.trim() && !/^(https?:\/\/|\/)/i.test(p.linkProduk.trim())) {
-        showAlert(`⚠️ Link produk pada Baris #${p.id} harus diawali https:// atau http://`);
+        toast.warning(`Link produk pada Baris #${p.id} harus diawali https:// atau http://`);
         return;
       }
     }
@@ -556,16 +556,16 @@ export default function ClientPage() {
       }
 
       if (successCount > 0) {
-        showAlert(`✅ Berhasil menyimpan ${successCount} produk baru!`);
+        toast.success(`Berhasil menyimpan ${successCount} produk baru!`);
         setProdukForms([createDefaultProdukForm(1, true)]);
         await handleSelectPlatform(selectedPlatformClientId);
         await loadClients();
         setSubTabProduk("list");
       } else {
-        showAlert("❌ Gagal menyimpan produk. Periksa kembali isian.");
+        toast.error("Gagal menyimpan produk. Periksa kembali isian.");
       }
-    } catch {
-      showAlert("⚠️ Terjadi kesalahan saat menyimpan produk.");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan saat menyimpan produk."));
     } finally {
       setSubmittingProduk(false);
     }
@@ -614,14 +614,14 @@ export default function ClientPage() {
       setSearchEditProduk(`${target.no || "1"} | ${target.sku || target.sellerSku || "-"} | ${target.namaProduk}`);
       setEditProdukRows([{ field: "NAMA_PRODUK", value: target.namaProduk || "" }]);
     } else {
-      showAlert("⚠️ Produk tidak ditemukan di katalog. Pastikan memilih produk dari daftar saran.");
+      toast.warning("Produk tidak ditemukan di katalog. Pastikan memilih produk dari daftar saran.");
     }
   }
 
   async function handleSaveEditProduk(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedEditProduk?.id) {
-      showAlert("⚠️ Silakan pilih produk terlebih dahulu.");
+      toast.warning("Silakan pilih produk terlebih dahulu.");
       return;
     }
 
@@ -645,7 +645,7 @@ export default function ClientPage() {
       }
 
       await sendJson(`/api/produk?id=${selectedEditProduk.id}`, "PUT", payload);
-      showAlert("✅ Perubahan data produk berhasil diterapkan!");
+      toast.success("Perubahan data produk berhasil diterapkan!");
       setSelectedEditProduk(null);
       setSearchEditProduk("");
       setEditProdukRows([{ field: "", value: "" }]);
@@ -654,7 +654,7 @@ export default function ClientPage() {
       }
       await loadClients();
     } catch (err) {
-      showAlert(`❌ Gagal memperbarui produk: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
+      toast.error(errorMessage(err, "Gagal memperbarui data produk."));
     } finally {
       setSavingEditProduk(false);
     }
@@ -783,12 +783,11 @@ export default function ClientPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingClients ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-12 text-center text-slate-400 italic">
-                      <i className="fa-solid fa-circle-notch fa-spin mr-2 text-[#941A0B]" />
-                      Memuat data client...
-                    </td>
-                  </tr>
+                  <TableLoadingState
+                    colSpan={7}
+                    text="Memuat daftar brand partner client..."
+                    subtext="Menyelaraskan data ketentuan toko dan produk katalog dari server..."
+                  />
                 ) : filteredDaftar.map((c, idx) => {
                   const k0 = c.ketentuan?.[0];
                   const mpList = [

@@ -4,7 +4,8 @@ import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import type { TabSharedProps } from "./types";
 import { generateNewScheduleId } from "@/lib/utils/schedule-helpers";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 export interface HybridRowItem {
   TANGGAL: string;
@@ -707,13 +708,13 @@ export function TabHybrid({
   async function handleSimpanHybrid(mode: "baru" | "revisi") {
     const list = mode === "baru" ? hybridDataBaru : hybridRevisiBaru;
     if (list.length === 0) {
-      showAlert("Tidak ada data untuk disimpan.");
+      toast.warning("Tidak ada data untuk disimpan.");
       return;
     }
 
     const isVerified = mode === "baru" ? isBebasCrashVerified : isBebasCrashRevisiVerified;
     if (!isVerified) {
-      showAlert("⚠️ Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu!");
+      toast.warning("Gembok Keamanan Aktif: Silakan klik tombol 'Bebas Crash' terlebih dahulu!");
       return;
     }
 
@@ -748,6 +749,7 @@ export function TabHybrid({
       });
 
       await sendJson("/api/jadwal", "POST", { batch: batchPayload });
+      toast.success(`Jadwal hybrid (${list.length} sesi) berhasil disimpan!`);
 
       setModalSuksesSimpan({
         isOpen: true,
@@ -765,7 +767,9 @@ export function TabHybrid({
 
       fetchData();
     } catch (err: any) {
-      showAlert(`❌ Gagal menyimpan data: ${err.message}`);
+      const msg = errorMessage(err, "Gagal menyimpan data jadwal hybrid");
+      toast.error(msg);
+      showAlert(`❌ Gagal menyimpan data: ${msg}`);
     } finally {
       setLoading(false);
     }

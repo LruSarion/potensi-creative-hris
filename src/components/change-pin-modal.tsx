@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { sendJson } from "@/lib/api-client";
+import { sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 export default function ChangePinModal({
   isOpen,
@@ -26,11 +27,13 @@ export default function ChangePinModal({
     setSuccess("");
 
     if (newPin.length !== 6) {
+      toast.warning("PIN baru harus tepat 6 digit angka.");
       setError("PIN baru harus tepat 6 digit angka.");
       return;
     }
 
     if (newPin !== confirmPin) {
+      toast.warning("Konfirmasi PIN baru tidak cocok.");
       setError("Konfirmasi PIN baru tidak cocok.");
       return;
     }
@@ -38,8 +41,9 @@ export default function ChangePinModal({
     setLoading(true);
     try {
       const data = await sendJson<{ message?: string }>("/api/auth/pin", "PUT", { currentPin, newPin });
-
-      setSuccess(data.message || "PIN berhasil diubah!");
+      const msg = data.message || "PIN berhasil diubah!";
+      toast.success(msg);
+      setSuccess(msg);
       setCurrentPin("");
       setNewPin("");
       setConfirmPin("");
@@ -48,7 +52,9 @@ export default function ChangePinModal({
         setSuccess("");
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal mengubah PIN.");
+      const msg = errorMessage(err, "Gagal mengubah PIN.");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setLoading(false);
     }

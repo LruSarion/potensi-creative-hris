@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { formatDateIndo } from "@/lib/utils/date-format";
+import { SectionLoader } from "@/components/ui/loading-states";
 
 function fmt(iso: string | null | undefined) {
   return formatDateIndo(iso, "—");
@@ -58,11 +59,11 @@ export default function KaryawanProfilePage() {
   }
 
   if (loading) return (
-    <div className="flex items-center justify-center h-64">
-      <div className="text-sm text-slate-400 flex items-center gap-2">
-        <i className="fa-solid fa-spinner animate-spin text-blue-500" />
-        Memuat profil karyawan...
-      </div>
+    <div className="bg-white border border-slate-200 rounded-3xl p-16 shadow-sm">
+      <SectionLoader
+        text="Memuat profil lengkap karyawan..."
+        subtext="Menyelaraskan data identitas, kontrak kerja, dan berkas legal..."
+      />
     </div>
   );
   if (error || !karyawan) return (

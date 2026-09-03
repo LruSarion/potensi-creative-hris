@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type NotifType = { key: string; label: string; icon: string };
 
@@ -69,9 +70,13 @@ export default function TelegramConnect() {
     setSuccess("");
     try {
       await sendJson("/api/telegram/prefs", "POST", { prefs });
-      setSuccess("Preferensi notifikasi Telegram disimpan.");
+      const msg = "Preferensi notifikasi Telegram disimpan.";
+      toast.success(msg);
+      setSuccess(msg);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal menyimpan preferensi");
+      const msg = errorMessage(err, "Gagal menyimpan preferensi");
+      toast.error(msg);
+      setError(msg);
     } finally {
       setSavingPrefs(false);
     }
@@ -86,9 +91,13 @@ export default function TelegramConnect() {
       setConnected(false);
       setChatId(null);
       setLink("");
-      setSuccess("Koneksi Telegram diputuskan.");
+      const msg = "Koneksi Telegram diputuskan.";
+      toast.success(msg);
+      setSuccess(msg);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memutuskan koneksi");
+      const msg = errorMessage(err, "Gagal memutuskan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fetchJson } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
 
 type Submission = {
   id: string;
@@ -218,48 +219,55 @@ export default function HasilJawabanPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200">
-            {filtered.map((s) => (
-              <tr key={s.id} className="hover:bg-slate-50 transition">
-                <td className="px-4 py-3.5 font-bold text-slate-900">{s.studentName}</td>
-                <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[200px] truncate">{s.lessonTitle}</td>
-                <td className="px-4 py-3.5 text-slate-700 font-semibold">
-                  <span className="flex items-center gap-1.5">
-                    <i className="fa-solid fa-eye text-blue-600 text-[10px]" />
-                    {s.watchPercentage}%
-                  </span>
-                </td>
-                <td className="px-4 py-3.5 font-black text-slate-900 text-sm">{s.scorePercent}<span className="text-xs font-medium text-slate-600">/100</span></td>
-                <td className="px-4 py-3.5">
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                    s.status === "PASSED" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300"
-                  }`}>
-                    {s.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
-                  </span>
-                </td>
-                <td className="px-4 py-3.5 text-slate-700 font-medium">
-                  {s.submittedAt ? new Date(s.submittedAt).toLocaleString("id-ID") : "-"}
-                </td>
-                <td className="px-4 py-3.5 text-center">
-                  <button
-                    onClick={() => openDetail(s.id)}
-                    className="text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-200 shadow-sm transition"
-                  >
-                    Lihat Jawaban
-                  </button>
+            {loading ? (
+              <TableLoadingState
+                colSpan={7}
+                text="Memuat lembar hasil jawaban streamer..."
+                subtext="Menyelaraskan rekapan kuis dan persentase tontonan materi..."
+              />
+            ) : filtered.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-12 text-center text-slate-600 text-xs font-semibold">
+                  <i className="fa-solid fa-file-circle-check text-3xl text-slate-400 block mb-2" />
+                  Belum ada data pengerjaan kuis atau modul.
                 </td>
               </tr>
-            ))}
+            ) : (
+              filtered.map((s) => (
+                <tr key={s.id} className="hover:bg-slate-50 transition">
+                  <td className="px-4 py-3.5 font-bold text-slate-900">{s.studentName}</td>
+                  <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[200px] truncate">{s.lessonTitle}</td>
+                  <td className="px-4 py-3.5 text-slate-700 font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <i className="fa-solid fa-eye text-blue-600 text-[10px]" />
+                      {s.watchPercentage}%
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 font-black text-slate-900 text-sm">{s.scorePercent}<span className="text-xs font-medium text-slate-600">/100</span></td>
+                  <td className="px-4 py-3.5">
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                      s.status === "PASSED" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300"
+                    }`}>
+                      {s.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5 text-slate-700 font-medium">
+                    {s.submittedAt ? new Date(s.submittedAt).toLocaleString("id-ID") : "-"}
+                  </td>
+                  <td className="px-4 py-3.5 text-center">
+                    <button
+                      onClick={() => openDetail(s.id)}
+                      className="text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-200 shadow-sm transition"
+                    >
+                      Lihat Jawaban
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
-        {filtered.length === 0 && !loading && (
-          <div className="p-12 text-center text-slate-600 text-xs font-semibold">
-            <i className="fa-solid fa-file-circle-check text-3xl text-slate-400 block mb-2" />
-            Belum ada data pengerjaan kuis atau modul.
-          </div>
-        )}
       </div>
-
-      {loading && <p className="text-xs font-semibold text-slate-600 text-center py-4">Memuat hasil jawaban...</p>}
 
       {/* Detail modal */}
       {detail && (

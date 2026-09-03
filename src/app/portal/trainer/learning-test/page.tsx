@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type Question = {
   id: string;
@@ -109,10 +110,12 @@ export default function LearningTestPage() {
     setError("");
     setSuccess("");
     if (!lessonForm.title.trim() || !lessonForm.videoUrl.trim()) {
+      toast.warning("Judul materi dan URL/ID video YouTube wajib diisi.");
       setError("Judul materi dan URL/ID video YouTube wajib diisi.");
       return;
     }
     if (!selectedModuleId) {
+      toast.warning("Pilih modul tujuan terlebih dahulu.");
       setError("Pilih modul tujuan terlebih dahulu.");
       return;
     }
@@ -128,14 +131,18 @@ export default function LearningTestPage() {
         videoId,
         videoDuration: duration,
       });
-      setSuccess(editingLesson ? "Materi video diperbarui." : "Materi video interaktif baru berhasil dibuat!");
+      const msg = editingLesson ? "Materi video diperbarui." : "Materi video interaktif baru berhasil dibuat!";
+      toast.success(msg);
+      setSuccess(msg);
       setLessonModal(false);
       setLessonForm({ title: "", videoUrl: "", duration: 60 });
       setEditingLesson(null);
       setSelectedLessonId(d?.id ?? "");
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
+      const msg = errorMessage(err, "Terjadi kesalahan jaringan.");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -145,11 +152,15 @@ export default function LearningTestPage() {
     setError("");
     try {
       await sendJson("/api/lms", "POST", { action: "lesson-delete", id });
-      setSuccess("Materi video dihapus.");
+      const msg = "Materi video dihapus.";
+      toast.success(msg);
+      setSuccess(msg);
       setSelectedLessonId("");
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
+      const msg = errorMessage(err, "Terjadi kesalahan jaringan.");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -189,10 +200,12 @@ export default function LearningTestPage() {
     setError("");
     setSuccess("");
     if (!selectedModuleId) {
+      toast.warning("Pilih modul tujuan terlebih dahulu.");
       setError("Pilih modul tujuan terlebih dahulu.");
       return;
     }
     if (!activeLessonId) {
+      toast.warning("Pilih materi video terlebih dahulu, lalu tambahkan pertanyaannya.");
       setError("Pilih materi video terlebih dahulu, lalu tambahkan pertanyaannya.");
       return;
     }
@@ -200,6 +213,7 @@ export default function LearningTestPage() {
     const correctIndex = qCorrect.charCodeAt(0) - 65;
     const correctAnswer = options[correctIndex] ?? options[0] ?? "";
     if (options.length < 2) {
+      toast.warning("Minimal 2 pilihan jawaban.");
       setError("Minimal 2 pilihan jawaban.");
       return;
     }
@@ -218,11 +232,15 @@ export default function LearningTestPage() {
         isNote: false,
       };
       await sendJson("/api/lms", "POST", payload);
-      setSuccess(editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`);
+      const msg = editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`;
+      toast.success(msg);
+      setSuccess(msg);
       setQuestionModal(false);
       load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
+      const msg = errorMessage(err, "Terjadi kesalahan jaringan.");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -457,10 +475,14 @@ export default function LearningTestPage() {
                             if (!confirmed) return;
                             try {
                               await sendJson("/api/lms", "POST", { action: "question-delete", id: q.id });
-                              setSuccess("Pertanyaan dihapus.");
+                              const msg = "Pertanyaan dihapus.";
+                              toast.success(msg);
+                              setSuccess(msg);
                               load();
                             } catch (err) {
-                              setError(err instanceof Error ? err.message : "Terjadi kesalahan jaringan.");
+                              const msg = errorMessage(err, "Terjadi kesalahan jaringan.");
+                              toast.error(msg);
+                              setError(msg);
                             }
                           }}
                           className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg hover:bg-red-100"

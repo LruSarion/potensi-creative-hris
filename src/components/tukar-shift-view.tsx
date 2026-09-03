@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type MainTab = "streamer" | "ots" | "khusus";
 type SubTab = "formulir" | "approval";
@@ -34,7 +35,7 @@ export function TukarShiftView() {
   const isSupervisor = userRole === "ADMIN_OPERASIONAL" || userRole === "OPERATION" || isSuperAdmin;
   const isStreamer = userRole === "STREAMER";
   const isOTS = userRole === "STAFF" || userRole === "OTS";
-  const canApprove = isSuperAdmin || isSupervisor;
+  const canApprove = isSupervisor;
 
   // Tabs state
   const [mainTab, setMainTab] = useState<MainTab>("streamer");
@@ -100,6 +101,11 @@ export function TukarShiftView() {
       setSubTab("formulir");
     }
   }, [userRole, isOTS, isStreamer, canApprove]);
+
+  // Guard: streamers only get the STREAMER tab — snap back if state drifts
+  useEffect(() => {
+    if (isStreamer && mainTab === "ots") setMainTab("streamer");
+  }, [isStreamer, mainTab]);
 
   // Load initial form data & swaps
   useEffect(() => {
@@ -232,7 +238,7 @@ export function TukarShiftView() {
       return;
     }
     if (!strPengganti) {
-      showAlert("⚠️ Pilih Host Pengganti terlebih dahulu.");
+      toast.warning("Pilih Host Pengganti terlebih dahulu.");
       return;
     }
 
@@ -283,7 +289,7 @@ export function TukarShiftView() {
         ALASAN: strAlasan,
         FOTO_LAMPIRAN_B64: strLampiranB64,
       });
-      showAlert(`✅ Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}\nAlasan: ${strAlasan}`);
+      toast.success(`Pengajuan Tukar Shift berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${strPengganti}`);
       setStrJadwal("");
       setStrPengganti("");
       setStrAlasan("");
@@ -291,7 +297,7 @@ export function TukarShiftView() {
       setStrCekStatus({ tested: false, loading: false, ok: false, message: "" });
       loadSwaps();
     } catch (err) {
-      showAlert("❌ Gagal mengirim: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
+      toast.error(errorMessage(err, "Gagal mengirim pengajuan tukar shift"));
     } finally {
       setStrSubmitting(false);
     }
@@ -318,14 +324,14 @@ export function TukarShiftView() {
         ALASAN: otsAlasan,
         FOTO_LAMPIRAN_B64: otsLampiranB64,
       });
-      showAlert(`✅ Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}\nAlasan: ${otsAlasan}`);
+      toast.success(`Pengajuan Tukar Shift OTS berhasil dikirim!\n\nID Jadwal: ${idJadwal}\nPengganti: ${otsPengganti}`);
       setOtsJadwal("");
       setOtsPengganti("");
       setOtsAlasan("");
       setOtsLampiranB64("");
       loadSwaps();
     } catch (err) {
-      showAlert("❌ Gagal mengirim: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
+      toast.error(errorMessage(err, "Gagal mengirim pengajuan tukar shift"));
     } finally {
       setOtsSubmitting(false);
     }
@@ -334,7 +340,7 @@ export function TukarShiftView() {
   // Submit Khusus (Super Admin Override)
   async function handleSubmitKhusus() {
     if (!khsJadwal || !khsPengganti || !khsAlasan || !khsLampiranB64) {
-      showAlert("⚠️ Lengkapi semua field dan lampiran.");
+      toast.warning("Lengkapi semua field dan lampiran.");
       return;
     }
 
@@ -358,7 +364,7 @@ export function TukarShiftView() {
         ALASAN: khsAlasan,
         FOTO_LAMPIRAN_B64: khsLampiranB64,
       });
-      showAlert("✅ Jadwal berhasil diperbarui secara instan oleh Super Admin!");
+      toast.success("Jadwal berhasil diperbarui secara instan oleh Super Admin!");
       setKhsJadwal("");
       setKhsPengganti("");
       setKhsAlasan("");
@@ -366,7 +372,7 @@ export function TukarShiftView() {
       loadSwaps();
       loadFormData();
     } catch (err) {
-      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Terjadi kesalahan"));
+      toast.error(errorMessage(err, "Gagal memperbarui jadwal"));
     } finally {
       setKhsSubmitting(false);
     }
@@ -380,10 +386,10 @@ export function TukarShiftView() {
 
     try {
       await sendJson(`/api/tukar-shift?id=${id}&approve=${setuju}`, "PATCH");
-      showAlert(`✅ Pengajuan berhasil di-${setuju ? "setujui" : "tolak"}!`);
+      toast.success(`Pengajuan tukar shift berhasil di-${setuju ? "setujui" : "tolak"}!`);
       loadSwaps();
     } catch (err) {
-      showAlert("❌ Gagal: " + (err instanceof Error ? err.message : "Gagal memproses"));
+      toast.error(errorMessage(err, "Gagal memproses persetujuan tukar shift"));
     }
   }
 
@@ -419,21 +425,23 @@ export function TukarShiftView() {
           <span>STREAMER</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            setMainTab("ots");
-            if (subTab === "formulir" && !isOTS && !isSuperAdmin) setSubTab("approval");
-          }}
-          className={`whitespace-nowrap py-2 px-5 sm:px-8 rounded-xl text-xs sm:text-sm font-bold transition-all duration-150 flex items-center gap-2 ${
-            mainTab === "ots"
-              ? "bg-indigo-600 text-white shadow-sm"
-              : "bg-transparent text-slate-600 hover:bg-white/70"
-          }`}
-        >
-          <i className="fa-solid fa-headset" />
-          <span>OTS</span>
-        </button>
+        {!isStreamer && (
+          <button
+            type="button"
+            onClick={() => {
+              setMainTab("ots");
+              if (subTab === "formulir" && !isOTS && !isSuperAdmin) setSubTab("approval");
+            }}
+            className={`whitespace-nowrap py-2 px-5 sm:px-8 rounded-xl text-xs sm:text-sm font-bold transition-all duration-150 flex items-center gap-2 ${
+              mainTab === "ots"
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-transparent text-slate-600 hover:bg-white/70"
+            }`}
+          >
+            <i className="fa-solid fa-headset" />
+            <span>OTS</span>
+          </button>
+        )}
 
         {isSuperAdmin && (
           <button
@@ -471,7 +479,7 @@ export function TukarShiftView() {
             <span>Formulir</span>
           </button>
 
-          {canApprove && (
+          {(canApprove || isStreamer || isOTS) && (
             <button
               type="button"
               onClick={() => setSubTab("approval")}
@@ -483,8 +491,8 @@ export function TukarShiftView() {
                   : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
               }`}
             >
-              <i className="fa-regular fa-square-check" />
-              <span>Approval</span>
+              <i className={`fa-regular ${canApprove ? "fa-square-check" : "fa-list"}`} />
+              <span>{canApprove ? "Approval" : "List"}</span>
             </button>
           )}
         </div>
@@ -763,8 +771,14 @@ export function TukarShiftView() {
                 <i className="fa-regular fa-square-check text-xs" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base leading-tight">Approval Tukar Shift — Streamer</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Tinjau dan berikan keputusan atas pengajuan tukar shift streamer.</p>
+                <h3 className="font-bold text-slate-900 text-base leading-tight">
+                  {canApprove ? "Approval Tukar Shift — Streamer" : "List Pengajuan Tukar Shift Saya"}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {canApprove
+                    ? "Tinjau dan berikan keputusan atas pengajuan tukar shift streamer."
+                    : "Pengajuan tukar shift Anda beserta statusnya."}
+                </p>
               </div>
             </div>
             <button
@@ -823,7 +837,7 @@ export function TukarShiftView() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {s.status === "MENUNGGU" ? (
+                          {s.status === "MENUNGGU" && canApprove ? (
                             <div className="flex gap-1.5 justify-center">
                               <button
                                 type="button"
@@ -858,7 +872,7 @@ export function TukarShiftView() {
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">
                       <i className="fa-solid fa-inbox text-3xl mb-2 block text-slate-300" />
-                      Belum ada pengajuan Streamer yang menunggu persetujuan.
+                      Belum ada pengajuan tukar shift Anda.
                     </td>
                   </tr>
                 )}
@@ -1042,8 +1056,14 @@ export function TukarShiftView() {
                 <i className="fa-regular fa-square-check text-xs" />
               </div>
               <div>
-                <h3 className="font-bold text-slate-900 text-base leading-tight">Approval Tukar Shift — OTS</h3>
-                <p className="text-xs text-slate-500 mt-0.5">Tinjau dan berikan keputusan atas pengajuan tukar shift OTS.</p>
+                <h3 className="font-bold text-slate-900 text-base leading-tight">
+                  {canApprove ? "Approval Tukar Shift — OTS" : "List Pengajuan Tukar Shift Saya"}
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {canApprove
+                    ? "Tinjau dan berikan keputusan atas pengajuan tukar shift OTS."
+                    : "Pengajuan tukar shift Anda beserta statusnya."}
+                </p>
               </div>
             </div>
             <button
@@ -1102,7 +1122,7 @@ export function TukarShiftView() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-center">
-                          {s.status === "MENUNGGU" ? (
+                          {s.status === "MENUNGGU" && canApprove ? (
                             <div className="flex gap-1.5 justify-center">
                               <button
                                 type="button"
@@ -1137,7 +1157,7 @@ export function TukarShiftView() {
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-400 italic">
                       <i className="fa-solid fa-inbox text-3xl mb-2 block text-slate-300" />
-                      Belum ada pengajuan OTS yang menunggu persetujuan.
+                      Belum ada pengajuan tukar shift Anda.
                     </td>
                   </tr>
                 )}

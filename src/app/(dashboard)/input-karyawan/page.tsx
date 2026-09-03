@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
 import { formatDateIndo } from "@/lib/utils/date-format";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 // ─── Daftar Jabatan Baku ─────────────────────────────────────────────────────
 const JABATAN_LIST = [
@@ -215,7 +216,7 @@ function getEmployeeFieldValue(emp: any, fieldKey: string): string {
 }
 
 export default function InputKaryawanPage() {
-  const { showAlert, showConfirm } = useAlert();
+  const { showConfirm } = useAlert();
   const [activeTab, setActiveTab] = useState<"input" | "edit" | "direktori">("input");
 
   // Multi-Form Input Kolektif State
@@ -260,7 +261,7 @@ export default function InputKaryawanPage() {
   // Add new form (up to 10)
   function handleAddForm() {
     if (forms.length >= 10) {
-      showAlert("⚠️ Maksimal 10 data karyawan dalam satu kali proses upload.");
+      toast.warning("Maksimal 10 data karyawan dalam satu kali proses upload.");
       return;
     }
     const updated = forms.map((f) => ({ ...f, isExpanded: false }));
@@ -270,7 +271,7 @@ export default function InputKaryawanPage() {
 
   async function handleRemoveForm(id: number) {
     if (forms.length <= 1) {
-      showAlert("⚠️ Minimal harus ada 1 form untuk diisi.");
+      toast.warning("Minimal harus ada 1 form untuk diisi.");
       return;
     }
     const confirmed = await showConfirm(`Hapus formulir data #${id}?`);
@@ -294,7 +295,7 @@ export default function InputKaryawanPage() {
 
   function handleFileUpload(id: number, field: "scanKtp" | "scanKk" | "scanNpwp", file: File | null) {
     if (!file) { updateFormField(id, field, null); return; }
-    if (file.size > 5 * 1024 * 1024) { showAlert("⚠️ Ukuran file maksimal 5MB."); return; }
+    if (file.size > 5 * 1024 * 1024) { toast.warning("Ukuran file maksimal 5MB."); return; }
     const reader = new FileReader();
     reader.onload = () => updateFormField(id, field, reader.result as string);
     reader.readAsDataURL(file);
@@ -306,23 +307,23 @@ export default function InputKaryawanPage() {
     // Client-side validations
     for (const f of forms) {
       if (!f.namaLengkap.trim() || f.namaLengkap.trim().length < 2) {
-        showAlert(`⚠️ Mohon isi Nama Lengkap (minimal 2 karakter) pada Formulir #${f.id}`);
+        toast.warning(`Mohon isi Nama Lengkap (minimal 2 karakter) pada Formulir #${f.id}`);
         return;
       }
       if (!f.nomorTeleponSuffix.trim()) {
-        showAlert(`⚠️ Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
+        toast.warning(`Mohon isi Nomor WhatsApp pada Formulir #${f.id}`);
         return;
       }
       if (f.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email.trim())) {
-        showAlert(`⚠️ Format email tidak valid pada Formulir #${f.id} (Contoh: nama@domain.com)`);
+        toast.warning(`Format email tidak valid pada Formulir #${f.id} (Contoh: nama@domain.com)`);
         return;
       }
       if (!f.jabatan) {
-        showAlert(`⚠️ Mohon pilih Jabatan pada Formulir #${f.id}`);
+        toast.warning(`Mohon pilih Jabatan pada Formulir #${f.id}`);
         return;
       }
       if (!f.startDate) {
-        showAlert(`⚠️ Mohon tentukan Start Date (Tanggal Mulai) pada Formulir #${f.id}`);
+        toast.warning(`Mohon tentukan Start Date (Tanggal Mulai) pada Formulir #${f.id}`);
         return;
       }
     }
@@ -361,11 +362,11 @@ export default function InputKaryawanPage() {
       }));
 
       await sendJson("/api/employees?action=bulk", "POST", { items });
-      showAlert(`✅ Berhasil menyimpan ${forms.length} data karyawan baru ke sistem!`);
+      toast.success(`Berhasil menyimpan ${forms.length} data karyawan baru ke sistem!`);
       setForms([createDefaultForm(1, true)]);
       loadAllEmployees();
     } catch (err) {
-      showAlert(`❌ Gagal menyimpan data: ${err instanceof Error ? err.message : "Terjadi kesalahan pada server"}`);
+      toast.error(errorMessage(err, "Gagal menyimpan data karyawan"));
     } finally {
       setSubmitting(false);
     }
@@ -458,7 +459,7 @@ export default function InputKaryawanPage() {
         })
         .catch(() => {});
     } else if (customQuery === undefined && !customEmp) {
-      showAlert("⚠️ Karyawan dengan ID atau Nama tersebut tidak ditemukan.");
+      toast.warning("Karyawan dengan ID atau Nama tersebut tidak ditemukan.");
     }
   }
 
@@ -475,7 +476,7 @@ export default function InputKaryawanPage() {
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      showAlert("⚠️ Ukuran file maksimal 5MB.");
+      toast.warning("Ukuran file maksimal 5MB.");
       return;
     }
     const reader = new FileReader();
@@ -490,15 +491,15 @@ export default function InputKaryawanPage() {
     if (!targetEmployee) return;
 
     if (!fullEditForm.namaLengkap.trim() || fullEditForm.namaLengkap.trim().length < 2) {
-      showAlert("⚠️ Mohon isi Nama Lengkap Karyawan (minimal 2 karakter).");
+      toast.warning("Mohon isi Nama Lengkap Karyawan (minimal 2 karakter).");
       return;
     }
     if (!fullEditForm.nomorTeleponSuffix.trim()) {
-      showAlert("⚠️ Mohon isi Nomor WhatsApp.");
+      toast.warning("Mohon isi Nomor WhatsApp.");
       return;
     }
     if (fullEditForm.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(fullEditForm.email.trim())) {
-      showAlert("⚠️ Format email tidak valid.");
+      toast.warning("Format email tidak valid.");
       return;
     }
 
@@ -538,14 +539,13 @@ export default function InputKaryawanPage() {
     setSavingEdit(true);
     try {
       await sendJson(`/api/employees?id=${targetEmployee.id}`, "PATCH", payload);
-      showAlert(`✅ Data karyawan ${fullEditForm.namaLengkap} berhasil diperbarui secara lengkap!`);
+      toast.success(`Data karyawan ${fullEditForm.namaLengkap} berhasil diperbarui secara lengkap!`);
       await loadAllEmployees();
       const updatedTarget = { ...targetEmployee, ...payload };
       setTargetEmployee(updatedTarget);
       setFullEditForm(populateEditForm(updatedTarget));
     } catch (err) {
-      showAlert(`❌ Gagal memperbarui data: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
-      showAlert("⚠️ Terjadi kesalahan koneksi ke server.");
+      toast.error(errorMessage(err, "Gagal memperbarui data karyawan"));
     } finally {
       setSavingEdit(false);
     }
@@ -608,13 +608,13 @@ export default function InputKaryawanPage() {
     setSavingEdit(true);
     try {
       await sendJson(`/api/employees?id=${targetEmployee.id}`, "PATCH", payload);
-      showAlert("✅ Data karyawan berhasil diperbarui!");
+      toast.success("Data karyawan berhasil diperbarui!");
       setTargetEmployee(null);
       setSearchEditId("");
       setEditRows([{ field: "", value: "" }]);
       loadAllEmployees();
     } catch (err) {
-      showAlert(`❌ Gagal memperbarui data: ${err instanceof Error ? err.message : "Terjadi kesalahan"}`);
+      toast.error(errorMessage(err, "Gagal memperbarui data"));
     } finally {
       setSavingEdit(false);
     }
@@ -623,8 +623,8 @@ export default function InputKaryawanPage() {
   async function handleChangePin(e: React.FormEvent) {
     e.preventDefault();
     if (!pinTarget) return;
-    if (pinNew !== pinConfirm) { showAlert("⚠️ PIN baru dan konfirmasi PIN tidak cocok."); return; }
-    if (pinNew.length < 4) { showAlert("⚠️ PIN minimal 4 digit."); return; }
+    if (pinNew !== pinConfirm) { toast.warning("PIN baru dan konfirmasi PIN tidak cocok."); return; }
+    if (pinNew.length < 4) { toast.warning("PIN minimal 4 digit."); return; }
 
     setSavingPin(true);
     try {
@@ -634,11 +634,11 @@ export default function InputKaryawanPage() {
         targetEmail: pinTarget.email,
         targetUserId: pinTarget.userId || pinTarget.id,
       });
-      showAlert(`✅ PIN Login untuk ${pinTarget.namaLengkap} berhasil diperbarui!`);
+      toast.success(`PIN Login untuk ${pinTarget.namaLengkap} berhasil diperbarui!`);
       setShowPinModal(false);
       setPinOld(""); setPinNew(""); setPinConfirm(""); setPinTarget(null);
     } catch (err) {
-      showAlert(`❌ ${err instanceof Error ? err.message : "Gagal mengubah PIN."}`);
+      toast.error(errorMessage(err, "Gagal mengubah PIN."));
     } finally {
       setSavingPin(false);
     }

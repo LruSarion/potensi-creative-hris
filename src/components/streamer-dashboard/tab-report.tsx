@@ -5,6 +5,7 @@
 
 import type { DashboardData } from "./types";
 import { formatDateSafe } from "@/lib/utils/date-format";
+import { CardSkeleton } from "@/components/ui/loading-states";
 
 export function TabReport({ dashboardData }: { dashboardData: DashboardData | null }) {
   return (
@@ -51,7 +52,7 @@ export function TabReport({ dashboardData }: { dashboardData: DashboardData | nu
           </div>
         </div>
       ) : (
-        <div className="p-8 text-center text-slate-400 text-xs">Memuat metrik performa...</div>
+        <CardSkeleton count={4} gridCls="grid grid-cols-2 sm:grid-cols-4 gap-3.5" />
       )}
 
       {/* Tiering & Rate Detail */}

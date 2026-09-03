@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { fetchJson, sendJson } from "@/lib/api-client";
+import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
+import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 type Jadwal = {
   id: string;
@@ -103,25 +105,34 @@ export default function ClientPortalPage() {
         if (d.shortlisted) next.add(streamerId); else next.delete(streamerId);
         return next;
       });
-      setSuccess(d.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.");
-    } catch {
-      setError("Gagal memperbarui shortlist");
+      const msg = d.shortlisted ? "Streamer ditambahkan ke shortlist!" : "Streamer dihapus dari shortlist.";
+      toast.success(msg);
+      setSuccess(msg);
+    } catch (err) {
+      const msg = errorMessage(err, "Gagal memperbarui shortlist");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function rateExperience(experienceId: string, rating: number) {
     try {
       await sendJson("/api/experience-rate", "POST", { experienceId, rating });
-      setSuccess("Penilaian berhasil disimpan!");
+      const msg = "Penilaian berhasil disimpan!";
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memberi penilaian");
+      const msg = errorMessage(err, "Gagal memberi penilaian");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleSendFeedback(e: React.FormEvent) {
     e.preventDefault();
     if (!feedbackForm.message.trim()) {
+      toast.warning("Mohon tuliskan pesan feedback Anda");
       setError("Mohon tuliskan pesan feedback Anda");
       return;
     }
@@ -133,7 +144,9 @@ export default function ClientPortalPage() {
         action: "feedback",
         feedback: feedbackForm,
       });
-      setSuccess("Terima kasih! Feedback & saran Anda berhasil disampaikan kepada tim manajemen agency.");
+      const msg = "Terima kasih! Feedback & saran Anda berhasil disampaikan kepada tim manajemen agency.";
+      toast.success(msg);
+      setSuccess(msg);
       setFeedbackForm({
         targetType: "STREAMER",
         targetName: "",
@@ -144,12 +157,18 @@ export default function ClientPortalPage() {
       });
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
+      const msg = errorMessage(err, "Terjadi kesalahan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
   async function handleProposeSchedule(e: React.FormEvent) {
     e.preventDefault();
+    if (!proposeForm.judulLive.trim()) {
+      toast.warning("Mohon isi judul live streaming");
+      return;
+    }
     setError("");
     setSuccess("");
 
@@ -158,7 +177,9 @@ export default function ClientPortalPage() {
         action: "propose",
         ...proposeForm,
       });
-      setSuccess(`Pengajuan jadwal live "${proposeForm.judulLive}" berhasil dikirim untuk approval Tim Operations.`);
+      const msg = `Pengajuan jadwal live "${proposeForm.judulLive}" berhasil dikirim untuk approval Tim Operations.`;
+      toast.success(msg);
+      setSuccess(msg);
       setProposeForm({
         idJadwal: `PROP/${new Date().toISOString().slice(2, 10).replace(/-/g, "")}/${Math.floor(100 + Math.random() * 900)}`,
         tanggal: new Date().toISOString().slice(0, 10),
@@ -172,7 +193,9 @@ export default function ClientPortalPage() {
       setActiveTab("schedules");
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
+      const msg = errorMessage(err, "Terjadi kesalahan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -181,10 +204,14 @@ export default function ClientPortalPage() {
     setSuccess("");
     try {
       await sendJson("/api/marketplace", "POST", { action: "decide", applicationId, decision });
-      setSuccess(decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.");
+      const msg = decision === "PICKED" ? "Streamer diterima untuk proyek ini!" : "Lamaran streamer ditolak.";
+      toast.success(msg);
+      setSuccess(msg);
       loadData();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan koneksi");
+      const msg = errorMessage(err, "Terjadi kesalahan koneksi");
+      toast.error(msg);
+      setError(msg);
     }
   }
 
@@ -314,52 +341,61 @@ export default function ClientPortalPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {schedules.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50/80 transition">
-                    <td className="px-4 py-3.5">
-                      <div className="font-bold text-slate-800 font-mono">{s.idJadwal}</div>
-                      <div className="text-[11px] text-slate-400">
-                        {new Date(s.tanggal).toLocaleDateString("id-ID", {
-                          day: "numeric",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                        {s.platform ?? "Shopee"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-800">
-                      {s.streamerKaryawan?.namaLengkap ?? "Host Standby Agency"}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
-                      <div className="font-medium text-slate-800">{s.judulLive || "Reguler Live Broadcast"}</div>
-                      <div className="text-[11px] text-slate-400">{s.promoLive || "Voucher Toko / Flash Sale"}</div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                          s.status === "APPROVED" || s.status === "SELESAI"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : s.status === "PENDING"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-slate-50 text-slate-700 border-slate-200"
-                        }`}
-                      >
-                        {s.status}
-                      </span>
+                {loading ? (
+                  <TableLoadingState
+                    colSpan={5}
+                    text="Menyinkronkan jadwal siaran brand Anda..."
+                    subtext="Menghubungkan ke sistem penjadwalan live stream..."
+                  />
+                ) : schedules.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-slate-400 text-xs">
+                      Belum ada jadwal sesi siaran live untuk brand ini.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  schedules.map((s) => (
+                    <tr key={s.id} className="hover:bg-slate-50/80 transition">
+                      <td className="px-4 py-3.5">
+                        <div className="font-bold text-slate-800 font-mono">{s.idJadwal}</div>
+                        <div className="text-[11px] text-slate-400">
+                          {new Date(s.tanggal).toLocaleDateString("id-ID", {
+                            day: "numeric",
+                            month: "short",
+                            year: "numeric",
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                          {s.platform ?? "Shopee"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-800">
+                        {s.streamerKaryawan?.namaLengkap ?? "Host Standby Agency"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate">
+                        <div className="font-medium text-slate-800">{s.judulLive || "Reguler Live Broadcast"}</div>
+                        <div className="text-[11px] text-slate-400">{s.promoLive || "Voucher Toko / Flash Sale"}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                            s.status === "APPROVED" || s.status === "SELESAI"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : s.status === "PENDING"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-slate-50 text-slate-700 border-slate-200"
+                          }`}
+                        >
+                          {s.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
-            {schedules.length === 0 && !loading && (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                Belum ada jadwal sesi siaran live untuk brand ini.
-              </div>
-            )}
           </div>
         </div>
       )}

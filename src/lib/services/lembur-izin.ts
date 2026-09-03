@@ -8,7 +8,7 @@ import type { Role } from "@/generated/prisma/enums";
 const APPROVER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"];
 
 const lemburSchema = z.object({
-  karyawanId: z.string().min(1),
+  karyawanId: z.string().min(1).optional(),
   tanggal: z.string().min(1),
   jamMulai: z.string().min(1),
   jamSelesai: z.string().min(1),
@@ -17,10 +17,11 @@ const lemburSchema = z.object({
 });
 
 const izinSchema = z.object({
-  karyawanId: z.string().min(1),
+  karyawanId: z.string().min(1).optional(),
   tanggalMulai: z.string().min(1),
   tanggalSelesai: z.string().min(1),
   jenis: z.string().optional().nullable(),
+  tipeIzin: z.string().optional().nullable(),
   alasan: z.string().optional().nullable(),
   lampiranDriveId: z.string().optional().nullable(),
 });
@@ -31,19 +32,24 @@ export type IzinInput = z.infer<typeof izinSchema>;
 // ---------- LEMBUR ----------
 export async function submitLembur(input: LemburInput) {
   const user = await requireRole();
-  if (user.karyawanId && user.karyawanId !== input.karyawanId && !APPROVER_ROLES.includes(user.role)) {
+  const parsed = lemburSchema.parse(input);
+  const targetKaryawanId = parsed.karyawanId || user.karyawanId;
+  if (!targetKaryawanId) {
+    throw AppError.badRequest("karyawanId diperlukan untuk pengajuan lembur");
+  }
+  if (user.karyawanId && user.karyawanId !== targetKaryawanId && !APPROVER_ROLES.includes(user.role)) {
     throw AppError.forbidden("Tidak dapat mengajukan lembur untuk orang lain");
   }
-  const parsed = lemburSchema.parse(input);
   return db.lembur.create({
     data: {
-      karyawanId: parsed.karyawanId,
+      karyawanId: targetKaryawanId,
       tanggal: new Date(parsed.tanggal),
       jamMulai: new Date(parsed.jamMulai),
       jamSelesai: new Date(parsed.jamSelesai),
       alasan: parsed.alasan ?? null,
       buktiDriveId: parsed.buktiDriveId ?? null,
     },
+    include: { karyawan: true },
   });
 }
 
@@ -93,19 +99,24 @@ export async function listLembur(params?: { karyawanId?: string }) {
 // ---------- IZIN ----------
 export async function submitIzin(input: IzinInput) {
   const user = await requireRole();
-  if (user.karyawanId && user.karyawanId !== input.karyawanId && !APPROVER_ROLES.includes(user.role)) {
+  const parsed = izinSchema.parse(input);
+  const targetKaryawanId = parsed.karyawanId || user.karyawanId;
+  if (!targetKaryawanId) {
+    throw AppError.badRequest("karyawanId diperlukan untuk pengajuan cuti/izin");
+  }
+  if (user.karyawanId && user.karyawanId !== targetKaryawanId && !APPROVER_ROLES.includes(user.role)) {
     throw AppError.forbidden("Tidak dapat mengajukan izin untuk orang lain");
   }
-  const parsed = izinSchema.parse(input);
   return db.izin.create({
     data: {
-      karyawanId: parsed.karyawanId,
+      karyawanId: targetKaryawanId,
       tanggalMulai: new Date(parsed.tanggalMulai),
       tanggalSelesai: new Date(parsed.tanggalSelesai),
-      jenis: parsed.jenis ?? null,
+      jenis: parsed.jenis || parsed.tipeIzin || null,
       alasan: parsed.alasan ?? null,
       lampiranDriveId: parsed.lampiranDriveId ?? null,
     },
+    include: { karyawan: true },
   });
 }
 
