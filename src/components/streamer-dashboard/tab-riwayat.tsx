@@ -133,6 +133,7 @@ export function TabRiwayat({
             >
               <option value="">-- Semua Status --</option>
               <option value="SELESAI">SELESAI</option>
+              <option value="PREPARE">PREPARE</option>
               <option value="ON AIR">ON AIR</option>
               <option value="PERLU LAPOR">PERLU LAPOR</option>
               <option value="TERJADWAL">TERJADWAL</option>
@@ -190,8 +191,10 @@ export function TabRiwayat({
                 badgeColor = "bg-red-50 text-red-700 border-red-200";
               } else if (h.status === "ON AIR") {
                 badgeColor = "bg-rose-50 text-rose-700 border-rose-200 animate-pulse";
-              } else if (h.status === "PERLU LAPOR") {
+              } else if (h.status === "PREPARE") {
                 badgeColor = "bg-amber-50 text-amber-700 border-amber-200";
+              } else if (h.status === "PERLU LAPOR") {
+                badgeColor = "bg-orange-50 text-orange-700 border-orange-200";
               } else if (h.status === "TERJADWAL") {
                 badgeColor = "bg-blue-50 text-blue-700 border-blue-200";
               }

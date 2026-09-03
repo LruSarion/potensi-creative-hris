@@ -9,7 +9,7 @@ import BuktiGmvInput from "./bukti-gmv-input";
 import type { ActiveSession } from "./types";
 import { formatTimeSafe } from "@/lib/utils/date-format";
 import { useEffect, useState } from "react";
-import { getScheduleEndFromSession, getCheckoutWindowState } from "./checkout-window";
+import { getScheduleEndFromSession, getCheckoutWindowState, getStreamerActiveSessionState } from "./checkout-window";
 
 export function TabCheckOut({
   activeSession,
@@ -63,6 +63,7 @@ export function TabCheckOut({
   }, []);
 
   const sessionEnd = getScheduleEndFromSession(activeSession?.jadwal);
+  const sessionStatus = getStreamerActiveSessionState(activeSession?.jadwal, nowTick);
   const windowState = getCheckoutWindowState(sessionEnd, nowTick);
   const checkoutLocked =
     activeSession && windowState !== "TANPA_JADWAL" && windowState !== "TERBUKA";
@@ -96,8 +97,23 @@ export function TabCheckOut({
                 </p>
               </div>
               <div>
-                <p className="text-[10px] text-slate-400 mb-0.5">Status</p>
-                <p className="text-sm font-bold text-rose-400">🔴 ON AIR</p>
+                <p className="text-[10px] text-slate-400 mb-0.5">Status Sesi</p>
+                {sessionStatus === "PREPARE" ? (
+                  <p className="text-sm font-bold text-amber-400 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                    <span>🟡 PREPARE</span>
+                  </p>
+                ) : sessionStatus === "PERLU LAPOR" ? (
+                  <p className="text-sm font-bold text-orange-400 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-orange-400 animate-pulse" />
+                    <span>🟠 PERLU LAPOR</span>
+                  </p>
+                ) : (
+                  <p className="text-sm font-bold text-rose-400 flex items-center gap-1.5">
+                    <span className="inline-block w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                    <span>🔴 ON AIR</span>
+                  </p>
+                )}
               </div>
             </div>
 

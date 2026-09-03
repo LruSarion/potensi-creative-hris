@@ -72,13 +72,40 @@ export async function getMyJadwal() {
     orderBy: { tanggal: "desc" },
     include: { 
       client: true,
-      absensi: {
-        where: { tipe: "CHECK_OUT" }
-      }
+      absensi: true
     },
   });
 
+  const nowMs = Date.now();
+
   return list.map((j) => {
+    const checkIn = j.absensi.find((a) => a.tipe === "CHECK_IN" && a.karyawanId === karyawanId);
+    const checkOut = j.absensi.find((a) => a.tipe === "CHECK_OUT" && a.karyawanId === karyawanId);
+
+    let status = j.status as string;
+    if (checkOut) {
+      status = (checkOut.reportedGmv === null || checkOut.reportedGmv === undefined) ? "PERLU LAPOR" : "SELESAI";
+    } else if (checkIn) {
+      const schedStartMs = j.jamMulaiLive ? new Date(j.jamMulaiLive).getTime() : NaN;
+      let schedEndMs = j.jamSelesaiLive ? new Date(j.jamSelesaiLive).getTime() : NaN;
+      if (!isNaN(schedStartMs) && !isNaN(schedEndMs) && schedEndMs < schedStartMs) {
+        schedEndMs += 24 * 60 * 60 * 1000;
+      }
+
+      if (!isNaN(schedStartMs) && nowMs < schedStartMs) {
+        status = "PREPARE";
+      } else if (!isNaN(schedEndMs) && nowMs > schedEndMs) {
+        status = "PERLU LAPOR";
+      } else {
+        status = "ON AIR";
+      }
+    } else {
+      const raw = String(j.status);
+      if (raw === "BATAL" || raw === "CANCEL") status = "BATAL";
+      else if (raw === "LIBUR") status = "LIBUR";
+      else status = "TERJADWAL";
+    }
+
     const c = (j.cabangStudio || "").trim();
     const n = (j.nomorStudio || "").trim();
     let studioName = "Studio Timoho 1";
@@ -93,6 +120,7 @@ export async function getMyJadwal() {
     }
     return {
       ...j,
+      status,
       studio: studioName,
     };
   });
@@ -125,6 +153,22 @@ export async function getMySesiAktif() {
     orderBy: { waktu: "desc" },
   });
   if (lastCheckOut && lastCheckOut.waktu > lastCheckIn.waktu) return null;
+
+  // Enforce the SESI_AKTIF_STREAMER formula:
+  // Session must be in PREPARE, ON AIR, or PERLU LAPOR, and within H+8 hours of scheduled end time.
+  if (lastCheckIn.jadwal?.jamSelesaiLive) {
+    const schedStartMs = lastCheckIn.jadwal.jamMulaiLive ? new Date(lastCheckIn.jadwal.jamMulaiLive).getTime() : NaN;
+    let schedEndMs = new Date(lastCheckIn.jadwal.jamSelesaiLive).getTime();
+    if (!isNaN(schedStartMs) && !isNaN(schedEndMs) && schedEndMs < schedStartMs) {
+      schedEndMs += 24 * 60 * 60 * 1000;
+    }
+    const nowMs = Date.now();
+    // Beyond H+8, it is no longer active in SESI_AKTIF_STREAMER (escalates to tab Terbatas)
+    if (!isNaN(schedEndMs) && nowMs - schedEndMs > 8 * 60 * 60 * 1000) {
+      return null;
+    }
+  }
+
   return lastCheckIn;
 }
 

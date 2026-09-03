@@ -62,9 +62,14 @@ export function TabStreamer({
     },
   ]);
   const [isStreamerCrashVerified, setIsStreamerCrashVerified] = useState(false);
+  const [openAccordionId, setOpenAccordionId] = useState<number | null>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  function toggleAccordion(id: number) {
+    setOpenAccordionId((prev) => (prev === id ? null : id));
+  }
 
   // Subtab 2: Info Streamer states
   const [searchInfoStreamer, setSearchInfoStreamer] = useState("");
@@ -136,20 +141,20 @@ export function TabStreamer({
       showAlert("⚠️ Maksimal 100 formulir jadwal sekaligus.");
       return;
     }
-    const last = streamerForms[streamerForms.length - 1];
+    const newId = Date.now();
     setStreamerForms((prev) => [
       ...prev,
       {
-        id: Date.now(),
-        idJadwal: generateNewScheduleId("STR", last?.tanggal),
-        tanggal: last?.tanggal || "",
-        platform: last?.platform || "",
-        clientId: last?.clientId || "",
+        id: newId,
+        idJadwal: generateNewScheduleId("STR"),
+        tanggal: "",
+        platform: "",
+        clientId: "",
         streamerKaryawanId: "",
         streamerId: "",
         streamerNama: "",
-        cabangStudio: last?.cabangStudio || "Timoho",
-        nomorStudio: last?.nomorStudio || "Studio 1",
+        cabangStudio: "",
+        nomorStudio: "",
         device: "Tidak Pakai",
         jamMulaiLive: "",
         jamSelesaiLive: "",
@@ -164,24 +169,33 @@ export function TabStreamer({
         catatanOts: "",
       },
     ]);
+    setOpenAccordionId(newId);
     setIsStreamerCrashVerified(false);
   }
 
   function handleRemoveForm(id: number) {
     if (streamerForms.length <= 1) return;
-    setStreamerForms((prev) => prev.filter((f) => f.id !== id));
+    setStreamerForms((prev) => {
+      const remaining = prev.filter((f) => f.id !== id);
+      if (openAccordionId === id) {
+        setOpenAccordionId(remaining[0]?.id ?? null);
+      }
+      return remaining;
+    });
     setIsStreamerCrashVerified(false);
   }
 
   function handleDuplicateForm(item: ScheduleFormItem) {
+    const newId = Date.now();
     setStreamerForms((prev) => [
       ...prev,
       {
         ...item,
-        id: Date.now(),
+        id: newId,
         idJadwal: generateNewScheduleId("STR", item.tanggal),
       },
     ]);
+    setOpenAccordionId(newId);
     setIsStreamerCrashVerified(false);
   }
 
@@ -350,6 +364,7 @@ export function TabStreamer({
       setSuccess(`✅ Berhasil menyimpan ${streamerForms.length} Jadwal Streamer!`);
       toast.success(`Berhasil menyimpan ${streamerForms.length} Jadwal Streamer!`);
       setIsStreamerCrashVerified(false);
+      setOpenAccordionId(1);
       setStreamerForms([
         {
           id: 1,
@@ -599,7 +614,7 @@ export function TabStreamer({
       {streamerSubTab === "form" && (
         <form onSubmit={submitStreamerSchedules} className="space-y-4">
           {streamerForms.map((item, idx) => {
-            const isCollapsed = item.isCollapsed;
+            const isOpen = openAccordionId === item.id;
             const hostName = item.streamerNama || "Pilih Host";
             const tanggalLabel = item.tanggal ? formatDateSafe(item.tanggal) : "--/--/----";
             const jamLabel = item.jamMulaiLive ? `${item.jamMulaiLive || "--:--"} - ${item.jamSelesaiLive || "--:--"}` : "--:-- - --:--";
@@ -607,20 +622,29 @@ export function TabStreamer({
             return (
             <div
               key={item.id}
-              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4"
+              className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4 transition-all"
             >
               {/* Accordion Header (ref: cardStreamer header) */}
               <div
-                onClick={() => updateFormField(idx, "isCollapsed", !isCollapsed)}
-                className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
+                onClick={() => toggleAccordion(item.id)}
+                className={`border-b p-4 flex justify-between items-center cursor-pointer transition ${
+                  isOpen ? "bg-slate-100/90 border-slate-200" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm text-white transition-colors ${
+                    isOpen ? "bg-[#941A0B]" : "bg-slate-500"
+                  }`}>
                     #{idx + 1}
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-800 text-sm leading-tight">
-                      Jadwal Streamer {hostName !== "Pilih Host" ? `- ${hostName}` : "Baru"}
+                    <h3 className="font-bold text-slate-800 text-sm leading-tight flex items-center gap-2">
+                      <span>Jadwal Streamer {hostName !== "Pilih Host" ? `- ${hostName}` : "Baru"}</span>
+                      {isOpen && (
+                        <span className="text-[10px] bg-[#941A0B]/10 text-[#941A0B] px-2 py-0.5 rounded-full font-bold">
+                          Sedang Dibuka
+                        </span>
+                      )}
                     </h3>
                     <span className="text-[11px] font-normal text-slate-500 mt-0.5 inline-block">
                       {tanggalLabel} | {jamLabel}
@@ -648,16 +672,20 @@ export function TabStreamer({
                   )}
                   <button
                     type="button"
-                    onClick={() => updateFormField(idx, "isCollapsed", !isCollapsed)}
-                    className="text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                    onClick={() => toggleAccordion(item.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 ${
+                      isOpen
+                        ? "text-[#941A0B] bg-[#941A0B]/10 hover:bg-[#941A0B]/20"
+                        : "text-slate-600 bg-slate-200 hover:bg-slate-300"
+                    }`}
                   >
-                    <i className={`fa-solid ${isCollapsed ? "fa-chevron-down" : "fa-chevron-up"}`} />
+                    <i className={`fa-solid ${isOpen ? "fa-chevron-up" : "fa-chevron-down"}`} />
                   </button>
                 </div>
               </div>
 
               {/* Accordion Body (ref: bodyStreamer sections) */}
-              {!isCollapsed && (
+              {isOpen && (
               <div className="p-5 sm:p-6 space-y-6 block">
                 {/* Row 1: Tanggal + Platform (ref grid md:2) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

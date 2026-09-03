@@ -404,3 +404,60 @@ export async function getStreamerMonthlyHoursAccumulator(streamerKaryawanId: str
   };
 }
 
+export async function deleteJadwal(id: string) {
+  const user = await requirePermission("jadwal:write");
+  const existing = await db.jadwal.findFirst({
+    where: { id, ...tenantWhere(user) },
+    include: { absensi: true },
+  });
+  if (!existing) throw AppError.notFound("Jadwal tidak ditemukan");
+
+  const checkIns = existing.absensi.filter((a) => a.tipe === "CHECK_IN");
+  const checkOuts = existing.absensi.filter((a) => a.tipe === "CHECK_OUT");
+  const hasActiveCheckIn = checkIns.length > checkOuts.length;
+
+  if (existing.liveState === "LIVE" || hasActiveCheckIn) {
+    throw AppError.badRequest(
+      "Jadwal ini sedang aktif berjalan (ON AIR / sudah Check-In). Jadwal tidak dapat dihapus saat sesi sedang berlangsung. Silakan lakukan Check-Out terlebih dahulu."
+    );
+  }
+
+  return db.$transaction(async (tx) => {
+    await tx.absensi.updateMany({
+      where: { jadwalId: id },
+      data: { jadwalId: null },
+    });
+    await tx.sessionStateLog.deleteMany({
+      where: { jadwalId: id },
+    });
+    await tx.sessionReview.deleteMany({
+      where: { jadwalId: id },
+    });
+    await tx.qcViolation.deleteMany({
+      where: { jadwalId: id },
+    });
+    await tx.incident.updateMany({
+      where: { jadwalId: id },
+      data: { jadwalId: null },
+    });
+    await tx.revenueEntry.updateMany({
+      where: { jadwalId: id },
+      data: { jadwalId: null },
+    });
+    await tx.marketplaceListing.updateMany({
+      where: { jadwalId: id },
+      data: { jadwalId: null },
+    });
+    await tx.streamerExperience.deleteMany({
+      where: { jadwalId: id },
+    });
+    await tx.billingLine.deleteMany({
+      where: { jadwalId: id },
+    });
+
+    return tx.jadwal.delete({
+      where: { id },
+    });
+  });
+}
+

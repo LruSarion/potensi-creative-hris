@@ -63,6 +63,7 @@ export default function LiveCameraCheckin({
   const [hasCamera, setHasCamera] = useState(true);
   const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
   const [deviceCount, setDeviceCount] = useState(1);
+  const [isFlashing, setIsFlashing] = useState(false);
 
   // Geolocation states
   const [locLoading, setLocLoading] = useState(false);
@@ -204,10 +205,30 @@ export default function LiveCameraCheckin({
   };
 
   // Close camera without capturing
-  const handleCloseCamera = () => {
+  const handleCloseCamera = useCallback(() => {
     stopStream();
     setIsCameraActive(false);
-  };
+  }, [stopStream]);
+
+  // Lock body scroll and listen for Escape key when fullscreen camera is active
+  useEffect(() => {
+    if (!isCameraActive) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleCloseCamera();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isCameraActive, handleCloseCamera]);
 
   // Cleanup stream on unmount
   useEffect(() => {
@@ -228,9 +249,21 @@ export default function LiveCameraCheckin({
   const capturePhoto = () => {
     if (!videoRef.current) return;
     const video = videoRef.current;
+
+    // Haptic vibration feedback for native smartphone feel
+    if (typeof navigator !== "undefined" && navigator.vibrate) {
+      try {
+        navigator.vibrate(40);
+      } catch {
+        // ignore
+      }
+    }
+
+    setIsFlashing(true);
+
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -250,20 +283,24 @@ export default function LiveCameraCheckin({
     const locStr = currentLoc ? currentLoc.formattedText : "GPS: Mengambil...";
 
     ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-    ctx.fillRect(0, canvas.height - 38, canvas.width, 38);
+    ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 13px sans-serif";
-    ctx.fillText(`POTENSI HRIS • ${nowStr} WIB`, 12, canvas.height - 20);
+    ctx.fillText(`POTENSI HRIS • ${nowStr} WIB`, 14, canvas.height - 21);
 
     ctx.fillStyle = "#cbd5e1";
     ctx.font = "11px monospace";
-    ctx.fillText(locStr, 12, canvas.height - 7);
+    ctx.fillText(locStr, 14, canvas.height - 7);
 
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-    onChange(dataUrl);
-    stopStream();
-    setIsCameraActive(false);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+
+    setTimeout(() => {
+      setIsFlashing(false);
+      onChange(dataUrl);
+      stopStream();
+      setIsCameraActive(false);
+    }, 120);
   };
 
   // Retake photo
@@ -283,55 +320,166 @@ export default function LiveCameraCheckin({
 
   return (
     <div className="space-y-3">
-      {/* 1. Location Status Banner (Shown when active or when photo captured) */}
-      {(isCameraActive || value) && (
-        <div className="rounded-2xl p-2.5 text-xs border transition animate-fadeIn">
-          {locLoading ? (
-            <div className="flex items-center gap-2 text-slate-600">
-              <i className="fa-solid fa-circle-notch animate-spin text-blue-600" />
-              <span className="font-semibold">Mendeteksi koordinat lokasi GPS Anda...</span>
-            </div>
-          ) : locError ? (
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-red-700 bg-red-50 border border-red-200 p-2.5 rounded-xl">
-              <div className="flex items-start gap-2">
-                <i className="fa-solid fa-location-dot text-red-500 mt-0.5 text-sm shrink-0" />
-                <span>{locError}</span>
-              </div>
-              <button
-                type="button"
-                onClick={requestLocation}
-                className="bg-red-600 hover:bg-red-700 text-white font-bold px-3 py-1 rounded-lg text-[11px] shrink-0 self-start sm:self-auto"
-              >
-                Coba Ulang GPS
-              </button>
-            </div>
-          ) : currentLoc ? (
-            <div className="flex items-center justify-between gap-2 text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs shrink-0">
-                  <i className="fa-solid fa-location-dot" />
+      {/* 1. Fullscreen Native Camera Modal (Active When isCameraActive is True) */}
+      {isCameraActive && (
+        <div className="fixed inset-0 z-[9999] bg-black flex flex-col justify-between overflow-hidden touch-none select-none animate-fadeIn">
+          {/* Shutter flash effect */}
+          {isFlashing && (
+            <div className="absolute inset-0 z-50 bg-white opacity-90 transition-opacity duration-150" />
+          )}
+
+          {/* Background Live Video Feed (Screen Filled) */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`absolute inset-0 w-full h-full object-cover ${
+              facingMode === "user" ? "-scale-x-100" : ""
+            }`}
+          />
+
+          {/* Top Vignette Gradient */}
+          <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/85 via-black/40 to-transparent pointer-events-none" />
+
+          {/* Bottom Vignette Gradient */}
+          <div className="absolute bottom-0 left-0 right-0 h-44 bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-none" />
+
+          {/* Top Bar: GPS Status + Close Button */}
+          <div className="relative z-10 p-4 pt-6 sm:p-6 flex items-center justify-between pointer-events-auto">
+            {/* GPS Pill Indicator */}
+            <div className="max-w-[75%]">
+              {locLoading ? (
+                <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 text-white text-xs shadow-lg">
+                  <i className="fa-solid fa-circle-notch animate-spin text-blue-400 text-xs" />
+                  <span className="text-[11px] font-medium truncate">Mengunci GPS...</span>
                 </div>
-                <div>
-                  <span className="font-bold block text-[11px] text-emerald-900">Lokasi GPS Terverifikasi</span>
-                  <span className="font-mono text-[10px] text-emerald-700 block">
-                    {currentLoc.formattedText}
+              ) : locError ? (
+                <div
+                  onClick={requestLocation}
+                  className="bg-red-950/80 backdrop-blur-md border border-red-500/40 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs text-red-200 shadow-lg cursor-pointer active:scale-95"
+                  title="Klik untuk mencoba ulang GPS"
+                >
+                  <i className="fa-solid fa-triangle-exclamation text-red-400 text-xs" />
+                  <span className="text-[10px] font-bold truncate">GPS Gagal (Ketuk Ulang)</span>
+                </div>
+              ) : currentLoc ? (
+                <div className="bg-emerald-950/70 backdrop-blur-md border border-emerald-500/40 px-3.5 py-1.5 rounded-full flex items-center gap-2 text-white shadow-lg">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                   </span>
+                  <div className="truncate leading-tight">
+                    <span className="font-bold text-emerald-300 text-[10px] block">GPS Terkunci</span>
+                    <span className="font-mono text-emerald-100 text-[9px] block truncate">
+                      {currentLoc.latitude.toFixed(5)}, {currentLoc.longitude.toFixed(5)}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            {/* Close / X Button */}
+            <button
+              type="button"
+              onClick={handleCloseCamera}
+              className="w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 active:scale-90 border border-white/20 backdrop-blur-md flex items-center justify-center text-white text-lg transition shadow-xl cursor-pointer"
+              title="Tutup Kamera"
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+
+          {/* Center Viewfinder: Face Guide & Corner Reticles */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            {cameraError ? (
+              <div className="p-6 text-center space-y-3 max-w-xs bg-black/80 backdrop-blur-md border border-red-500/40 rounded-3xl pointer-events-auto shadow-2xl">
+                <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-xl border border-red-500/30">
+                  <i className="fa-solid fa-video-slash" />
+                </div>
+                <h4 className="text-white font-bold text-sm">Kamera Bermasalah</h4>
+                <p className="text-slate-300 text-xs leading-relaxed">{cameraError}</p>
+                <div className="flex items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCloseCamera}
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => startCamera(facingMode)}
+                    className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-4 py-1.5 rounded-xl text-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <i className="fa-solid fa-arrows-rotate" />
+                    <span>Coba Lagi</span>
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="relative w-64 h-80 sm:w-72 sm:h-96 border-2 border-dashed border-white/40 rounded-[52px] flex items-end justify-center pb-4 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+                {/* Corner guide reticles */}
+                <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl-lg" />
+                <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white rounded-tr-lg" />
+                <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white rounded-bl-lg" />
+                <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white rounded-br-lg" />
+                <span className="text-[11px] text-white font-bold bg-black/60 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/15 shadow-lg">
+                  Posisikan Wajah Anda
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Controls Dock: Flip Camera + Native Shutter Button + Cancel */}
+          <div className="relative z-10 pb-10 sm:pb-12 px-8 flex items-center justify-between pointer-events-auto">
+            {/* Flip / Switch Camera Button */}
+            <div className="w-16 flex justify-start">
+              {deviceCount > 1 ? (
+                <button
+                  type="button"
+                  onClick={toggleFacingMode}
+                  className="w-12 h-12 rounded-full bg-black/60 hover:bg-black/80 active:scale-90 border border-white/20 backdrop-blur-md flex items-center justify-center text-white text-lg transition shadow-xl cursor-pointer"
+                  title="Ganti Kamera Depan / Belakang"
+                >
+                  <i className="fa-solid fa-camera-rotate" />
+                </button>
+              ) : (
+                <div className="w-12 h-12" />
+              )}
+            </div>
+
+            {/* Native Shutter Button */}
+            <div className="flex flex-col items-center gap-2">
               <button
                 type="button"
-                onClick={requestLocation}
-                title="Refresh Lokasi GPS"
-                className="text-emerald-600 hover:text-emerald-800 p-1 text-xs"
+                onClick={capturePhoto}
+                disabled={cameraLoading || !!cameraError}
+                className="w-20 h-20 rounded-full border-[5px] border-white p-1.5 flex items-center justify-center transition active:scale-90 disabled:opacity-40 shadow-2xl cursor-pointer"
+                title={t.shutter}
               >
-                <i className="fa-solid fa-arrows-rotate" />
+                <div className="w-full h-full bg-white rounded-full active:scale-95 transition-transform" />
+              </button>
+              <span className="text-[10px] text-white/90 font-bold uppercase tracking-wider drop-shadow-md">
+                Ambil Foto
+              </span>
+            </div>
+
+            {/* Cancel Button */}
+            <div className="w-16 flex justify-end">
+              <button
+                type="button"
+                onClick={handleCloseCamera}
+                className="text-xs text-white/90 hover:text-white font-bold bg-black/60 hover:bg-black/80 px-3.5 py-2 rounded-full backdrop-blur-md border border-white/20 transition active:scale-90 shadow-xl cursor-pointer"
+              >
+                Batal
               </button>
             </div>
-          ) : null}
+          </div>
         </div>
       )}
 
-      {/* 2. Main Box: Inactive State / Active Live Camera / Captured Photo */}
+      {/* 2. Form Preview State: Showing Captured Photo or Button to Open Camera */}
       {value ? (
         /* State A: Photo is Captured */
         <div className="relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-inner flex flex-col items-center">
@@ -343,116 +491,21 @@ export default function LiveCameraCheckin({
           />
           <div className="absolute top-3 left-3 bg-emerald-600/95 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-md">
             <i className="fa-solid fa-circle-check" />
-            <span>Foto Selfie Presensi Berhasil Diambil</span>
+            <span>Foto Presensi Berhasil Diambil</span>
           </div>
           <div className="absolute bottom-3 right-3">
             <button
               type="button"
               onClick={retakePhoto}
-              className="bg-slate-900/85 hover:bg-slate-900 text-white border border-white/20 font-bold px-3.5 py-1.5 rounded-xl text-xs backdrop-blur-xs flex items-center gap-1.5 shadow-lg transition"
+              className="bg-slate-900/85 hover:bg-slate-900 text-white border border-white/20 font-bold px-3.5 py-1.5 rounded-xl text-xs backdrop-blur-xs flex items-center gap-1.5 shadow-lg transition cursor-pointer"
             >
               <i className="fa-solid fa-camera-rotate text-amber-400" />
               <span>Foto Ulang</span>
             </button>
           </div>
         </div>
-      ) : isCameraActive ? (
-        /* State B: Live Camera Viewfinder */
-        <div className="relative bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-inner min-h-[320px] flex items-center justify-center p-2">
-          {cameraError ? (
-            <div className="p-6 text-center space-y-3 max-w-sm">
-              <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-xl border border-red-500/30">
-                <i className="fa-solid fa-video-slash" />
-              </div>
-              <h4 className="text-white font-bold text-sm">Kamera Tidak Tersedia</h4>
-              <p className="text-slate-300 text-xs leading-relaxed">{cameraError}</p>
-              <div className="flex items-center justify-center gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={handleCloseCamera}
-                  className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition"
-                >
-                  Tutup
-                </button>
-                {hasCamera && (
-                  <button
-                    type="button"
-                    onClick={() => startCamera(facingMode)}
-                    className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-4 py-1.5 rounded-xl text-xs transition inline-flex items-center gap-1.5"
-                  >
-                    <i className="fa-solid fa-arrows-rotate" />
-                    <span>Coba Lagi</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <>
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full max-h-[360px] object-cover rounded-xl ${
-                  facingMode === "user" ? "-scale-x-100" : ""
-                }`}
-              />
-
-              {/* Face outline guide */}
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                <div className="w-44 h-56 border-2 border-dashed border-white/50 rounded-full flex items-end justify-center pb-2">
-                  <span className="text-[10px] text-white/80 font-bold bg-black/40 px-2 py-0.5 rounded-full backdrop-blur-xs">
-                    Posisikan Wajah
-                  </span>
-                </div>
-              </div>
-
-              {/* Top Bar: Live indicator + Switch + Close */}
-              <div className="absolute top-4 left-4 right-4 flex items-center justify-between pointer-events-auto">
-                <span className="bg-red-600 text-white text-[10px] font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 shadow-md animate-pulse">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                  LIVE KAMERA
-                </span>
-
-                <div className="flex items-center gap-2">
-                  {deviceCount > 1 && (
-                    <button
-                      type="button"
-                      onClick={toggleFacingMode}
-                      className="bg-black/60 hover:bg-black/80 text-white p-2 rounded-full border border-white/20 backdrop-blur-xs text-xs transition"
-                      title="Ganti Kamera Depan / Belakang"
-                    >
-                      <i className="fa-solid fa-camera-rotate" />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={handleCloseCamera}
-                    className="bg-black/60 hover:bg-black/80 text-white w-7 h-7 rounded-full border border-white/20 backdrop-blur-xs text-xs flex items-center justify-center transition"
-                    title="Tutup Kamera"
-                  >
-                    ✕
-                  </button>
-                </div>
-              </div>
-
-              {/* Bottom Shutter Button */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 pointer-events-auto">
-                <button
-                  type="button"
-                  onClick={capturePhoto}
-                  disabled={cameraLoading || !!cameraError}
-                  className="bg-white hover:bg-slate-100 text-[#941A0B] font-bold px-6 py-2.5 rounded-full text-xs shadow-2xl transition flex items-center gap-2 disabled:opacity-50 active:scale-95 border-2 border-[#941A0B]"
-                >
-                  <i className="fa-solid fa-camera text-base" />
-                  <span>{t.shutter}</span>
-                </button>
-              </div>
-            </>
-          )}
-        </div>
       ) : (
-        /* State C: Inactive / Prompt to Open Camera (Step 2) */
+        /* State B: Prompt to Open Fullscreen Camera */
         <div
           className={`border-2 rounded-2xl p-6 sm:p-8 text-center transition flex flex-col items-center justify-center space-y-3.5 ${
             disabled
@@ -479,9 +532,7 @@ export default function LiveCameraCheckin({
               {disabled ? "Pilih Jadwal Siaran Terlebih Dahulu" : t.inactiveTitle}
             </h4>
             <p className="text-xs text-slate-500 max-w-sm mt-1 leading-relaxed">
-              {disabled
-                ? disabledMessage
-                : t.inactiveDesc}
+              {disabled ? disabledMessage : t.inactiveDesc}
             </p>
           </div>
 
@@ -497,6 +548,31 @@ export default function LiveCameraCheckin({
           >
             <i className="fa-solid fa-camera" />
             <span>Buka Kamera & Ambil Gambar</span>
+          </button>
+        </div>
+      )}
+
+      {/* 3. Verified Location Banner in Form (When photo taken or loc detected) */}
+      {currentLoc && value && (
+        <div className="flex items-center justify-between gap-2 text-emerald-800 bg-emerald-50/80 border border-emerald-200 p-2.5 rounded-xl text-xs">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-xs shrink-0">
+              <i className="fa-solid fa-location-dot" />
+            </div>
+            <div>
+              <span className="font-bold block text-[11px] text-emerald-900">Lokasi GPS Terverifikasi</span>
+              <span className="font-mono text-[10px] text-emerald-700 block">
+                {currentLoc.formattedText}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={requestLocation}
+            title="Refresh Lokasi GPS"
+            className="text-emerald-600 hover:text-emerald-800 p-1 text-xs"
+          >
+            <i className="fa-solid fa-arrows-rotate" />
           </button>
         </div>
       )}

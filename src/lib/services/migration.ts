@@ -231,7 +231,7 @@ export async function importJadwalRows(rows: Record<string, string>[]) {
     const rawIdJadwal = pick(["id jadwal", "idjadwal", "id_jadwal", "id"], r) ?? "";
     const idJadwal = rawIdJadwal.trim() || `JAD-${Date.now().toString(36).toUpperCase()}-${idx + 1}`;
 
-    let rawTanggal = pick(["tanggal", "date", "tgl", "waktu", "day", "hari", "periode"], r) ?? "";
+    const rawTanggal = pick(["tanggal", "date", "tgl", "waktu", "day", "hari", "periode"], r) ?? "";
     const tanggal = normalizeExcelCell(rawTanggal, "date") || normalizeDate(rawTanggal) || rawTanggal;
 
     const platform = pick(["platform", "marketplace", "e-commerce"], r) ?? "";
@@ -480,6 +480,8 @@ export async function previewMigration(params: { fileContent: string; fileName: 
     headers: parsed.headers,
     rowCount: parsed.rows.length,
     preview: parsed.rows.slice(0, 5),
+    // Semua baris untuk tab import karyawan (client melakukan dedupe + mapping sendiri).
+    rows: parsed.rows,
   };
 }
 

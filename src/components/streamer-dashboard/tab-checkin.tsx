@@ -14,6 +14,7 @@ import {
 } from "@/lib/utils/date-format";
 import { useMemo, useEffect } from "react";
 import { getLateCheckInStatus } from "./late-check";
+import { getStreamerActiveSessionState } from "./checkout-window";
 
 function getScheduleStartTime(j: Jadwal): Date | null {
   if (!j.jamMulaiLive) return null;
@@ -114,15 +115,27 @@ export function TabCheckIn({
       onSelectJadwalChange("", null);
     }
   }, [singleActiveJadwal, selectedJadwalId, onSelectJadwalChange]);
+  const activeSessionStatus = getStreamerActiveSessionState(activeSession?.jadwal);
+
   return activeSession ? (
     <div className="bg-white border border-amber-200 rounded-2xl p-6 sm:p-8 text-center space-y-4 shadow-sm">
       <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto text-2xl border border-amber-200 shadow-inner">
         <i className="fa-solid fa-lock" />
       </div>
       <div className="max-w-md mx-auto space-y-1.5">
-        <span className="inline-block bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide">
-          🔴 Sedang On Air
-        </span>
+        {activeSessionStatus === "PREPARE" ? (
+          <span className="inline-block bg-amber-50 text-amber-700 border border-amber-200 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide">
+            🟡 Sedang Prepare
+          </span>
+        ) : activeSessionStatus === "PERLU LAPOR" ? (
+          <span className="inline-block bg-orange-50 text-orange-700 border border-orange-200 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide">
+            🟠 Perlu Lapor (GMV)
+          </span>
+        ) : (
+          <span className="inline-block bg-rose-50 text-rose-700 border border-rose-200 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide">
+            🔴 Sedang On Air
+          </span>
+        )}
         <h3 className="text-base font-black text-slate-900">Tab Check-In Terkunci</h3>
         <p className="text-xs text-slate-600">
           Anda telah melakukan check-in untuk sesi <strong>{activeSession.jadwal?.idJadwal ?? "Live"}</strong> {activeSession.jadwal?.client?.namaClient ? `(${activeSession.jadwal.client.namaClient})` : ""}.

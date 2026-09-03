@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAlert } from "@/components/ui/custom-alert";
 import { formatDateIndo } from "@/lib/utils/date-format";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
@@ -217,7 +217,7 @@ function getEmployeeFieldValue(emp: any, fieldKey: string): string {
 
 export default function InputKaryawanPage() {
   const { showConfirm } = useAlert();
-  const [activeTab, setActiveTab] = useState<"input" | "edit" | "direktori">("input");
+  const [activeTab, setActiveTab] = useState<"input" | "edit" | "direktori" | "import">("input");
 
   // Multi-Form Input Kolektif State
   const [forms, setForms] = useState<FormKaryawan[]>([createDefaultForm(1, true)]);
@@ -242,6 +242,20 @@ export default function InputKaryawanPage() {
 
   // Direktori search
   const [dirSearch, setDirSearch] = useState("");
+
+  // Import Sheets / Excel State
+  const [importSource, setImportSource] = useState<"file" | "sheet">("sheet");
+  const [importSheetUrl, setImportSheetUrl] = useState("");
+  const [importLastSheetUrl, setImportLastSheetUrl] = useState("");
+  const [importFileName, setImportFileName] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importSaving, setImportSaving] = useState(false);
+  const [importRows, setImportRows] = useState<FormKaryawan[]>([]);
+  const [importRawHeaders, setImportRawHeaders] = useState<string[]>([]);
+  const [importRawPreview, setImportRawPreview] = useState<any[]>([]);
+  const [importMatchedHeaders, setImportMatchedHeaders] = useState<string[]>([]);
+  const [importDupSkipped, setImportDupSkipped] = useState(0);
+  const importFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     loadAllEmployees();
@@ -644,6 +658,251 @@ export default function InputKaryawanPage() {
     }
   }
 
+  // --- Import Google Sheets / Excel Handlers ---
+  function handleResetImport() {
+    setImportRows([]);
+    setImportRawHeaders([]);
+    setImportRawPreview([]);
+    setImportMatchedHeaders([]);
+    setImportDupSkipped(0);
+  }
+
+  function processImportedData(data: any) {
+    const rawRows: Record<string, string>[] = data.rows || [];
+    const headers: string[] = data.headers || [];
+    setImportRawHeaders(headers);
+    setImportRawPreview(rawRows.slice(0, 5).map((r) => headers.map((h) => r[h] || "")));
+
+    // Normalisasi nama kolom: lowercase + buang titik/underscore/hyphen/spasi ganda.
+    // "No. Telepon" = "no telepon", "No_Hp" = "nohp" — pencocokan alias jadi robust.
+    const normKey = (k: string) =>
+      k.trim().toLowerCase().replace(/[.\-_/]/g, "").replace(/\s+/g, " ").replace(/\s/g, "");
+    const row0 = rawRows[0] ?? {};
+    const rowKeys = new Map(Object.keys(row0).map((k) => [k, normKey(k)]));
+
+    const pickVal = (aliases: string[], row: Record<string, string>) => {
+      // Pass 1: exact match (setelah normalisasi)
+      for (const a of aliases) {
+        const na = normKey(a);
+        const found = [...rowKeys.entries()].find(([, nk]) => nk === na);
+        if (found) {
+          const v = row[found[0]];
+          if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+        }
+      }
+      // Pass 2: includes match (setelah normalisasi)
+      for (const a of aliases) {
+        const na = normKey(a);
+        const found = [...rowKeys.entries()].find(([, nk]) => nk.includes(na));
+        if (found) {
+          const v = row[found[0]];
+          if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+        }
+      }
+      return "";
+    };
+
+    // Dedupe: kunci gabungan no HP (suffix) + email. Normalisasi kedua sisi
+    // (sheet "0812..." vs DB "62812..." dianggap sama). Baris dengan HP dan
+    // email yang sama-sama terisi & cocok tidak dimasukkan lagi.
+    const normSuffix = (p: string) => p.replace(/\D/g, "").replace(/^62/, "").replace(/^0+/, "");
+    const existingKeys = new Set(
+      employeeList.map((e) => `${normSuffix(e.nomorTelepon || "")}|${String(e.email || "").trim().toLowerCase()}`)
+    );
+    const seenInFile = new Set<string>();
+
+    let dupCount = 0;
+    const parsedForms: FormKaryawan[] = [];
+
+    rawRows.forEach((r, idx) => {
+      const nama = pickVal(["nama lengkap", "nama", "nama_lengkap", "full name", "name"], r);
+      if (!nama) return;
+
+      const phoneRaw = pickVal(
+        ["nomor wa", "no wa", "nomor whatsapp", "whatsapp", "wa",
+         "nomor telepon", "no telepon", "telepon", "telpon", "nomor telp", "no telp",
+         "nohp", "no hp", "nomor hp", "hp", "handphone", "nomor handphone",
+         "phone", "mobile", "nomor seluler", "no seluler"],
+        r
+      );
+      const phoneSuffix = normSuffix(phoneRaw);
+      const email = pickVal(["email", "e-mail", "mail"], r).toLowerCase().trim();
+
+      // Tanpa HP dan tanpa email → tidak bisa didedupe, langsung masuk.
+      const dupKey = phoneSuffix || email ? `${phoneSuffix}|${email}` : null;
+      if (dupKey && (existingKeys.has(dupKey) || seenInFile.has(dupKey))) {
+        dupCount++;
+        return;
+      }
+      if (dupKey) seenInFile.add(dupKey);
+
+      const genderRaw = pickVal(["gender", "jenis kelamin", "jenis_kelamin"], r).toLowerCase();
+      const gender = genderRaw.includes("l") || genderRaw.includes("pria") || genderRaw.includes("laki") ? "Laki-laki" : "Perempuan";
+
+      const jabatan = pickVal(["jabatan", "posisi", "role", "position", "job title", "pekerjaan"], r) || "Staff";
+      const kategori = pickVal(["kategori", "category", "tipe karyawan"], r) || "Host";
+      const bank = pickVal(["nama bank", "bank"], r) || "BCA";
+      const noRek = pickVal(["no rekening", "nomor rekening", "rekening", "norek", "no rek", "account number"], r);
+      const pemilikRek = pickVal(["pemilik rekening", "nama pemilik rek", "nama pemilik rekening", "atas nama", "account holder"], r) || nama;
+      const nik = pickVal(["nik", "ktp", "no ktp", "nomor ktp", "nik ktp"], r);
+      const npwp = pickVal(["npwp", "no npwp", "nomor npwp"], r);
+      const startDate = pickVal(["tanggal mulai", "start date", "tgl mulai", "join date", "tanggal masuk"], r) || new Date().toISOString().split("T")[0];
+
+      parsedForms.push({
+        id: idx + 1,
+        namaLengkap: nama,
+        namaPanggilan: pickVal(["nama panggilan", "panggilan", "nickname"], r),
+        gender,
+        tempatLahir: pickVal(["tempat lahir", "kota lahir"], r),
+        tanggalLahir: pickVal(["tanggal lahir", "tgl lahir", "birth date"], r),
+        agama: pickVal(["agama", "religion"], r) || "Islam",
+        nomorTeleponSuffix: phoneSuffix,
+        emergencyContactSuffix: "",
+        email: email || `${nama.toLowerCase().replace(/\s+/g, ".")}@example.com`,
+        statusPerkawinan: "Belum Kawin",
+        riwayatPenyakit: "-",
+        jabatan,
+        kategori,
+        tipeJadwal: "Shift",
+        startDate,
+        endDate: "",
+        statusAktif: "Aktif",
+        nik,
+        npwp,
+        statusPtkp: "TK/0",
+        alamatKtp: pickVal(["alamat ktp", "alamat"], r),
+        alamatDomisili: pickVal(["alamat domisili", "domisili"], r),
+        namaBank: bank,
+        nomorRekening: noRek,
+        namaPemilikRek: pemilikRek,
+        scanKtp: null,
+        scanKk: null,
+        scanNpwp: null,
+        isExpanded: idx === 0,
+      });
+    });
+
+    setImportMatchedHeaders(["Nama Lengkap", "No HP", "Email", "Jabatan", "Bank & Rekening", "NIK/NPWP"]);
+    setImportDupSkipped(dupCount);
+    setImportRows(parsedForms);
+  }
+
+  async function handleImportSheetUrl(customUrl?: string) {
+    const url = customUrl || importSheetUrl;
+    if (!url.trim()) {
+      toast.warning("Masukkan URL Google Sheets terlebih dahulu.");
+      return;
+    }
+    setImportBusy(true);
+    try {
+      const data = await sendJson<any>("/api/migration", "POST", {
+        action: "preview",
+        googleSheetUrl: url.trim(),
+      });
+      setImportLastSheetUrl(url.trim());
+      processImportedData(data);
+      toast.success(`Berhasil membaca data dari Google Sheets! Terdeteksi ${data.rows?.length || 0} baris.`);
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal membaca Google Sheets"));
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  function handleImportFile(file?: File) {
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportBusy(true);
+
+    const reader = new FileReader();
+    const isExcel = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
+
+    reader.onload = async () => {
+      try {
+        let payload: any;
+        if (isExcel) {
+          const base64 = (reader.result as string).split(",")[1];
+          payload = { action: "preview", fileContent: base64, fileName: file.name };
+        } else {
+          payload = { action: "preview", fileContent: reader.result as string, fileName: file.name };
+        }
+        const data = await sendJson<any>("/api/migration", "POST", payload);
+        processImportedData(data);
+        toast.success(`Berhasil membaca file ${file.name}! Terdeteksi ${data.rows?.length || 0} baris.`);
+      } catch (err) {
+        toast.error(errorMessage(err, "Gagal membaca file"));
+      } finally {
+        setImportBusy(false);
+      }
+    };
+
+    if (isExcel) {
+      reader.readAsDataURL(file);
+    } else {
+      reader.readAsText(file);
+    }
+  }
+
+  function handlePushImportToForms() {
+    if (!importRows.length) return;
+    const reindexed = importRows.slice(0, 10).map((row, i) => ({
+      ...row,
+      id: i + 1,
+      isExpanded: i === 0,
+    }));
+    setForms(reindexed);
+    setActiveTab("input");
+    toast.success(`Berhasil memindahkan ${reindexed.length} baris ke tab Input Kolektif!`);
+  }
+
+  async function handleSaveImportRows() {
+    if (!importRows.length) return;
+    if (importRows.length > 10) {
+      toast.warning("Maksimal 10 baris per penyimpanan batch. Kirim sebagian atau gunakan 'Kirim ke Input Kolektif'.");
+      return;
+    }
+    setImportSaving(true);
+    try {
+      const items = importRows.map((f) => ({
+        namaLengkap: f.namaLengkap.trim(),
+        namaPanggilan: f.namaPanggilan.trim() || undefined,
+        gender: f.gender,
+        tempatLahir: f.tempatLahir.trim() || undefined,
+        tanggalLahir: f.tanggalLahir || undefined,
+        agama: f.agama || undefined,
+        nomorTelepon: f.nomorTeleponSuffix ? `62${f.nomorTeleponSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
+        emergencyContact: f.emergencyContactSuffix ? `62${f.emergencyContactSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
+        email: f.email.trim(),
+        statusPerkawinan: f.statusPerkawinan || undefined,
+        riwayatPenyakit: f.riwayatPenyakit.trim() || undefined,
+        jabatan: f.jabatan,
+        kategori: f.kategori,
+        tipeJadwal: f.tipeJadwal,
+        startDate: f.startDate || undefined,
+        endDate: f.endDate || undefined,
+        statusAktif: f.statusAktif,
+        nik: f.nik.trim() || undefined,
+        npwp: f.npwp.trim() || undefined,
+        statusPtkp: f.statusPtkp || undefined,
+        alamatKtp: f.alamatKtp.trim() || undefined,
+        alamatDomisili: f.alamatDomisili.trim() || undefined,
+        namaBank: f.namaBank,
+        nomorRekening: f.nomorRekening.trim() || undefined,
+        namaPemilikRek: f.namaPemilikRek.trim() || undefined,
+      }));
+
+      await sendJson("/api/employees?action=bulk", "POST", { items });
+      toast.success(`Berhasil mengimpor ${items.length} karyawan ke direktori!`);
+      handleResetImport();
+      await loadAllEmployees();
+      setActiveTab("direktori");
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal mengimpor karyawan"));
+    } finally {
+      setImportSaving(false);
+    }
+  }
+
   // Employee detail modal
   const [detailEmployee, setDetailEmployee] = useState<any | null>(null);
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
@@ -676,6 +935,7 @@ export default function InputKaryawanPage() {
           { id: "input", label: "Input Kolektif", icon: "fa-users" },
           { id: "edit", label: "Perubahan Data", icon: "fa-pen-to-square" },
           { id: "direktori", label: "Direktori Karyawan", icon: "fa-address-book" },
+          { id: "import", label: "Import Excel / Sheets", icon: "fa-file-excel" },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1999,6 +2259,232 @@ export default function InputKaryawanPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ======== TAB 4: IMPORT EXCEL / SHEETS ======== */}
+      {activeTab === "import" && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
+          <div className="border-b border-slate-200 pb-4">
+            <h2 className="text-lg font-bold text-black flex items-center gap-2">
+              <i className="fa-solid fa-file-excel text-emerald-600" />
+              <span>Import Karyawan via Excel / Google Sheets</span>
+            </h2>
+            <p className="text-xs text-slate-500 mt-1">
+              Unggah file Excel / CSV atau masukkan tautan Google Sheets publik untuk memasukkan data karyawan sekaligus ke sistem.
+            </p>
+          </div>
+
+          {!importRows.length ? (
+            <>
+              {/* Pilihan Sumber: File vs Google Sheets */}
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-xl max-w-xs">
+                <button
+                  type="button"
+                  onClick={() => setImportSource("file")}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    importSource === "file"
+                      ? "bg-white text-[#941A0B] shadow-sm font-bold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <i className="fa-solid fa-file-csv mr-1.5" />
+                  Excel / CSV
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setImportSource("sheet")}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    importSource === "sheet"
+                      ? "bg-white text-[#941A0B] shadow-sm font-bold"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  <i className="fa-brands fa-google mr-1.5 text-emerald-600" />
+                  Google Sheets
+                </button>
+              </div>
+
+              {importSource === "file" ? (
+                <div className="text-center space-y-4 p-8 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 hover:bg-slate-50 transition">
+                  <input
+                    ref={importFileRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv,.txt"
+                    onChange={(e) => handleImportFile(e.target.files?.[0])}
+                    className="hidden"
+                  />
+                  <div className="w-14 h-14 mx-auto rounded-full bg-red-50 text-[#941A0B] flex items-center justify-center text-2xl">
+                    <i className="fa-solid fa-cloud-arrow-up" />
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => importFileRef.current?.click()}
+                      disabled={importBusy}
+                      className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50 cursor-pointer shadow-md inline-flex items-center gap-2 active:scale-95"
+                    >
+                      <i className={`fa-solid ${importBusy ? "fa-circle-notch fa-spin" : "fa-folder-open"}`} />
+                      <span>{importBusy ? "Membaca file..." : "Pilih File Excel / CSV"}</span>
+                    </button>
+                    {importFileName && (
+                      <p className="text-xs text-slate-600 font-semibold mt-2">
+                        File terpilih: <span className="text-[#941A0B] font-mono">{importFileName}</span>
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400 mt-2">
+                      Mendukung file .xlsx, .xls, .csv dengan format header kolom standar.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4 p-6 border border-slate-200 rounded-2xl bg-slate-50/50">
+                  <div>
+                    <label className={labelCls}>Tautan Google Sheets</label>
+                    <input
+                      type="url"
+                      value={importSheetUrl}
+                      onChange={(e) => setImportSheetUrl(e.target.value)}
+                      placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                      className={inputCls}
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
+                      <i className="fa-solid fa-circle-info text-blue-500" />
+                      <span>Pastikan sheet di-share ke &quot;Siapa saja yang memiliki link (Anyone with the link can view)&quot;.</span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleImportSheetUrl()}
+                    disabled={importBusy || !importSheetUrl.trim()}
+                    className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold px-6 py-3 rounded-xl text-sm transition disabled:opacity-50 cursor-pointer shadow-md inline-flex items-center gap-2 active:scale-95"
+                  >
+                    <i className={`fa-solid ${importBusy ? "fa-circle-notch fa-spin" : "fa-table"}`} />
+                    <span>{importBusy ? "Membaca sheet..." : "Baca Google Sheets"}</span>
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Hasil parse: ringkasan + baris editable */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                    <i className="fa-solid fa-check" />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-slate-900 text-sm">
+                      {importRows.length} Data Karyawan Siap Diimpor
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      Kolom dikenali: <span className="font-semibold text-slate-700">{importMatchedHeaders.join(", ")}</span>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetImport}
+                  className="text-xs font-bold text-slate-600 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition border border-slate-300 cursor-pointer self-start sm:self-auto"
+                >
+                  <i className="fa-solid fa-arrow-left mr-1.5" />
+                  Ganti Sumber File / Link
+                </button>
+              </div>
+
+              {/* Preview data mentah */}
+              {importRawHeaders.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
+                    <span>Pratinjau Data Mentah (Menampilkan maks. 5 baris pertama)</span>
+                    <span className="text-slate-400 font-normal text-[11px]">Total: {importRows.length} baris</span>
+                  </div>
+                  <div className="overflow-x-auto max-w-full border border-slate-200 rounded-xl shadow-2xs">
+                    <table className="text-left text-[11px]">
+                      <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200">
+                        <tr>
+                          {importRawHeaders.map((h, i) => (
+                            <th key={`${h}-${i}`} className="px-3.5 py-2.5 whitespace-nowrap max-w-[180px] truncate">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {importRawPreview.map((row, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            {importRawHeaders.map((_, c) => (
+                              <td key={c} className="px-3.5 py-2 text-slate-700 max-w-[180px] truncate font-medium" title={row[c] || "-"}>
+                                {row[c] || "-"}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {importRows.length > 10 && (
+                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                  <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
+                  <div>
+                    <strong>Perhatian:</strong> Terdeteksi {importRows.length} baris data. Penyimpanan langsung dibatasi maksimal 10 data per batch. Anda dapat menggunakan tombol <strong>&quot;Kirim ke Input Kolektif&quot;</strong> untuk meninjau dan menyimpan per 10 data.
+                  </div>
+                </div>
+              )}
+
+              {importDupSkipped > 0 && (
+                <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
+                  <i className="fa-solid fa-circle-info text-blue-600 mt-0.5" />
+                  <div>
+                    <strong>Penyaringan Duplikasi:</strong> {importDupSkipped} baris data otomatis dilewati karena nomor telepon atau email sudah terdaftar di direktori database.
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-slate-200">
+                {importLastSheetUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImportSource("sheet");
+                      setImportSheetUrl(importLastSheetUrl);
+                      setImportDupSkipped(0);
+                      handleImportSheetUrl(importLastSheetUrl);
+                    }}
+                    disabled={importBusy || importSaving}
+                    className="text-[#941A0B] bg-red-50 hover:bg-red-100 font-bold px-4 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  >
+                    <i className="fa-solid fa-rotate-right" />
+                    Ambil Ulang dari Sheets Terakhir
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={handlePushImportToForms}
+                    disabled={importBusy || importSaving || !importRows.length}
+                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
+                    title="Kirim baris import ke tab Input Kolektif untuk ditinjau / diedit sebelum disimpan"
+                  >
+                    <i className="fa-solid fa-arrow-right-to-bracket" />
+                    Kirim ke Input Kolektif
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveImportRows}
+                    disabled={importBusy || importSaving || !importRows.length || importRows.length > 10}
+                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
+                  >
+                    <i className={`fa-solid ${importSaving ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
+                    <span>{importSaving ? "Menyimpan..." : `Simpan ${importRows.length} Baris ke Direktori`}</span>
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
 

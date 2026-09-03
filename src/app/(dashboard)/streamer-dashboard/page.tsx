@@ -18,6 +18,7 @@ import { TabCheckOut } from "@/components/streamer-dashboard/tab-checkout";
 import {
   getScheduleEndFromSession,
   getCheckoutWindowState,
+  getStreamerActiveSessionState,
   CHECKOUT_WINDOW_HOURS,
 } from "@/components/streamer-dashboard/checkout-window";
 import { TabTerbatas } from "@/components/streamer-dashboard/tab-terbatas";
@@ -519,6 +520,12 @@ export default function StreamerDashboardPage() {
   const currentTier = matchedTier?.tier ?? dashboardData?.activeTier?.nama ?? "Basic";
   const currentRate = matchedTier?.ratePerJam ?? dashboardData?.activeTier?.ratePerJam ?? 25000;
   const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
+  const activeJadwal = activeSession?.jadwal || currentLiveJadwal;
+  const streamerActiveStatus = activeJadwal
+    ? getStreamerActiveSessionState(activeJadwal)
+    : activeSession
+    ? "ON AIR"
+    : null;
   const isCurrentlyOnAir = Boolean(activeSession || currentLiveJadwal);
 
   const filteredJeda = (terbatasData?.jedaTerbatas || []).filter((j) => {
@@ -692,7 +699,23 @@ export default function StreamerDashboardPage() {
             </div>
           </div>
 
-          {isCurrentlyOnAir ? (
+          {streamerActiveStatus === "PREPARE" ? (
+            <div className="flex items-center gap-2 bg-amber-500/25 border border-amber-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+              </span>
+              <span className="text-xs font-black text-amber-200 tracking-wider">SEDANG PREPARE</span>
+            </div>
+          ) : streamerActiveStatus === "PERLU LAPOR" ? (
+            <div className="flex items-center gap-2 bg-orange-500/25 border border-orange-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500" />
+              </span>
+              <span className="text-xs font-black text-orange-200 tracking-wider">PERLU LAPOR (GMV)</span>
+            </div>
+          ) : streamerActiveStatus === "ON AIR" ? (
             <div className="flex items-center gap-2 bg-rose-500/25 border border-rose-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />

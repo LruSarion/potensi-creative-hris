@@ -7,11 +7,31 @@ import { CHECKOUT_WINDOW_HOURS, CHECKOUT_WINDOW_MS } from "@/lib/schedule-rules"
 
 export { CHECKOUT_WINDOW_HOURS, CHECKOUT_WINDOW_MS };
 
-/** Jadwal shape subset needed to resolve the session end time. */
-export type ScheduleEndSource = {
+/** Jadwal shape subset needed to resolve session start and end times. */
+export type ScheduleTimeSource = {
   tanggal?: string | Date | null;
+  jamMulaiLive?: string | Date | null;
   jamSelesaiLive?: string | Date | null;
 } | null | undefined;
+
+export type ScheduleEndSource = ScheduleTimeSource;
+
+/**
+ * Resolve a session's absolute start Date.
+ */
+export function getScheduleStartFromSession(jadwal: ScheduleTimeSource): Date | null {
+  const t = jadwal?.jamMulaiLive;
+  if (!t) return null;
+  if (typeof t === "string" && !t.includes("T")) {
+    if (!jadwal?.tanggal) return null;
+    const dateStr = formatDateOnly(jadwal.tanggal) || String(jadwal.tanggal).slice(0, 10);
+    const timeStr = t.length === 5 ? t + ":00" : t;
+    const d = new Date(`${dateStr}T${timeStr}`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(t);
+  return isNaN(d.getTime()) ? null : d;
+}
 
 /**
  * Resolve a session's absolute end Date. Handles Prisma ISO datetimes
@@ -20,7 +40,7 @@ export type ScheduleEndSource = {
  * in tab-checkin). Returns null when no usable value exists — callers
  * treat that as "don't lock" (legacy data without jadwal relation).
  */
-export function getScheduleEndFromSession(jadwal: ScheduleEndSource): Date | null {
+export function getScheduleEndFromSession(jadwal: ScheduleTimeSource): Date | null {
   const t = jadwal?.jamSelesaiLive;
   if (!t) return null;
   if (typeof t === "string" && !t.includes("T")) {
@@ -32,6 +52,33 @@ export function getScheduleEndFromSession(jadwal: ScheduleEndSource): Date | nul
   }
   const d = new Date(t);
   return isNaN(d.getTime()) ? null : d;
+}
+
+export type StreamerLiveSessionState = "PREPARE" | "ON AIR" | "PERLU LAPOR";
+
+/**
+ * Compute the streamer's live session status based on the legacy SESI_AKTIF_STREAMER formula:
+ * - PREPARE: now < schedule start time (checked in early, preparing for live)
+ * - ON AIR: now between start time and end time (live is broadcasting)
+ * - PERLU LAPOR: now > end time (scheduled live ended, must check out / submit GMV)
+ */
+export function getStreamerActiveSessionState(
+  jadwal: ScheduleTimeSource,
+  nowMs: number = Date.now()
+): StreamerLiveSessionState {
+  const start = getScheduleStartFromSession(jadwal);
+  let end = getScheduleEndFromSession(jadwal);
+  if (start && end && end.getTime() < start.getTime()) {
+    end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
+  }
+
+  if (start && nowMs < start.getTime()) {
+    return "PREPARE";
+  }
+  if (end && nowMs > end.getTime()) {
+    return "PERLU LAPOR";
+  }
+  return "ON AIR";
 }
 
 export type CheckoutWindowState = "SEBELUM" | "TERBUKA" | "LEWAT" | "TANPA_JADWAL";

@@ -81,13 +81,23 @@ export function TabJadwal({
                 </td>
                 <td className="px-4 py-3">
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                    j.liveState === "LIVE"
+                    j.status === "ON AIR" || j.liveState === "LIVE"
                       ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
+                      : j.status === "PREPARE"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : j.status === "PERLU LAPOR"
+                      ? "bg-orange-50 text-orange-700 border-orange-200"
                       : j.status === "SELESAI"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                       : "bg-[#941A0B]/10 text-[#941A0B] border-[#941A0B]/20"
                   }`}>
-                    {j.liveState === "LIVE" ? "🔴 ON AIR" : j.status}
+                    {j.status === "ON AIR" || j.liveState === "LIVE"
+                      ? "🔴 ON AIR"
+                      : j.status === "PREPARE"
+                      ? "🟡 PREPARE"
+                      : j.status === "PERLU LAPOR"
+                      ? "🟠 PERLU LAPOR"
+                      : j.status}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
@@ -112,7 +122,7 @@ export function TabJadwal({
                       </a>
                     )}
 
-                    {j.liveState === "LIVE" ? (
+                    {j.status === "ON AIR" || j.status === "PREPARE" || j.status === "PERLU LAPOR" || j.liveState === "LIVE" ? (
                       <button
                         onClick={onGoCheckout}
                         className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition shadow-sm"

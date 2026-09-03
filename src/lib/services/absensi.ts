@@ -427,10 +427,34 @@ export async function listAbsensi(params?: { karyawanId?: string; view?: string;
       }
 
       let status = j.status as string;
-      if (j.liveState === "LIVE") status = "ON AIR";
-      else if (checkIn && !checkOut) status = "ON AIR";
-      else if (checkOut && checkOut.reportedGmv === null) status = "PERLU LAPOR";
-      else if (checkOut || j.status === "SELESAI") status = "SELESAI";
+      if (checkOut) {
+        if (checkOut.reportedGmv === null || checkOut.reportedGmv === undefined) {
+          status = "PERLU LAPOR";
+        } else {
+          status = "SELESAI";
+        }
+      } else if (checkIn) {
+        const nowMs = Date.now();
+        const schedStartMs = j.jamMulaiLive ? new Date(j.jamMulaiLive).getTime() : NaN;
+        let schedEndMs = j.jamSelesaiLive ? new Date(j.jamSelesaiLive).getTime() : NaN;
+
+        if (!isNaN(schedStartMs) && !isNaN(schedEndMs) && schedEndMs < schedStartMs) {
+          schedEndMs += 24 * 60 * 60 * 1000;
+        }
+
+        if (!isNaN(schedStartMs) && nowMs < schedStartMs) {
+          status = "PREPARE";
+        } else if (!isNaN(schedEndMs) && nowMs > schedEndMs) {
+          status = "PERLU LAPOR";
+        } else {
+          status = "ON AIR";
+        }
+      } else {
+        const raw = String(j.status);
+        if (raw === "BATAL" || raw === "CANCEL") status = "BATAL";
+        else if (raw === "LIBUR") status = "LIBUR";
+        else status = "TERJADWAL";
+      }
 
       const idAbsen = checkOut?.id 
         ? `ABS-${j.idJadwal.replace(/[^0-9]/g, "") || checkOut.id.slice(-4).toUpperCase()}`

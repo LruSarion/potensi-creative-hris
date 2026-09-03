@@ -39,6 +39,9 @@ export function TabRubah({
   const [editJadwalForm, setEditJadwalForm] =
     useState<EditJadwalFormState>(EMPTY_EDIT_JADWAL_FORM);
   const [savingEditJadwal, setSavingEditJadwal] = useState(false);
+  const [deletingJadwal, setDeletingJadwal] = useState(false);
+  const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
+  const [showOnAirWarningModal, setShowOnAirWarningModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
 
   // OTS Files
@@ -160,7 +163,7 @@ export function TabRubah({
     if (target) {
       populateEditJadwalForm(target);
     } else {
-      showAlert("⚠️ Tidak ada jadwal yang ditemukan untuk filter yang dipilih.");
+      toast.warning("Tidak ada jadwal yang ditemukan untuk filter yang dipilih.");
     }
   }
 
@@ -170,11 +173,12 @@ export function TabRubah({
 
   function handleCheckCrash() {
     if (!editJadwalForm.id) {
-      showAlert("⚠️ Pilih jadwal terlebih dahulu sebelum memeriksa crash.");
+      toast.warning("Pilih jadwal terlebih dahulu sebelum memeriksa crash.");
       return;
     }
-    showAlert(
-      "🛡️ Validasi Bebas Crash: Tidak ditemukan bentrok jadwal / crash pada slot studio dan host yang dipilih. Aman untuk disimpan!"
+    toast.success(
+      "Validasi Bebas Crash: Tidak ditemukan bentrok jadwal / crash pada slot studio dan host yang dipilih. Aman untuk disimpan!",
+      "Aman Bebas Crash"
     );
   }
 
@@ -235,6 +239,43 @@ export function TabRubah({
       toast.error(`Gagal mengubah jadwal: ${errMsg}`, "Gagal Menyimpan Perubahan");
     } finally {
       setSavingEditJadwal(false);
+    }
+  }
+
+  function handleDeleteJadwal() {
+    if (!selectedEditJadwal || !editJadwalForm.id) return;
+
+    // Check if schedule is actively ON AIR (has check-in without check-out or liveState LIVE)
+    const abs = selectedEditJadwal?.absensi || [];
+    const checkIns = abs.filter((a: any) => a.tipe === "CHECK_IN");
+    const checkOuts = abs.filter((a: any) => a.tipe === "CHECK_OUT");
+    const hasActiveCheckIn = checkIns.length > checkOuts.length;
+    const st = (editJadwalForm.status || "").toUpperCase();
+    const isLive = selectedEditJadwal?.liveState === "LIVE" || st === "ON_GOING" || st === "BERJALAN" || hasActiveCheckIn;
+
+    if (isLive) {
+      setShowOnAirWarningModal(true);
+      return;
+    }
+
+    setShowDeleteConfirmModal(true);
+  }
+
+  async function executeConfirmDelete() {
+    if (!selectedEditJadwal || !editJadwalForm.id) return;
+    setDeletingJadwal(true);
+    try {
+      await sendJson(`/api/jadwal?id=${editJadwalForm.id}`, "DELETE");
+      toast.success(`Jadwal ${editJadwalForm.idJadwal || ""} berhasil dihapus dari database!`);
+      setShowDeleteConfirmModal(false);
+      setSelectedEditJadwal(null);
+      setSearchEditId("");
+      fetchData();
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Terjadi kesalahan";
+      toast.error(`Gagal menghapus jadwal: ${errMsg}`, "Gagal Menghapus Jadwal");
+    } finally {
+      setDeletingJadwal(false);
     }
   }
 
@@ -1132,26 +1173,163 @@ export function TabRubah({
                 </>
               )}
 
-              {/* Action Buttons: Bebas Crash & Simpan Perubahan */}
+              {/* Action Buttons: Hapus Jadwal, Bebas Crash & Simpan Perubahan */}
               <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t border-slate-100">
                 <button
                   type="button"
+                  onClick={handleDeleteJadwal}
+                  disabled={deletingJadwal || savingEditJadwal}
+                  className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50 active:scale-95"
+                  title="Hapus jadwal ini secara permanen dari database"
+                >
+                  <i className={`fa-solid ${deletingJadwal ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
+                  <span>{deletingJadwal ? "Menghapus..." : "Hapus Jadwal"}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleCheckCrash}
-                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-sm"
+                  className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer active:scale-95"
                 >
                   <i className="fa-solid fa-shield-halved" /> Bebas Crash
                 </button>
                 <button
                   type="submit"
-                  disabled={savingEditJadwal}
-                  className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7a1509] text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm"
+                  disabled={savingEditJadwal || deletingJadwal}
+                  className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7a1509] text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50 active:scale-95"
                 >
-                  <i className="fa-solid fa-cloud-arrow-up" />
+                  <i className={`fa-solid ${savingEditJadwal ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
                   <span>{savingEditJadwal ? "Menyimpan..." : "Simpan Perubahan"}</span>
                 </button>
               </div>
             </div>
           </form>
+
+          {/* Modal Konfirmasi Hapus Jadwal (Pengganti window.confirm / alert) */}
+          {showDeleteConfirmModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl shrink-0">
+                    <i className="fa-solid fa-trash-can" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Konfirmasi Hapus Jadwal
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Tindakan ini bersifat permanen
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">ID Jadwal:</span>
+                    <span className="font-mono font-bold text-rose-700">{editJadwalForm.idJadwal}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Target:</span>
+                    <span className="font-semibold text-slate-800">
+                      {tipeRubah === "STREAMER" ? editJadwalForm.streamerNama : editJadwalForm.otsNama}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Waktu:</span>
+                    <span className="font-semibold text-slate-800">
+                      {editJadwalForm.tanggal} ({editJadwalForm.jamMulaiLive} - {editJadwalForm.jamSelesaiLive} WIB)
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Apakah Anda yakin ingin menghapus jadwal ini dari sistem? Semua relasi sesi dan slot studio akan dilepaskan secara permanen.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirmModal(false)}
+                    disabled={deletingJadwal}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={executeConfirmDelete}
+                    disabled={deletingJadwal}
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50 active:scale-95"
+                  >
+                    <i className={`fa-solid ${deletingJadwal ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
+                    <span>{deletingJadwal ? "Menghapus..." : "Ya, Hapus Jadwal"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Peringatan: Jadwal Sedang ON AIR (Penghapusan Diblokir) */}
+          {showOnAirWarningModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-xl shrink-0">
+                    <i className="fa-solid fa-triangle-exclamation" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Jadwal Sedang Berjalan
+                    </h3>
+                    <span className="inline-block bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-extrabold px-2 py-0.5 rounded-full mt-0.5 animate-pulse">
+                      🔴 SEDANG ON AIR
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50/80 rounded-xl p-3.5 border border-amber-200 text-xs space-y-1.5 text-amber-900">
+                  <div className="flex justify-between">
+                    <span className="text-amber-700">ID Jadwal:</span>
+                    <span className="font-mono font-bold text-amber-950">{editJadwalForm.idJadwal}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-700">Host / Streamer:</span>
+                    <span className="font-bold text-amber-950">
+                      {tipeRubah === "STREAMER" ? editJadwalForm.streamerNama : editJadwalForm.otsNama}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-amber-700">Waktu Siaran:</span>
+                    <span className="font-semibold text-amber-950">
+                      {editJadwalForm.jamMulaiLive} - {editJadwalForm.jamSelesaiLive} WIB
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 text-xs text-slate-600 leading-relaxed space-y-1">
+                  <p className="font-bold text-slate-800">
+                    ⚠️ Penghapusan Ditahan Sementara:
+                  </p>
+                  <p>
+                    Streamer telah melakukan presensi Check-In untuk sesi siaran ini. Menghapus jadwal saat sesi masih berjalan dapat merusak integritas rekaman jam kerja dan perhitungan gaji.
+                  </p>
+                  <p className="text-slate-500 text-[11px] pt-1">
+                    Silakan minta streamer untuk menyelesaikan siaran dan melakukan <strong>Check-Out</strong> di Streamer Dashboard terlebih dahulu sebelum jadwal dapat dihapus.
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowOnAirWarningModal(false)}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer active:scale-95"
+                  >
+                    <i className="fa-solid fa-check" />
+                    <span>Saya Mengerti</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

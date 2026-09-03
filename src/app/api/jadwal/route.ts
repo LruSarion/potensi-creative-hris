@@ -4,6 +4,7 @@ import {
   getJadwal,
   createJadwal,
   updateJadwal,
+  deleteJadwal,
   createJadwalBatch,
 } from "@/lib/services/jadwal";
 
@@ -32,4 +33,11 @@ export const PUT = apiHandler(async (req: Request) => {
   if (!id) throw new Error("id required");
   const body = await req.json();
   return updateJadwal(id, body);
+});
+
+export const DELETE = apiHandler(async (req: Request) => {
+  const url = new URL(req.url);
+  const id = url.searchParams.get("id");
+  if (!id) throw new Error("id required");
+  return deleteJadwal(id);
 });
