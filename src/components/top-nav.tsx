@@ -38,6 +38,7 @@ export default function TopNav({
     "/view-data": "View Data",
     "/client": "Client",
     "/master-data": "Master Data",
+    "/rules": "Rules & Kebijakan Operasional",
     "/history-log": "History Log",
   };
 

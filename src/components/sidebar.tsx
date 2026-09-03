@@ -129,6 +129,12 @@ export const MENU_ITEMS: NavItem[] = [
     roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
   },
   {
+    href: "/rules",
+    label: "Rules Operasional",
+    icon: "fa-solid fa-gavel",
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
+  },
+  {
     href: "/history-log",
     label: "History Log",
     icon: "fa-solid fa-clock-rotate-left",

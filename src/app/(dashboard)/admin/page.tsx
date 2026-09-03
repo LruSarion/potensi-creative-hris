@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { fetchJson, sendJson } from "@/lib/api-client";
+import OperationalRulesPanel from "@/components/admin/operational-rules-panel";
 
 export default function MasterDataAdminPage() {
   const { data: session } = useSession();
-  const [activeTab, setActiveTab] = useState<"master" | "console">("master");
+  const [activeTab, setActiveTab] = useState<"master" | "console" | "rules">("rules");
 
   const [matrix, setMatrix] = useState<any>(null);
   const [health, setHealth] = useState<any>(null);
@@ -127,7 +128,18 @@ export default function MasterDataAdminPage() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-2 border border-slate-200 p-1.5 rounded-xl bg-slate-50 w-fit">
+        <div className="flex flex-wrap gap-2 border border-slate-200 p-1.5 rounded-xl bg-slate-50 w-fit">
+          <button
+            onClick={() => setActiveTab("rules")}
+            className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 ${
+              activeTab === "rules"
+                ? "bg-white text-[#941A0B] shadow-sm border border-slate-200"
+                : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            <i className="fa-solid fa-gavel text-[#941A0B]" />
+            <span>Rules & Kebijakan Operasional</span>
+          </button>
           <button
             onClick={() => setActiveTab("master")}
             className={`px-4 py-2 text-xs font-bold rounded-lg transition flex items-center gap-2 ${
@@ -147,7 +159,7 @@ export default function MasterDataAdminPage() {
                 : "text-slate-500 hover:text-slate-800"
             }`}
           >
-            <i className="fa-solid fa-[#2563eb] fa-sliders text-blue-600" />
+            <i className="fa-solid fa-sliders text-blue-600" />
             <span>Admin Console & Integrasi</span>
           </button>
         </div>
@@ -406,6 +418,9 @@ export default function MasterDataAdminPage() {
           </div>
         </div>
       )}
+
+      {/* TAB 3: RULES & KEBIJAKAN OPERASIONAL */}
+      {activeTab === "rules" && <OperationalRulesPanel />}
     </div>
   );
 }

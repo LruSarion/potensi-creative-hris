@@ -115,34 +115,44 @@ export default function DashboardPage() {
 
           {/* View Toggle Tabs — only shown for admin roles */}
           {isAdmin && (
-          <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200 self-start sm:self-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setDashboardView("streamer_sop");
-                setSelectedStreamerId(null);
-              }}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                dashboardView === "streamer_sop"
-                  ? "bg-[#941A0B] text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
+          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+            <div className="flex gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => {
+                  setDashboardView("streamer_sop");
+                  setSelectedStreamerId(null);
+                }}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  dashboardView === "streamer_sop"
+                    ? "bg-[#941A0B] text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <i className="fa-solid fa-users-viewfinder text-xs" />
+                <span>Daftar &amp; Profil Streamer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDashboardView("main")}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  dashboardView === "main"
+                    ? "bg-[#941A0B] text-white shadow-xs"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <i className="fa-solid fa-chart-line text-xs" />
+                <span>Statistik Ringkasan</span>
+              </button>
+            </div>
+            <Link
+              href="/rules"
+              className="px-3.5 py-2 rounded-xl text-xs font-bold text-[#941A0B] bg-[#941A0B]/10 hover:bg-[#941A0B]/20 border border-[#941A0B]/20 transition flex items-center gap-1.5"
+              title="Kelola Rules & Kebijakan Operasional"
             >
-              <i className="fa-solid fa-users-viewfinder text-xs" />
-              <span>Daftar &amp; Profil Streamer</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDashboardView("main")}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                dashboardView === "main"
-                  ? "bg-[#941A0B] text-white shadow-xs"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              <i className="fa-solid fa-chart-line text-xs" />
-              <span>Statistik Ringkasan</span>
-            </button>
+              <i className="fa-solid fa-gavel text-xs" />
+              <span>Rules Operasional</span>
+            </Link>
           </div>
           )}
         </div>

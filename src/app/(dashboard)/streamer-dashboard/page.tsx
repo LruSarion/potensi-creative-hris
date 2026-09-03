@@ -15,6 +15,11 @@ import { TabReport } from "@/components/streamer-dashboard/tab-report";
 import { TabJadwal } from "@/components/streamer-dashboard/tab-jadwal";
 import { TabCheckIn } from "@/components/streamer-dashboard/tab-checkin";
 import { TabCheckOut } from "@/components/streamer-dashboard/tab-checkout";
+import {
+  getScheduleEndFromSession,
+  getCheckoutWindowState,
+  CHECKOUT_WINDOW_HOURS,
+} from "@/components/streamer-dashboard/checkout-window";
 import { TabTerbatas } from "@/components/streamer-dashboard/tab-terbatas";
 import { getLateCheckInStatus } from "@/components/streamer-dashboard/late-check";
 import { TabRiwayat } from "@/components/streamer-dashboard/tab-riwayat";
@@ -318,6 +323,23 @@ export default function StreamerDashboardPage() {
   }
 
   async function handleCheckOutSubmit() {
+    // Checkout window guard: only allowed between the scheduled end time
+    // and H+8 (mirrors the legacy SESI_AKTIF_STREAMER formula). Backend
+    // enforces the same rule — this is the friendly fast-fail.
+    const sessionEnd = getScheduleEndFromSession(activeSession?.jadwal);
+    const windowState = getCheckoutWindowState(sessionEnd, Date.now());
+    if (windowState === "SEBELUM" && sessionEnd) {
+      const msg = `Check-out baru dibuka saat sesi berakhir (${formatDateSafe(sessionEnd, { hour: "2-digit", minute: "2-digit" })} WIB).`;
+      toast.warning(msg);
+      setError(msg);
+      return;
+    }
+    if (windowState === "LEWAT") {
+      const msg = `Jendela check-out (H+${CHECKOUT_WINDOW_HOURS} jam setelah sesi berakhir) sudah terlewat. Silakan lapor melalui tab Terbatas.`;
+      toast.warning(msg);
+      setError(msg);
+      return;
+    }
     if (!reportedGmv) {
       toast.warning("Harap isi total nominal GMV income untuk sesi ini.");
       setError("Harap isi total nominal GMV income untuk sesi ini.");

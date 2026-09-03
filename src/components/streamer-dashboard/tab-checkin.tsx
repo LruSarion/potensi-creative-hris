@@ -8,10 +8,28 @@
 import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
 import type { ActiveSession, Jadwal } from "./types";
 import {
+  formatDateOnly,
   formatDateSafe,
   formatTimeSafe,
 } from "@/lib/utils/date-format";
+import { useMemo, useEffect } from "react";
 import { getLateCheckInStatus } from "./late-check";
+
+function getScheduleStartTime(j: Jadwal): Date | null {
+  if (!j.jamMulaiLive) return null;
+  if (typeof j.jamMulaiLive === "string" && j.jamMulaiLive.includes("T")) {
+    const d = new Date(j.jamMulaiLive);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  if (j.tanggal) {
+    const dateStr = formatDateOnly(j.tanggal) || String(j.tanggal).slice(0, 10);
+    const timeStr = j.jamMulaiLive.length === 5 ? j.jamMulaiLive + ":00" : j.jamMulaiLive;
+    const d = new Date(`${dateStr}T${timeStr}`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(j.jamMulaiLive);
+  return isNaN(d.getTime()) ? null : d;
+}
 
 export function TabCheckIn({
   activeSession,
@@ -50,6 +68,52 @@ export function TabCheckIn({
   onGoCheckout: () => void;
   onSubmit: () => void;
 }) {
+  // Only the 1 nearest schedule within the H-2 hours window appears for check-in
+  const singleActiveJadwal = useMemo(() => {
+    const now = new Date();
+    const activeList = jadwal.filter(
+      (j) =>
+        j.status !== "SELESAI" &&
+        j.status !== "DIBATALKAN" &&
+        j.status !== "REJECTED" &&
+        j.liveState !== "CLOSED" &&
+        j.liveState !== "LIVE" &&
+        j.liveState !== "REVIEW"
+    );
+
+    const eligible: Jadwal[] = [];
+    for (const j of activeList) {
+      const startTime = getScheduleStartTime(j);
+      if (!startTime) continue;
+      const diffMinutes = Math.floor((now.getTime() - startTime.getTime()) / 60000);
+      // H-2 hours: diffMinutes >= -120 (starts in 120 mins or less)
+      // H+1 hour: diffMinutes <= 60 (up to 60 mins after start)
+      if (diffMinutes >= -120 && diffMinutes <= 60) {
+        eligible.push(j);
+      }
+    }
+
+    // Sort ascending by start time (formula: SORT(..., TRUE))
+    eligible.sort((a, b) => {
+      const ta = getScheduleStartTime(a)?.getTime() ?? 0;
+      const tb = getScheduleStartTime(b)?.getTime() ?? 0;
+      return ta - tb;
+    });
+
+    // Return only the single 1 nearest session within H-2 hours
+    return eligible[0] ?? null;
+  }, [jadwal]);
+
+  // Auto-select the single active schedule if available
+  useEffect(() => {
+    if (singleActiveJadwal) {
+      if (selectedJadwalId !== singleActiveJadwal.id) {
+        onSelectJadwalChange(singleActiveJadwal.id, singleActiveJadwal);
+      }
+    } else if (selectedJadwalId) {
+      onSelectJadwalChange("", null);
+    }
+  }, [singleActiveJadwal, selectedJadwalId, onSelectJadwalChange]);
   return activeSession ? (
     <div className="bg-white border border-amber-200 rounded-2xl p-6 sm:p-8 text-center space-y-4 shadow-sm">
       <div className="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto text-2xl border border-amber-200 shadow-inner">
@@ -96,15 +160,25 @@ export function TabCheckIn({
             className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-[#941A0B] outline-none bg-white"
             required
           >
-            <option value="">-- Pilih Jadwal Siaran --</option>
-            {jadwal
-              .filter((j) => j.status !== "SELESAI" && j.liveState !== "CLOSED" && j.liveState !== "LIVE")
-              .map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.idJadwal} – {j.client?.namaClient ?? "Brand"} ({formatDateSafe(j.tanggal)} • {formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB)
-                </option>
-              ))}
+            {singleActiveJadwal ? (
+              <option value={singleActiveJadwal.id}>
+                {singleActiveJadwal.idJadwal} – {singleActiveJadwal.client?.namaClient ?? "Brand"} ({formatDateSafe(singleActiveJadwal.tanggal)} • {formatTimeSafe(singleActiveJadwal.jamMulaiLive)} - {formatTimeSafe(singleActiveJadwal.jamSelesaiLive)} WIB)
+              </option>
+            ) : (
+              <option value="" disabled>
+                -- Tidak ada sesi live siap check-in (Dibuka H-2 jam sebelum live) --
+              </option>
+            )}
           </select>
+
+          {!singleActiveJadwal && (
+            <div className="mt-2 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-start gap-2.5">
+              <i className="fa-solid fa-circle-info text-amber-600 mt-0.5 text-sm shrink-0" />
+              <span>
+                Hanya 1 jadwal live terdekat dalam rentang <strong>H-2 jam sebelum sesi</strong> yang ditampilkan untuk check-in. Jika sesi live Anda dimulai lebih dari 2 jam lagi, jadwal akan otomatis muncul saat memasuki jendela waktu tersebut.
+              </span>
+            </div>
+          )}
 
           {/* Dark card summary (matching ref-website-lama ciSummary) */}
           {selectedJadwalDetail && (

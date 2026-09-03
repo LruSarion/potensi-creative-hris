@@ -4,6 +4,8 @@ import { AppError } from "@/lib/errors";
 import { requireRole, tenantWhere } from "@/lib/auth-helpers";
 import { recordStreamerExperienceOnSessionComplete } from "@/lib/services/streamer-experience";
 import { formatTimeSafe } from "@/lib/utils/date-format";
+import { getOperationalRules, validateGeoLocation } from "@/lib/services/operational-rules";
+import { CHECKOUT_WINDOW_HOURS, CHECKOUT_WINDOW_MS } from "@/lib/schedule-rules";
 
 const absensiSchema = z.object({
   karyawanId: z.string().min(1),
@@ -46,6 +48,9 @@ export async function checkIn(input: AbsensiInput) {
   const parsed = absensiSchema.parse({ ...input, karyawanId: targetKaryawanId });
   parsed.jadwalId = parsed.jadwalId || null; // Fix empty string foreign key violation
 
+  const operationalRules = await getOperationalRules(user.tenantId);
+  const streamerRules = operationalRules.streamer;
+
   if (parsed.jadwalId && !parsed.isTerusan) {
     const j = await db.jadwal.findUnique({ where: { id: parsed.jadwalId } });
     if (j) {
@@ -55,10 +60,30 @@ export async function checkIn(input: AbsensiInput) {
       if (j.liveState === "LIVE") {
         throw AppError.badRequest("Jadwal ini sedang berjalan (ON AIR). Silakan lakukan check-out, bukan check-in.");
       }
-      const sixtyMinsBefore = new Date(j.jamMulaiLive.getTime() - 60 * 60000);
+      const openWindowMin = streamerRules.jendelaBukaMenit || 120;
+      const closeWindowMin = streamerRules.jendelaTutupMenit || 60;
+      const openTime = new Date(j.jamMulaiLive.getTime() - openWindowMin * 60000);
+      const closeTime = new Date(j.jamMulaiLive.getTime() + closeWindowMin * 60000);
       const now = new Date();
-      if (now < sixtyMinsBefore) {
-        throw AppError.badRequest("Terlalu dini. Check-In baru dibuka 60 menit sebelum sesi dimulai.");
+      const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(user.role);
+      if (now < openTime) {
+        throw AppError.badRequest(`Terlalu dini. Check-In baru dibuka ${openWindowMin} menit sebelum sesi dimulai.`);
+      }
+      if (!isAdmin && now > closeTime) {
+        throw AppError.badRequest(`Batas waktu check-in reguler telah kedaluwarsa (> ${closeWindowMin} menit setelah sesi dimulai). Silakan gunakan tab Pelaporan Terbatas.`);
+      }
+
+      // Geo-Location validation against studio branch
+      if (streamerRules.geoLocations && streamerRules.geoLocations.length > 0) {
+        const geoCheck = validateGeoLocation(parsed.lokasi, j.cabangStudio, streamerRules.geoLocations);
+        if (!isAdmin && !geoCheck.valid && geoCheck.mode === "STRICT") {
+          throw AppError.badRequest(`Check-In Ditolak: ${geoCheck.message ?? "Anda berada di luar radius lokasi studio yang ditentukan."}`);
+        }
+        if (!geoCheck.valid && geoCheck.mode === "WARNING") {
+          parsed.catatan = parsed.catatan
+            ? `${parsed.catatan} [PERINGATAN LOKASI: ${geoCheck.message}]`
+            : `[PERINGATAN LOKASI: ${geoCheck.message}]`;
+        }
       }
     }
   }
@@ -201,6 +226,29 @@ export async function checkOut(input: AbsensiInput) {
   });
   if (!lastCheckIn) {
     throw AppError.badRequest("Belum ada check-in untuk karyawan ini.");
+  }
+
+  // Checkout window (STREAMER only): check-out opens at the scheduled end
+  // time and closes CHECKOUT_WINDOW_HOURS later — mirrors the legacy
+  // SESI_AKTIF_STREAMER formula. Other categories (STAFF/OTS, tab Terbatas)
+  // are not gated. Schedules without jamSelesaiLive (legacy data) stay open.
+  const windowJadwalId = parsed.jadwalId ?? lastCheckIn.jadwalId;
+  if (windowJadwalId && parsed.kategori === "STREAMER") {
+    const j = await db.jadwal.findUnique({ where: { id: windowJadwalId } });
+    if (j?.jamSelesaiLive) {
+      const end = new Date(j.jamSelesaiLive);
+      const now = Date.now();
+      if (now < end.getTime()) {
+        throw AppError.conflict(
+          `Check-out belum dibuka: sesi berakhir ${formatTimeSafe(end)} WIB.`
+        );
+      }
+      if (now > end.getTime() + CHECKOUT_WINDOW_MS) {
+        throw AppError.conflict(
+          `Jendela check-out (H+${CHECKOUT_WINDOW_HOURS} jam setelah sesi berakhir) sudah terlewat. Silakan lapor melalui tab Terbatas.`
+        );
+      }
+    }
   }
 
   return db.$transaction(async (tx) => {

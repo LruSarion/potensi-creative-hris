@@ -7,6 +7,11 @@ export const TOKEN_JEDA_MINUTES = 30; // default rest gap (client uses token jed
 export const WAJIB_HADIR_MINUTES = 25;
 export const BATAS_TERLAMBAT_MINUTES = 24;
 
+/** Checkout window: how long after a session's scheduled end a STREAMER
+ *  check-out stays open (legacy SESI_AKTIF_STREAMER formula: <= 8/24 day). */
+export const CHECKOUT_WINDOW_HOURS = 8;
+export const CHECKOUT_WINDOW_MS = CHECKOUT_WINDOW_HOURS * 3600 * 1000;
+
 /** Agency-level rest gap override (minutes). Set in Tenant.config or env. */
 export const DEFAULT_REST_GAP_MINUTES = TOKEN_JEDA_MINUTES;
 

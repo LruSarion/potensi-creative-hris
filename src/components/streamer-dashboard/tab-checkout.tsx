@@ -8,6 +8,8 @@ import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
 import BuktiGmvInput from "./bukti-gmv-input";
 import type { ActiveSession } from "./types";
 import { formatTimeSafe } from "@/lib/utils/date-format";
+import { useEffect, useState } from "react";
+import { getScheduleEndFromSession, getCheckoutWindowState } from "./checkout-window";
 
 export function TabCheckOut({
   activeSession,
@@ -52,6 +54,19 @@ export function TabCheckOut({
   onCameraStatusChange: (ready: boolean, err: string | null) => void;
   onSubmit: () => void;
 }) {
+  // Checkout window: re-evaluate every 30s so the button unlocks itself
+  // when the session end time arrives without a manual refresh.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sessionEnd = getScheduleEndFromSession(activeSession?.jadwal);
+  const windowState = getCheckoutWindowState(sessionEnd, nowTick);
+  const checkoutLocked =
+    activeSession && windowState !== "TANPA_JADWAL" && windowState !== "TERBUKA";
+
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm">
       <h3 className="font-bold text-lg text-slate-900 mb-1 border-b border-slate-100 pb-2">Form Check-Out Live</h3>
@@ -71,7 +86,7 @@ export function TabCheckOut({
               <div>
                 <p className="text-[10px] text-slate-400 mb-0.5">Durasi Berlangsung</p>
                 <p className="text-sm font-bold text-[#FA3737]">
-                  {Math.round((Date.now() - new Date(activeSession.waktu).getTime()) / 60000)} Menit
+                  {Math.round((nowTick - new Date(activeSession.waktu).getTime()) / 60000)} Menit
                 </p>
               </div>
               <div>
@@ -85,6 +100,36 @@ export function TabCheckOut({
                 <p className="text-sm font-bold text-rose-400">🔴 ON AIR</p>
               </div>
             </div>
+
+            {/* Checkout window banner: locked before the scheduled end, open until H+8 */}
+            {sessionEnd && windowState !== "TERBUKA" && (
+              <div
+                className={`mt-4 mb-[-12px] p-3.5 rounded-xl border flex items-start gap-2.5 ${
+                  windowState === "SEBELUM"
+                    ? "bg-amber-50 border-amber-200 text-amber-800"
+                    : "bg-red-50 border-red-200 text-red-700"
+                }`}
+              >
+                <i
+                  className={`fa-solid ${
+                    windowState === "SEBELUM" ? "fa-hourglass-half text-amber-600" : "fa-circle-xmark text-red-600"
+                  } mt-0.5`}
+                />
+                <p className="text-[11px] leading-relaxed">
+                  {windowState === "SEBELUM" ? (
+                    <>
+                      Check-out baru dibuka saat sesi berakhir — <strong>{formatTimeSafe(sessionEnd)} WIB</strong>.
+                      Sisa waktu sekitar <strong>{Math.max(1, Math.ceil((sessionEnd.getTime() - nowTick) / 60000))} menit</strong>.
+                    </>
+                  ) : (
+                    <>
+                      Jendela check-out (H+8 jam setelah sesi berakhir <strong>{formatTimeSafe(sessionEnd)} WIB</strong>) sudah terlewat.
+                      Silakan lapor melalui tab <strong>Terbatas</strong>.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -173,6 +218,7 @@ export function TabCheckOut({
               onClick={onSubmit}
               disabled={
                 actionLoading ||
+                !!checkoutLocked ||
                 !reportedGmv ||
                 !checkoutFotoGmv ||
                 !checkoutFotoUrl ||
@@ -182,10 +228,14 @@ export function TabCheckOut({
               }
               className="bg-amber-500 text-white font-bold py-3 px-8 rounded-xl hover:bg-amber-600 transition shadow-md w-full md:w-auto disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-95"
             >
-              <i className="fa-solid fa-upload mr-1" />
+              <i className={`fa-solid ${checkoutLocked && windowState === "SEBELUM" ? "fa-hourglass-half" : "fa-upload"} mr-1`} />
               <span>
                 {actionLoading
                   ? "Memproses Check-Out..."
+                  : checkoutLocked && windowState === "SEBELUM"
+                  ? `Checkout Dibuka Jam ${sessionEnd ? formatTimeSafe(sessionEnd) : "--:--"} WIB`
+                  : checkoutLocked && windowState === "LEWAT"
+                  ? "Jendela Check-Out Terlewat — Lapor via Tab Terbatas"
                   : !reportedGmv
                   ? "Isi Nominal GMV Terlebih Dahulu"
                   : !checkoutFotoGmv
