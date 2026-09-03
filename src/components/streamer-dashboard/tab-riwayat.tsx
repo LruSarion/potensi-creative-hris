@@ -159,7 +159,7 @@ export function TabRiwayat({
       </div>
 
       {/* Table (8 Kolom persis ref-deploy) */}
-      <div className="overflow-x-auto min-h-[480px] rounded-2xl border border-slate-200 relative bg-white shadow-xs">
+      <div className="overflow-x-auto overflow-y-auto min-h-[480px] max-h-[65vh] rounded-2xl border border-slate-200 relative bg-white shadow-xs">
         <table className="w-full text-left text-xs whitespace-nowrap border-collapse">
           <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200 sticky top-0 z-30 shadow-xs text-[11px] uppercase tracking-wider">
             <tr>

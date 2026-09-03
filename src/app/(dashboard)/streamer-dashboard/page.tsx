@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useSession } from "next-auth/react";
 import type { LocationCoordinates } from "@/components/streamer-dashboard/live-camera-checkin";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
@@ -95,7 +95,13 @@ export default function StreamerDashboardPage() {
 
   // Request Tab state
   const [requestStatus, setRequestStatus] = useState<RequestStatusData | null>(null);
-  const [requestSubTab, setRequestSubTab] = useState<"libur" | "sesi">("libur");
+  // TODO(ref-deploy-request): struktur lama — requestSubTab diganti reqCategory/reqSubLibur/reqSubSesi.
+  // const [requestSubTab, setRequestSubTab] = useState<"libur" | "sesi">("libur");
+  const [reqCategory, setReqCategory] = useState<"libur" | "sesilive">("libur");
+  const [reqSubLibur, setReqSubLibur] = useState<"jadwal" | "pengajuan">("jadwal");
+  const [reqSubSesi, setReqSubSesi] = useState<"history" | "pengajuan">("pengajuan");
+  const [liburCalendar, setLiburCalendar] = useState<{ id: string; tanggal: string; alasan?: string | null }[]>([]);
+  const [cekLiburMsg, setCekLiburMsg] = useState<string | null>(null);
   const [leaveDate, setLeaveDate] = useState("");
   const [leaveReason, setLeaveReason] = useState("");
   const [shiftDate, setShiftDate] = useState("");
@@ -129,10 +135,39 @@ export default function StreamerDashboardPage() {
 
   async function loadRequestStatus() {
     try {
-      const data = await fetchJson<RequestStatusData>("/api/streamer?view=request-status");
+      const [data, libur] = await Promise.all([
+        fetchJson<RequestStatusData>("/api/streamer?view=request-status").catch(() => null),
+        fetchJson<{ id: string; tanggal: string; alasan?: string | null }[]>("/api/streamer?view=libur").catch(() => null),
+      ]);
       if (data) setRequestStatus(data);
+      if (Array.isArray(libur)) setLiburCalendar(libur);
     } catch {
       // ignore
+    }
+  }
+
+  // Cek Libur Terakhir (ref-deploy cekLiburMingguan): tanggal libur APPROVED terakhir streamer.
+  function handleCekLibur() {
+    const approved = (requestStatus?.leaveRequests ?? [])
+      .filter((l) => l.status === "APPROVED")
+      .sort((a, b) => new Date(b.tanggalMulai).getTime() - new Date(a.tanggalMulai).getTime());
+    if (approved.length === 0) {
+      setCekLiburMsg("Belum ada riwayat libur yang disetujui bulan ini.");
+      return;
+    }
+    const last = approved[0];
+    setCekLiburMsg(
+      `Libur terakhir yang disetujui: ${formatDateSafe(last.tanggalMulai, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`
+    );
+  }
+
+  // Ref-deploy tab-report: ganti periode bulan -> refetch data dashboard.
+  async function loadDashboardPeriode(periode: string) {
+    try {
+      const d = await fetchJson<DashboardData>(`/api/streamer?view=dashboard&periode=${encodeURIComponent(periode)}`);
+      if (d) setDashboardData(d);
+    } catch {
+      toast.error("Gagal memuat laporan periode " + periode);
     }
   }
 
@@ -677,7 +712,7 @@ export default function StreamerDashboardPage() {
     });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0">
       {/* TODO(hapus-profil): kartu profil gradient (avatar, nama, badge STREAMER,
           pill status PREPARE/ON AIR/PERLU LAPOR, 3 sel statistik tier/jam/sesi)
           DIHAPUS ATAS PERMINTAAN — jangan dibuang. Versi lama ada di git history
@@ -738,7 +773,7 @@ export default function StreamerDashboardPage() {
       )}
 
       {/* TAB NAVIGATION — Horizontal scroll (ref-deploy scrollableTabContainer) */}
-      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto no-scrollbar">
+      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
         <div className="flex gap-1.5 min-w-max">
           {visibleTabs.map((tab) => {
             const isActive = activeTab === tab.id;
@@ -931,8 +966,15 @@ export default function StreamerDashboardPage() {
       {activeTab === "request" && (
         <TabRequest
           requestStatus={requestStatus}
-          requestSubTab={requestSubTab}
-          onRequestSubTabChange={setRequestSubTab}
+          // TODO(ref-deploy-request): props lama requestSubTab/onRequestSubTabChange diganti struktur kategori ref-deploy.
+          // requestSubTab={requestSubTab}
+          // onRequestSubTabChange={setRequestSubTab}
+          reqCategory={reqCategory}
+          reqSubLibur={reqSubLibur}
+          reqSubSesi={reqSubSesi}
+          onReqCategoryChange={setReqCategory}
+          onReqSubLiburChange={setReqSubLibur}
+          onReqSubSesiChange={setReqSubSesi}
           leaveDate={leaveDate}
           onLeaveDateChange={setLeaveDate}
           leaveReason={leaveReason}
@@ -948,6 +990,9 @@ export default function StreamerDashboardPage() {
           onShiftNoteChange={setShiftNote}
           onShiftSubmit={handleShiftSubmit}
           submittingRequest={submittingRequest}
+          liburCalendar={liburCalendar}
+          cekLiburMsg={cekLiburMsg}
+          onCekLibur={handleCekLibur}
         />
       )}
 
@@ -1022,7 +1067,13 @@ export default function StreamerDashboardPage() {
       )}
 
       {/* ======== TAB: REPORT ======== */}
-      {activeTab === "report" && <TabReport dashboardData={dashboardData} />}
+      {activeTab === "report" && (
+        <TabReport
+          dashboardData={dashboardData}
+          onPeriodeChange={loadDashboardPeriode}
+          loading={loading}
+        />
+      )}
     </div>
   );
 }

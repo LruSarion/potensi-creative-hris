@@ -241,19 +241,29 @@ function periodeRange(periode: string): [number, number] {
   const year = m ? parseInt(m[2], 10) : new Date().getFullYear();
   return [new Date(year, idx, 1).getTime(), new Date(year, idx + 1, 1).getTime()];
 }
-/** Full realtime dashboard data for the streamer. */
-export async function getMyDashboard() {
+/** Full realtime dashboard data for the streamer (ref-deploy tab-report). */
+export async function getMyDashboard(periode?: string) {
   const karyawanId = await requireStreamer();
 
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-  // Current month label for tiering lookup
   const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-  const currentPeriode = `${months[now.getMonth()]} ${now.getFullYear()}`;
 
-  const [karyawan, jadwalBulanIni, abensiBulanIni, incidents, tieringList] = await Promise.all([
+  // Periode filter (ref-deploy filterReportPeriode): "Bulan YYYY", default bulan berjalan.
+  let startOfMonth: Date;
+  let endOfMonth: Date;
+  let currentPeriode: string;
+  if (periode) {
+    const [startMs, endMs] = periodeRange(periode);
+    startOfMonth = new Date(startMs);
+    endOfMonth = new Date(endMs);
+    currentPeriode = periode;
+  } else {
+    startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    currentPeriode = `${months[now.getMonth()]} ${now.getFullYear()}`;
+  }
+
+  const [karyawan, jadwalBulanIni, abensiBulanIni, incidents, tieringList, sesiBulan] = await Promise.all([
     db.karyawan.findUnique({
       where: { id: karyawanId },
       include: { streamerProfile: true },
@@ -294,6 +304,17 @@ export async function getMyDashboard() {
       orderBy: { createdAt: "desc" },
     }),
     db.tiering.findMany({ orderBy: { jamMinimal: "asc" } }),
+    // All sessions in the period (any status) — for Selesai vs Batal counters (ref-deploy repSelesai/repBatal).
+    db.jadwal.findMany({
+      where: {
+        OR: [
+          { streamerKaryawanId: karyawanId },
+          { hostKaryawanId: karyawanId },
+        ],
+        tanggal: { gte: startOfMonth, lt: endOfMonth },
+      },
+      select: { status: true, liveState: true },
+    }),
   ]);
 
   // Calculate total live hours from jadwal
@@ -317,9 +338,30 @@ export async function getMyDashboard() {
     .filter((a) => a.tipe === "CHECK_OUT" && a.reportedGmv)
     .reduce((s, a) => s + Number(a.reportedGmv), 0);
 
+  // Selesai vs Batal session counters (ref-deploy repSelesai/repBatal)
+  const sesiSelesai = sesiBulan.filter(
+    (j) => j.status === "SELESAI" || j.liveState === "CLOSED"
+  ).length;
+  const sesiBatal = sesiBulan.filter(
+    (j) => j.status === "DIBATALKAN" || j.status === "REJECTED"
+  ).length;
+
   // Total denda (fines) from resolved incidents
   const totalDenda = incidents.reduce((s, i) => s + Number(i.fineApplied ?? 0), 0);
   const netPay = grossPay - totalDenda;
+
+  // Rekapitulasi Kedisiplinan (ref-deploy repRingan/repSedang/repBerat/repDendaAktif/repDendaBatal)
+  const severityCounts = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
+  let dendaAktif = 0;
+  let dendaDibatalkan = 0;
+  incidents.forEach((i) => {
+    if (i.severity in severityCounts) severityCounts[i.severity as keyof typeof severityCounts]++;
+    const fine = Number(i.fineApplied ?? 0);
+    // CLOSED = banding diterima / denda di-batalkan (ref-deploy repDendaBatal);
+    // RESOLVED = denda masih berlaku (repDendaAktif).
+    if (i.status === "CLOSED") dendaDibatalkan += fine;
+    else dendaAktif += fine;
+  });
 
   // Contract countdown
   const kontrakEndDate = karyawan?.endDate ?? null;
@@ -339,6 +381,11 @@ export async function getMyDashboard() {
     periode: currentPeriode,
     totalJam: Math.round(totalJam * 100) / 100,
     totalSesi: jadwalBulanIni.length,
+    sesiSelesai,
+    sesiBatal,
+    severityCounts,
+    dendaAktif: Math.round(dendaAktif),
+    dendaDibatalkan: Math.round(dendaDibatalkan),
     activeTier: activeTier ? { nama: activeTier.tier, ratePerJam } : null,
     grossPay: Math.round(grossPay),
     totalGmv: Math.round(totalGmv),
@@ -512,6 +559,25 @@ export async function getTerbatasData() {
   };
 }
 
+/**
+ * Kalender libur streamer (ref-deploy tab-request "Jadwal Libur"):
+ * tanggal libur yang sudah terjadwal/tercatat untuk streamer.
+ */
+export async function getMyLiburCalendar() {
+  const karyawanId = await requireStreamer();
+
+  const libur = await db.liburStreamer.findMany({
+    where: { karyawanId },
+    orderBy: { tanggal: "asc" },
+  });
+
+  return libur.map((l) => ({
+    id: l.id,
+    tanggal: l.tanggal,
+    alasan: l.alasan,
+  }));
+}
+
 /** Get form controls & leave/shift request status for current streamer */
 export async function getStreamerRequestStatus() {
   const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
@@ -574,7 +640,7 @@ export async function getStreamerRequestStatus() {
   };
 }
 
-/** Submit leave request by streamer */
+/** Get form controls & leave/shift request status for current streamer */
 export async function submitLeaveRequest(input: { tanggal: string; alasan?: string }) {
   const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
   const karyawanId = user.karyawanId;

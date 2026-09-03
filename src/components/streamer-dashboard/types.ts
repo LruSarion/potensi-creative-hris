@@ -107,6 +107,12 @@ export type DashboardData = {
   periode: string;
   totalJam: number;
   totalSesi: number;
+  // Ref-deploy tab-report counters (optional — server lama belum kirim).
+  sesiSelesai?: number;
+  sesiBatal?: number;
+  severityCounts?: { LOW: number; MEDIUM: number; HIGH: number; CRITICAL: number };
+  dendaAktif?: number;
+  dendaDibatalkan?: number;
   activeTier: { nama: string; ratePerJam: number } | null;
   grossPay: number;
   totalGmv: number;

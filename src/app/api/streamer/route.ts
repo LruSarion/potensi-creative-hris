@@ -5,6 +5,7 @@ import {
   getMyReport,
   getMySesiAktif,
   getMyDashboard,
+  getMyLiburCalendar,
   getPendingGmv,
   getTerbatasData,
   getStreamerRequestStatus,
@@ -20,11 +21,12 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "absensi") return getMyAbsensi();
   if (view === "report") return getMyReport(periode);
   if (view === "sesi") return getMySesiAktif();
-  if (view === "dashboard") return getMyDashboard();
+  if (view === "dashboard") return getMyDashboard(periode);
   if (view === "pending-gmv") return getPendingGmv();
   if (view === "terbatas") return getTerbatasData();
   if (view === "studios") return getStudioList();
   if (view === "request-status") return getStreamerRequestStatus();
+  if (view === "libur") return getMyLiburCalendar();
   return getMyJadwal();
 });
 
