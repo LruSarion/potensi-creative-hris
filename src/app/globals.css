@@ -58,6 +58,15 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   height: 5px;
 }
 
+/* Hidden Scrollbar (horizontal swipe areas — ref-deploy no-scrollbar) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }

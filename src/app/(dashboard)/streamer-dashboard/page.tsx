@@ -18,7 +18,8 @@ import { TabCheckOut } from "@/components/streamer-dashboard/tab-checkout";
 import {
   getScheduleEndFromSession,
   getCheckoutWindowState,
-  getStreamerActiveSessionState,
+  // TODO(hapus-profil): hanya dipakai kartu profil (status pill) — ikut dihapus.
+  // getStreamerActiveSessionState,
   CHECKOUT_WINDOW_HOURS,
 } from "@/components/streamer-dashboard/checkout-window";
 import { TabTerbatas } from "@/components/streamer-dashboard/tab-terbatas";
@@ -53,7 +54,8 @@ export default function StreamerDashboardPage() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [pendingGmvList, setPendingGmvList] = useState<PerluLaporItem[]>([]);
-  const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
+  // TODO(hapus-profil): state tiering hanya dipakai kartu profil — dipertahankan sebagai komentar.
+  // const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
   const [absensiHistory, setAbsensiHistory] = useState<AbsensiHistory[]>([]);
 
   // Check-in form state
@@ -140,12 +142,13 @@ export default function StreamerDashboardPage() {
     try {
       // fetchJson throws on non-success; each endpoint keeps its original
       // fallback so one failing view never blocks the rest of the dashboard.
-      const [jRes, sRes, dRes, pRes, tRes, hRes, tbRes, stdRes] = await Promise.all([
+      // TODO(hapus-profil): fetch tiering (kartu profil) dihentikan — tRes tidak dipakai.
+      const [jRes, sRes, dRes, pRes, hRes, tbRes, stdRes] = await Promise.all([
         fetchJson<Jadwal[]>("/api/streamer?view=jadwal").catch(() => null),
         fetchJson<ActiveSession | null>("/api/streamer?view=sesi").catch(() => null),
         fetchJson<DashboardData>("/api/streamer?view=dashboard").catch(() => null),
         fetchJson<PerluLaporItem[]>("/api/streamer?view=pending-gmv").catch(() => null),
-        fetchJson<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number | string }[]>("/api/payroll?tiering=1").catch(() => null),
+        // fetchJson<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number | string }[]>("/api/payroll?tiering=1").catch(() => null),
         fetchJson<AbsensiHistory[]>("/api/absensi?view=history").catch(() => null),
         fetchJson<TerbatasData>("/api/streamer?view=terbatas").catch(() => null),
         fetchJson<{ name: string; cabang: string; no: string }[]>("/api/streamer?view=studios").catch(() => null),
@@ -188,14 +191,16 @@ export default function StreamerDashboardPage() {
         setPendingGmvList(pRes);
       }
       if (Array.isArray(hRes)) setAbsensiHistory(hRes);
-      if (Array.isArray(tRes)) {
-        setTiering(tRes.map((b) => ({
-          tier: b.tier,
-          jamMinimal: b.jamMinimal,
-          jamMaksimal: b.jamMaksimal,
-          ratePerJam: Number(b.ratePerJam),
-        })));
-      }
+      // TODO(hapus-profil): tiering hanya dipakai kartu profil — fetch & state dipertahankan
+      // sebagai komentar; endpoint /api/payroll?tiering=1 tetap ada untuk modul lain.
+      // if (Array.isArray(tRes)) {
+      //   setTiering(tRes.map((b) => ({
+      //     tier: b.tier,
+      //     jamMinimal: b.jamMinimal,
+      //     jamMaksimal: b.jamMaksimal,
+      //     ratePerJam: Number(b.ratePerJam),
+      //   })));
+      // }
 
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
@@ -514,19 +519,22 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  const totalLiveHours = dashboardData?.totalJam ?? 0;
-  const matchedTier = tiering.slice().reverse().find((b) => totalLiveHours >= b.jamMinimal)
-    ?? tiering[0];
-  const currentTier = matchedTier?.tier ?? dashboardData?.activeTier?.nama ?? "Basic";
-  const currentRate = matchedTier?.ratePerJam ?? dashboardData?.activeTier?.ratePerJam ?? 25000;
-  const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
-  const activeJadwal = activeSession?.jadwal || currentLiveJadwal;
-  const streamerActiveStatus = activeJadwal
-    ? getStreamerActiveSessionState(activeJadwal)
-    : activeSession
-    ? "ON AIR"
-    : null;
-  const isCurrentlyOnAir = Boolean(activeSession || currentLiveJadwal);
+  // TODO(hapus-profil): variabel kartu profil dihapus atas permintaan — dipertahankan sebagai komentar.
+  // const totalLiveHours = dashboardData?.totalJam ?? 0;
+  // const matchedTier = tiering.slice().reverse().find((b) => totalLiveHours >= b.jamMinimal)
+  //   ?? tiering[0];
+  // const currentTier = matchedTier?.tier ?? dashboardData?.activeTier?.nama ?? "Basic";
+  // const currentRate = matchedTier?.ratePerJam ?? dashboardData?.activeTier?.ratePerJam ?? 25000;
+  // const currentLiveJadwal = jadwal.find((j) => j.liveState === "LIVE" || j.status === "ON_GOING");
+  // const activeJadwal = activeSession?.jadwal || currentLiveJadwal;
+  // TODO(hapus-profil): status pill kartu profil ikut dihapus bersama kartunya.
+  // const streamerActiveStatus = activeJadwal
+  //   ? getStreamerActiveSessionState(activeJadwal)
+  //   : activeSession
+  //   ? "ON AIR"
+  //   : null;
+  // TODO(hapus-profil): tidak ada pemakai lain.
+  // const isCurrentlyOnAir = Boolean(activeSession || currentLiveJadwal);
 
   const filteredJeda = (terbatasData?.jedaTerbatas || []).filter((j) => {
     if (!filterTextTerbatas.trim()) return true;
@@ -670,92 +678,12 @@ export default function StreamerDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Profile Header */}
-      <div className="bg-gradient-to-r from-[#4A0A04] via-[#6D1207] to-[#941A0B] text-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-800">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div className="flex items-center gap-4">
-            {dashboardData?.karyawan?.fotoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={dashboardData.karyawan.fotoUrl}
-                alt={dashboardData.karyawan.namaLengkap}
-                className="w-14 h-14 rounded-2xl object-cover border border-white/20 shadow-inner"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-2xl shadow-inner">
-                <i className="fa-solid fa-headset text-white" />
-              </div>
-            )}
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
-                  {session?.user?.name ?? "Host Streamer"}
-                </h1>
-                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
-                  STREAMER
-                </span>
-              </div>
-              <p className="text-xs text-slate-300 mt-0.5">{session?.user?.email}</p>
-            </div>
-          </div>
+      {/* TODO(hapus-profil): kartu profil gradient (avatar, nama, badge STREAMER,
+          pill status PREPARE/ON AIR/PERLU LAPOR, 3 sel statistik tier/jam/sesi)
+          DIHAPUS ATAS PERMINTAAN — jangan dibuang. Versi lama ada di git history
+          (commit sebelum "hapus kartu profil"). Banner alert di bawah tetap. */}
 
-          {streamerActiveStatus === "PREPARE" ? (
-            <div className="flex items-center gap-2 bg-amber-500/25 border border-amber-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-              </span>
-              <span className="text-xs font-black text-amber-200 tracking-wider">SEDANG PREPARE</span>
-            </div>
-          ) : streamerActiveStatus === "PERLU LAPOR" ? (
-            <div className="flex items-center gap-2 bg-orange-500/25 border border-orange-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500" />
-              </span>
-              <span className="text-xs font-black text-orange-200 tracking-wider">PERLU LAPOR (GMV)</span>
-            </div>
-          ) : streamerActiveStatus === "ON AIR" ? (
-            <div className="flex items-center gap-2 bg-rose-500/25 border border-rose-400/40 px-3.5 py-1.5 rounded-xl shadow-xs animate-pulse">
-              <span className="relative flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
-              </span>
-              <span className="text-xs font-black text-rose-200 tracking-wider">SEDANG ON AIR</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 bg-white/10 border border-white/20 px-3.5 py-1.5 rounded-xl text-slate-300">
-              <span className="h-2 w-2 rounded-full bg-slate-400" />
-              <span className="text-xs font-bold text-slate-200 tracking-wider">OFF AIR</span>
-            </div>
-          )}
-        </div>
-
-        {/* Tier & Hours Progress */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-slate-800/80 text-xs">
-          <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
-            <span className="text-slate-400 block mb-1">Tier Pencapaian</span>
-            <div className="flex items-center gap-2">
-              <span className="text-base font-extrabold text-white">{currentTier}</span>
-              <span className="text-[10px] text-amber-300 font-semibold bg-amber-400/20 px-2 py-0.5 rounded-full">
-                Rp {currentRate.toLocaleString("id-ID")}/jam
-              </span>
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
-            <span className="text-slate-400 block mb-1">Total Jam Live Bulan Ini</span>
-            <div className="text-base font-extrabold text-white">
-              {totalLiveHours.toFixed(1)} <span className="text-xs text-slate-400 font-normal">/ {matchedTier?.jamMaksimal ?? 80} Jam Target</span>
-            </div>
-          </div>
-          <div className="bg-white/5 rounded-xl p-3.5 border border-white/10">
-            <span className="text-slate-400 block mb-1">Total Sesi Selesai</span>
-            <div className="text-base font-extrabold text-amber-300">
-              {dashboardData?.totalSesi ?? 0} <span className="text-xs text-slate-400 font-normal">Sesi</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Global Alerts */}
 
       {/* Global Alerts */}
       {success && (
@@ -809,9 +737,9 @@ export default function StreamerDashboardPage() {
         </div>
       )}
 
-      {/* TAB NAVIGATION — Streamlined & High Aesthetic */}
-      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-1.5">
+      {/* TAB NAVIGATION — Horizontal scroll (ref-deploy scrollableTabContainer) */}
+      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto no-scrollbar">
+        <div className="flex gap-1.5 min-w-max">
           {visibleTabs.map((tab) => {
             const isActive = activeTab === tab.id;
             const isCheckInLocked = tab.id === "checkin" && Boolean(activeSession);
@@ -828,7 +756,7 @@ export default function StreamerDashboardPage() {
                   setError("");
                   setSuccess("");
                 }}
-                className={`py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
+                className={`shrink-0 whitespace-nowrap py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
                   isCheckInLocked
                     ? "opacity-65 bg-slate-200/70 text-slate-500 hover:bg-slate-200"
                     : isActive
