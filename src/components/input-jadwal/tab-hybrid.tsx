@@ -348,11 +348,14 @@ export function TabHybrid({
 
     setLoading(true);
     try {
-      // Extract sheet ID & convert to CSV export link if applicable
+      // Extract sheet ID & convert to CSV export link if applicable.
+      // Honor #gid / ?gid= so the export targets the sheet tab the user
+      // actually opened, instead of always the first tab.
       let fetchUrl = linkUrl;
       const match = linkUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
       if (match && match[1]) {
-        fetchUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv`;
+        const gidMatch = linkUrl.match(/[#&?]gid=(\d+)/);
+        fetchUrl = `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv${gidMatch ? `&gid=${gidMatch[1]}` : ""}`;
       }
 
       const res = await fetch(fetchUrl);
@@ -363,39 +366,63 @@ export function TabHybrid({
       }
 
       const csvText = await res.text();
-      const rows = csvText.split("\n").map((r) => r.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
-      if (rows.length <= 2) throw new Error("Data Google Sheets kosong atau tidak memiliki baris data.");
+
+      // Parse via SheetJS (quote-aware: cells containing commas no longer
+      // shift columns) and normalize values the same way as the Excel path.
+      const wb = XLSX.read(csvText, { type: "string" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!rows.length) throw new Error("Data Google Sheets kosong atau tidak memiliki baris data.");
+
+      // Find the header row (first cell reads TANGGAL/DATE); data starts
+      // right after it. Fallback to the legacy fixed offset (row 3) so old
+      // sheets without that marker still import.
+      let dataStart = 2;
+      for (let i = 0; i < Math.min(rows.length, 5); i++) {
+        const c0 = String(rows[i]?.[0] ?? "").trim().toLowerCase();
+        if (c0 === "tanggal" || c0 === "date") {
+          dataStart = i + 1;
+          break;
+        }
+      }
 
       const parsed: HybridRowItem[] = [];
-      for (let i = 2; i < rows.length; i++) {
+      let shortRows = 0;
+      for (let i = dataStart; i < rows.length; i++) {
         const row = rows[i];
-        if (!row[0] || row[0].trim() === "") continue;
+        if (!row || String(row[0] ?? "").trim() === "") continue;
+        if (row.length < 11) shortRows++;
 
         parsed.push({
-          TANGGAL: row[0] || "",
-          CABANG_STUDIO: row[1] || "",
-          NOMOR_STUDIO: row[2] || "",
-          PLATFORM: row[3] || "",
+          TANGGAL: formatTglExcel(row[0]),
+          CABANG_STUDIO: row[1] ? String(row[1]).trim() : "",
+          NOMOR_STUDIO: row[2] ? String(row[2]).trim() : "",
+          PLATFORM: row[3] ? String(row[3]).trim() : "",
           JAM_MULAI_LIVE: row[4] ? formatJamExcel(row[4]) : "",
           DURASI_JAM: row[5] || "",
           JAM_SELESAI_LIVE: row[6] ? formatJamExcel(row[6]) : "",
-          STREAMER: row[7] || "",
-          DEVICE: row[8] || "",
-          FILE_PENDUKUNG_HOST: row[9] || "",
-          CATATAN_UNTUK_HOST: row[10] || "",
+          STREAMER: row[7] ? String(row[7]).trim() : "",
+          DEVICE: row[8] ? String(row[8]).trim() : "",
+          FILE_PENDUKUNG_HOST: row[9] ? String(row[9]).trim() : "",
+          CATATAN_UNTUK_HOST: row[10] ? String(row[10]).trim() : "",
         });
       }
+
+      if (!parsed.length) throw new Error("Data Google Sheets kosong atau tidak memiliki baris data.");
+      const shortWarning = shortRows
+        ? ` ⚠️ ${shortRows} baris memiliki kolom kurang dari 11 — periksa kembali sebelum menyimpan.`
+        : "";
 
       if (target === "baru") {
         setHybridDataBaru(parsed.slice(0, 300));
         setCurrentPageBaru(1);
         setIsBebasCrashVerified(false);
-        showAlert(`✅ Berhasil membaca ${parsed.length} baris jadwal dari Google Sheets.`);
+        showAlert(`✅ Berhasil membaca ${parsed.length} baris jadwal dari Google Sheets.${shortWarning}`);
       } else {
         setHybridRevisiBaru(parsed.slice(0, 300));
         setCurrentPageLama(1);
         setIsBebasCrashRevisiVerified(false);
-        showAlert(`✅ Berhasil membaca ${parsed.length} baris jadwal revisi dari Google Sheets.`);
+        showAlert(`✅ Berhasil membaca ${parsed.length} baris jadwal revisi dari Google Sheets.${shortWarning}`);
       }
     } catch (err: any) {
       showAlert(`❌ ${err.message}`);

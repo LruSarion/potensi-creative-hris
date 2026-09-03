@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { fetchJson, sendJson } from "@/lib/api-client";
 import {
   DEFAULT_OPERATIONAL_RULES,
+  parseGMapCoords,
   type OperationalRulesConfig,
   type RoleOperationalRule,
   type GeoLocationRule,
@@ -66,6 +67,7 @@ export default function OperationalRulesPanel() {
   function addGeoLocation() {
     const newLoc: GeoLocationRule = {
       cabang: "Cabang Baru",
+      koordinat: "-7.7956, 110.3695",
       lat: -7.7956,
       lng: 110.3695,
       radiusMeter: 100,
@@ -79,6 +81,18 @@ export default function OperationalRulesPanel() {
     const currentLocs = [...(rulesConfig[selectedRuleRole]?.geoLocations ?? [])];
     if (!currentLocs[index]) return;
     currentLocs[index] = { ...currentLocs[index], ...patch };
+    updateCurrentRoleRule({ geoLocations: currentLocs });
+  }
+
+  function updateGeoLocationCoords(index: number, rawVal: string) {
+    const currentLocs = [...(rulesConfig[selectedRuleRole]?.geoLocations ?? [])];
+    if (!currentLocs[index]) return;
+    const parsed = parseGMapCoords(rawVal);
+    currentLocs[index] = {
+      ...currentLocs[index],
+      koordinat: rawVal,
+      ...(parsed ? { lat: parsed.lat, lng: parsed.lng } : {}),
+    };
     updateCurrentRoleRule({ geoLocations: currentLocs });
   }
 
@@ -294,8 +308,12 @@ export default function OperationalRulesPanel() {
               <thead className="bg-slate-50 font-bold text-slate-600 border-b border-slate-200">
                 <tr>
                   <th className="p-3">Nama Cabang / Studio</th>
-                  <th className="p-3">Latitude</th>
-                  <th className="p-3">Longitude</th>
+                  <th className="p-3">
+                    <div className="flex items-center gap-1.5">
+                      <i className="fa-solid fa-map-pin text-[#941A0B]" />
+                      <span>Koordinat Google Maps (Lat, Lng)</span>
+                    </div>
+                  </th>
                   <th className="p-3">Radius Toleransi (m)</th>
                   <th className="p-3">Mode Penegakan</th>
                   <th className="p-3 text-center w-16">Aksi</th>
@@ -304,81 +322,92 @@ export default function OperationalRulesPanel() {
               <tbody className="divide-y divide-slate-100 bg-white">
                 {(rulesConfig[selectedRuleRole]?.geoLocations ?? []).length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-6 text-center text-slate-400 italic">
+                    <td colSpan={5} className="p-6 text-center text-slate-400 italic">
                       Belum ada lokasi studio yang didaftarkan. Klik tombol &quot;Tambah Cabang&quot; di atas.
                     </td>
                   </tr>
                 ) : (
-                  (rulesConfig[selectedRuleRole]?.geoLocations ?? []).map((loc, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50/80">
-                      <td className="p-2.5">
-                        <input
-                          type="text"
-                          value={loc.cabang}
-                          onChange={(e) => updateGeoLocation(idx, { cabang: e.target.value })}
-                          placeholder="misal: Timoho"
-                          className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 focus:ring-1 focus:ring-[#941A0B] outline-none"
-                        />
-                      </td>
-                      <td className="p-2.5">
-                        <input
-                          type="number"
-                          step="any"
-                          value={loc.lat}
-                          onChange={(e) => updateGeoLocation(idx, { lat: parseFloat(e.target.value) || 0 })}
-                          placeholder="-7.7956"
-                          className="w-28 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-700 focus:ring-1 focus:ring-[#941A0B] outline-none"
-                        />
-                      </td>
-                      <td className="p-2.5">
-                        <input
-                          type="number"
-                          step="any"
-                          value={loc.lng}
-                          onChange={(e) => updateGeoLocation(idx, { lng: parseFloat(e.target.value) || 0 })}
-                          placeholder="110.3695"
-                          className="w-28 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-700 focus:ring-1 focus:ring-[#941A0B] outline-none"
-                        />
-                      </td>
-                      <td className="p-2.5">
-                        <div className="flex items-center gap-1.5">
+                  (rulesConfig[selectedRuleRole]?.geoLocations ?? []).map((loc, idx) => {
+                    const displayCoords = loc.koordinat ?? (loc.lat && loc.lng ? `${loc.lat}, ${loc.lng}` : "");
+                    const isCoordsValid = Boolean(loc.lat && loc.lng && !isNaN(loc.lat) && !isNaN(loc.lng));
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/80">
+                        <td className="p-2.5">
                           <input
-                            type="number"
-                            min="10"
-                            max="10000"
-                            value={loc.radiusMeter}
-                            onChange={(e) => updateGeoLocation(idx, { radiusMeter: Math.max(10, parseInt(e.target.value) || 100) })}
-                            className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-800 font-bold focus:ring-1 focus:ring-[#941A0B] outline-none"
+                            type="text"
+                            value={loc.cabang}
+                            onChange={(e) => updateGeoLocation(idx, { cabang: e.target.value })}
+                            placeholder="misal: Timoho"
+                            className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 font-bold text-slate-800 focus:ring-1 focus:ring-[#941A0B] outline-none"
                           />
-                          <span className="text-[11px] text-slate-400 font-medium">Meter</span>
-                        </div>
-                      </td>
-                      <td className="p-2.5">
-                        <select
-                          value={loc.mode}
-                          onChange={(e) => updateGeoLocation(idx, { mode: e.target.value as "STRICT" | "WARNING" })}
-                          className={`border rounded-lg px-2.5 py-1.5 font-bold text-xs outline-none ${
-                            loc.mode === "STRICT"
-                              ? "border-red-200 bg-red-50 text-red-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700"
-                          }`}
-                        >
-                          <option value="STRICT">Strict (Tolak Check-In)</option>
-                          <option value="WARNING">Warning (Catat Peringatan)</option>
-                        </select>
-                      </td>
-                      <td className="p-2.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => removeGeoLocation(idx)}
-                          className="w-8 h-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition inline-flex items-center justify-center cursor-pointer"
-                          title="Hapus Cabang"
-                        >
-                          <i className="fa-solid fa-trash-can text-xs" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="p-2.5">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={displayCoords}
+                              onChange={(e) => updateGeoLocationCoords(idx, e.target.value)}
+                              placeholder="-7.7956, 110.3695 (copas langsung dari Google Maps)"
+                              className="w-full min-w-[240px] border border-slate-200 rounded-lg pl-2.5 pr-8 py-1.5 font-mono text-xs text-slate-800 focus:ring-1 focus:ring-[#941A0B] outline-none bg-white"
+                            />
+                            {isCoordsValid ? (
+                              <span
+                                className="absolute right-2.5 top-2 text-[11px] text-emerald-600 font-bold"
+                                title={`Koordinat Valid: Lat ${loc.lat}, Lng ${loc.lng}`}
+                              >
+                                <i className="fa-solid fa-circle-check" />
+                              </span>
+                            ) : (
+                              <span
+                                className="absolute right-2.5 top-2 text-[11px] text-amber-500 font-bold"
+                                title="Pastikan format koordinat: Lat, Lng (misal: -7.7956, 110.3695)"
+                              >
+                                <i className="fa-solid fa-triangle-exclamation" />
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="10"
+                              max="10000"
+                              value={loc.radiusMeter}
+                              onChange={(e) => updateGeoLocation(idx, { radiusMeter: Math.max(10, parseInt(e.target.value) || 100) })}
+                              className="w-20 border border-slate-200 rounded-lg px-2.5 py-1.5 font-mono text-slate-800 font-bold focus:ring-1 focus:ring-[#941A0B] outline-none"
+                            />
+                            <span className="text-[11px] text-slate-400 font-medium">Meter</span>
+                          </div>
+                        </td>
+                        <td className="p-2.5">
+                          <select
+                            value={loc.mode}
+                            onChange={(e) => updateGeoLocation(idx, { mode: e.target.value as "STRICT" | "WARNING" })}
+                            className={`border rounded-lg px-2.5 py-1.5 font-bold text-xs outline-none ${
+                              loc.mode === "STRICT"
+                                ? "border-red-200 bg-red-50 text-red-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            <option value="STRICT">Strict (Tolak Check-In)</option>
+                            <option value="WARNING">Warning (Catat Peringatan)</option>
+                          </select>
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => removeGeoLocation(idx)}
+                            className="w-8 h-8 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition inline-flex items-center justify-center cursor-pointer"
+                            title="Hapus Cabang"
+                          >
+                            <i className="fa-solid fa-trash-can text-xs" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
