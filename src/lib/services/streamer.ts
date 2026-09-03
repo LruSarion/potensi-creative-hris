@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
-import { computeDurationMinutes } from "@/lib/schedule-rules";
+import { computeDurationMinutes, TOKEN_JEDA_MINUTES } from "@/lib/schedule-rules";
 import { STUDIOS } from "@/types/jadwal";
 
 /**
@@ -13,6 +13,20 @@ async function requireStreamer(): Promise<string> {
   const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
   if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
   return user.karyawanId;
+}
+
+/**
+ * Scope resolver for dashboard list views (ref-deploy: superadmin/op-admin see
+ * ALL streamers' schedules, terbatas & pending-GMV lists — not just their own).
+ * Personal views (report, request forms) still use requireStreamer().
+ */
+async function requireStreamerScope(): Promise<{ karyawanId: string | null; seeAll: boolean }> {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  if (["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(user.role)) {
+    return { karyawanId: user.karyawanId ?? null, seeAll: true };
+  }
+  if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+  return { karyawanId: user.karyawanId, seeAll: false };
 }
 
 /** Get list of studios according to database and system configuration */
@@ -59,19 +73,22 @@ export async function getStudioList() {
   return list;
 }
 
-/** My schedules (own only). */
+/** My schedules (admins see all streamers' schedules — ref-deploy). */
 export async function getMyJadwal() {
-  const karyawanId = await requireStreamer();
+  const { karyawanId, seeAll } = await requireStreamerScope();
   const list = await db.jadwal.findMany({
-    where: {
-      OR: [
-        { streamerKaryawanId: karyawanId },
-        { hostKaryawanId: karyawanId },
-      ],
-    },
+    where: seeAll
+      ? {}
+      : {
+          OR: [
+            { streamerKaryawanId: karyawanId! },
+            { hostKaryawanId: karyawanId! },
+          ],
+        },
     orderBy: { tanggal: "desc" },
-    include: { 
+    include: {
       client: true,
+      streamerKaryawan: true,
       absensi: true
     },
   });
@@ -79,8 +96,8 @@ export async function getMyJadwal() {
   const nowMs = Date.now();
 
   return list.map((j) => {
-    const checkIn = j.absensi.find((a) => a.tipe === "CHECK_IN" && a.karyawanId === karyawanId);
-    const checkOut = j.absensi.find((a) => a.tipe === "CHECK_OUT" && a.karyawanId === karyawanId);
+    const checkIn = j.absensi.find((a) => a.tipe === "CHECK_IN" && (!seeAll || a.karyawanId === karyawanId || a.karyawanId === j.streamerKaryawanId));
+    const checkOut = j.absensi.find((a) => a.tipe === "CHECK_OUT" && (!seeAll || a.karyawanId === karyawanId || a.karyawanId === j.streamerKaryawanId));
 
     let status = j.status as string;
     if (checkOut) {
@@ -340,10 +357,11 @@ export async function getMyDashboard() {
 
 /** Get Check-Out records that are missing GMV (from auto-checkout/Terusan) */
 export async function getPendingGmv() {
-  const karyawanId = await requireStreamer();
+  const { karyawanId, seeAll } = await requireStreamerScope();
   return db.absensi.findMany({
     where: {
-      karyawanId,
+      ...(seeAll ? {} : { karyawanId: karyawanId! }),
+      kategori: "STREAMER",
       tipe: "CHECK_OUT",
       reportedGmv: null,
       jadwalId: { not: null }
@@ -360,7 +378,7 @@ export async function getPendingGmv() {
 
 /** Get full Terbatas data: Jeda Terbatas (< 30 mins / instant) and Perlu Lapor (>8 hrs / missing GMV) */
 export async function getTerbatasData() {
-  const karyawanId = await requireStreamer();
+  const { karyawanId, seeAll } = await requireStreamerScope();
   const now = new Date();
   const eightHoursAgo = new Date(now.getTime() - 8 * 60 * 60 * 1000);
   const startOfYesterday = new Date(now.getTime() - 48 * 60 * 60 * 1000);
@@ -371,7 +389,8 @@ export async function getTerbatasData() {
   const [missingGmvCheckouts, expiredCheckIns] = await Promise.all([
     db.absensi.findMany({
       where: {
-        karyawanId,
+        ...(seeAll ? {} : { karyawanId: karyawanId! }),
+        kategori: "STREAMER",
         tipe: "CHECK_OUT",
         reportedGmv: null,
         jadwalId: { not: null }
@@ -386,14 +405,15 @@ export async function getTerbatasData() {
     }),
     db.absensi.findMany({
       where: {
-        karyawanId,
+        ...(seeAll ? {} : { karyawanId: karyawanId! }),
+        kategori: "STREAMER",
         tipe: "CHECK_IN",
         waktu: { lte: eightHoursAgo },
         jadwal: {
           absensi: {
             none: {
               tipe: "CHECK_OUT",
-              karyawanId
+              ...(seeAll ? {} : { karyawanId: karyawanId! })
             }
           }
         }
@@ -422,11 +442,14 @@ export async function getTerbatasData() {
   const perluLapor = Array.from(perluLaporMap.values());
 
   // 2. Jeda Terbatas:
-  // Short-gap schedules (< 30 minutes) whose time has come (already started,
-  // still within the 8-hour reporting window) — eligible for instant Check-Out.
+  // Sessions eligible for instant Check-Out:
+  // a) Short scheduled duration (< 30 minutes), OR
+  // b) Back-to-back gap to the streamer's NEXT session < 30 minutes (TOKEN_JEDA),
+  //    including chains of 3+ tight sessions per day.
+  // Still must have started and be within the 8-hour reporting window.
   const jedaCandidates = await db.jadwal.findMany({
     where: {
-      streamerKaryawanId: karyawanId,
+      ...(seeAll ? {} : { streamerKaryawanId: karyawanId! }),
       tanggal: { gte: startOfYesterday },
       status: { not: "SELESAI" },
       liveState: { not: "CLOSED" },
@@ -437,17 +460,48 @@ export async function getTerbatasData() {
       client: true,
       streamerKaryawan: true,
       hostKaryawan: true,
-      absensi: {
-        where: { karyawanId }
-      }
+      absensi: seeAll
+        ? { where: { kategori: "STREAMER" } }
+        : { where: { karyawanId: karyawanId! } }
     }
   });
 
+  // All sessions in the window per streamer (any status) — needed to find
+  // each candidate's next session and compute the transition gap.
+  const allSessions = await db.jadwal.findMany({
+    where: {
+      ...(seeAll ? {} : { streamerKaryawanId: karyawanId! }),
+      tanggal: { gte: startOfYesterday },
+    },
+    orderBy: { jamMulaiLive: "asc" },
+    select: { id: true, streamerKaryawanId: true, jamMulaiLive: true, jamSelesaiLive: true }
+  });
+
   const thirtyMinMs = 30 * 60 * 1000;
+  const tokenJedaMs = TOKEN_JEDA_MINUTES * 60 * 1000;
   const jedaTerbatas = jedaCandidates.filter((j) => {
-    // Only short-gap sessions (< 30 minutes scheduled duration)
+    // (a) Only short-gap sessions (< 30 minutes scheduled duration) — legacy rule
     const durationMs = j.jamSelesaiLive.getTime() - j.jamMulaiLive.getTime();
-    if (durationMs <= 0 || durationMs > thirtyMinMs) return false;
+    const isShortDuration = durationMs > 0 && durationMs <= thirtyMinMs;
+
+    // (b) Mepet: gap to the next session of the same streamer < TOKEN_JEDA minutes.
+    // Covers normal-duration sessions squeezed before the next one, and every
+    // session in a chain of 3+ tight sessions per day.
+    let isMepetNext = false;
+    const thisEndMs = j.jamSelesaiLive.getTime();
+    const streamerKey = j.streamerKaryawanId;
+    const next = allSessions.find(
+      (s) =>
+        s.id !== j.id &&
+        s.streamerKaryawanId === streamerKey &&
+        s.jamMulaiLive.getTime() > thisEndMs
+    );
+    if (next) {
+      const gapMs = next.jamMulaiLive.getTime() - thisEndMs;
+      isMepetNext = gapMs > 0 && gapMs < tokenJedaMs;
+    }
+
+    if (!isShortDuration && !isMepetNext) return false;
     // Past the 8-hour window it escalates to Perlu Lapor instead
     return now.getTime() <= j.jamSelesaiLive.getTime() + 8 * 60 * 60 * 1000;
   });

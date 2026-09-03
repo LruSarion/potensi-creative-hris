@@ -39,6 +39,7 @@ export function TabJadwal({
               <th className="px-4 py-3">ID Sesi</th>
               <th className="px-4 py-3">Tanggal & Jam</th>
               <th className="px-4 py-3">Brand & Platform</th>
+              <th className="px-4 py-3">Streamer</th>
               <th className="px-4 py-3">Lokasi Studio</th>
               <th className="px-4 py-3">Total GMV</th>
               <th className="px-4 py-3">Status Sesi</th>
@@ -48,7 +49,7 @@ export function TabJadwal({
           <tbody className="divide-y divide-slate-100">
             {loading ? (
               <TableLoadingState
-                colSpan={7}
+                colSpan={8}
                 text="Memuat jadwal live streaming Anda..."
                 subtext="Menyelaraskan data sesi siaran dan status on air..."
               />
@@ -69,6 +70,10 @@ export function TabJadwal({
                 <td className="px-4 py-3">
                   <div className="font-bold text-slate-800">{j.client?.namaClient ?? "Brand Partner"}</div>
                   <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{j.platform ?? "Shopee Live"}</span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="font-semibold text-slate-800">{j.streamerKaryawan?.namaLengkap ?? "-"}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">{j.streamerKaryawan?.idKaryawan ?? "-"}</div>
                 </td>
                 <td className="px-4 py-3 text-slate-600 font-medium">
                   <i className="fa-solid fa-location-dot text-slate-400 mr-1.5" />

@@ -89,6 +89,7 @@ export type Jadwal = {
   liveState: string;
   client?: { namaClient: string } | null;
   namaClient?: string | null;
+  streamerKaryawan?: { namaLengkap: string; idKaryawan: string } | null;
   produk?: { namaProduk: string; sku: string }[];
   absensi?: { reportedGmv: number | null; waktuMasuk: string; waktuKeluar: string | null }[];
 };
