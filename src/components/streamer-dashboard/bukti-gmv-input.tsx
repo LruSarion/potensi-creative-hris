@@ -1,11 +1,12 @@
 "use client";
 
 import React from "react";
-import LiveCameraCheckin from "./live-camera-checkin";
+import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
 
 interface BuktiGmvInputProps {
   value: string;
   onChange: (val: string) => void;
+  onLocationChange?: (location: LocationCoordinates | null) => void;
   disabled?: boolean;
   label?: string;
   required?: boolean;
@@ -14,6 +15,7 @@ interface BuktiGmvInputProps {
 export default function BuktiGmvInput({
   value,
   onChange,
+  onLocationChange,
   disabled = false,
   label = "Bukti GMV (Foto Kamera Langsung & GPS / Galeri) *",
   required = true,
@@ -33,6 +35,7 @@ export default function BuktiGmvInput({
       <LiveCameraCheckin
         value={value}
         onChange={onChange}
+        onLocationChange={onLocationChange}
         mode="gmv"
         disabled={disabled}
         allowGallery={true}

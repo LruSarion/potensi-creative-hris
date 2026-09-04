@@ -27,6 +27,7 @@ import { getLateCheckInStatus } from "@/components/streamer-dashboard/late-check
 import { TabRiwayat } from "@/components/streamer-dashboard/tab-riwayat";
 import { TabRequest } from "@/components/streamer-dashboard/tab-request";
 import { BuktiFotoModal, ImageLightbox } from "@/components/streamer-dashboard/history-modals";
+import { useLoading } from "@/components/loading-provider";
 import {
   STREAMER_TABS,
   type ActiveSession,
@@ -42,6 +43,7 @@ import {
 
 export default function StreamerDashboardPage() {
   const { data: session } = useSession();
+  const { showLoading, hideLoading } = useLoading();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role ?? "");
 
   const [activeTab, setActiveTab] = useState("checkin");
@@ -273,6 +275,7 @@ export default function StreamerDashboardPage() {
 
   async function loadData() {
     setLoading(true);
+    showLoading("Sinkronisasi Data Streamer", "Mengambil jadwal siaran, sesi aktif, riwayat presensi & data GMV dari database...");
     setError("");
     try {
       // fetchJson throws on non-success; each endpoint keeps its original
@@ -341,6 +344,7 @@ export default function StreamerDashboardPage() {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
     } finally {
       setLoading(false);
+      hideLoading();
     }
   }
 
@@ -1062,6 +1066,7 @@ export default function StreamerDashboardPage() {
           formTerbatasCatatan={formTerbatasCatatan}
           formTerbatasFotoGmv={formTerbatasFotoGmv}
           formTerbatasFotoKeluar={formTerbatasFotoKeluar}
+          formTerbatasLocGmv={formTerbatasLocGmv}
           formTerbatasLocKeluar={formTerbatasLocKeluar}
           submittingTerbatas={submittingTerbatas}
           formatRupiahInput={formatRupiahInput}
@@ -1081,6 +1086,7 @@ export default function StreamerDashboardPage() {
           onCatatanChange={setFormTerbatasCatatan}
           onFotoGmvChange={setFormTerbatasFotoGmv}
           onFotoKeluarChange={setFormTerbatasFotoKeluar}
+          onLocGmvChange={setFormTerbatasLocGmv}
           onLocKeluarChange={setFormTerbatasLocKeluar}
           onSubmitTerbatas={handleSubmitTerbatas}
         />

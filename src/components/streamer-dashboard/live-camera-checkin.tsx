@@ -313,6 +313,9 @@ export default function LiveCameraCheckin({
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
+    // Gallery uploads bypass the camera flow — still lock GPS so the
+    // location requirement is satisfied for GMV proof.
+    if (!currentLoc) requestLocation();
 
     const reader = new FileReader();
     reader.onload = (event) => {

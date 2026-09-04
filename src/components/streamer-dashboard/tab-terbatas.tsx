@@ -46,6 +46,7 @@ export function TabTerbatas({
   formTerbatasCatatan,
   formTerbatasFotoGmv,
   formTerbatasFotoKeluar,
+  formTerbatasLocGmv,
   formTerbatasLocKeluar,
   submittingTerbatas,
   formatRupiahInput,
@@ -60,6 +61,7 @@ export function TabTerbatas({
   onCatatanChange,
   onFotoGmvChange,
   onFotoKeluarChange,
+  onLocGmvChange,
   onLocKeluarChange,
   onSubmitTerbatas,
 }: {
@@ -77,6 +79,7 @@ export function TabTerbatas({
   formTerbatasCatatan: string;
   formTerbatasFotoGmv: string;
   formTerbatasFotoKeluar: string;
+  formTerbatasLocGmv: LocationCoordinates | null;
   formTerbatasLocKeluar: LocationCoordinates | null;
   submittingTerbatas: boolean;
   formatRupiahInput: (val: string) => string;
@@ -91,6 +94,7 @@ export function TabTerbatas({
   onCatatanChange: (v: string) => void;
   onFotoGmvChange: (v: string) => void;
   onFotoKeluarChange: (v: string) => void;
+  onLocGmvChange: (loc: LocationCoordinates | null) => void;
   onLocKeluarChange: (loc: LocationCoordinates | null) => void;
   onSubmitTerbatas: (e: React.FormEvent) => void;
 }) {
@@ -466,6 +470,7 @@ export function TabTerbatas({
                   <BuktiGmvInput
                     value={formTerbatasFotoGmv}
                     onChange={onFotoGmvChange}
+                    onLocationChange={onLocGmvChange}
                     disabled={!selectedTerbatasJadwal}
                     label="Bukti GMV (Screenshot / Foto Dashboard) *"
                   />
@@ -502,6 +507,7 @@ export function TabTerbatas({
                 disabled={
                   submittingTerbatas ||
                   !formTerbatasFotoGmv ||
+                  !formTerbatasLocGmv ||
                   !formTerbatasFotoKeluar ||
                   !formTerbatasLocKeluar
                 }
