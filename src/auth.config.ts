@@ -48,6 +48,8 @@ export const authConfig = {
         token.role = (user as { role?: Role }).role;
         token.karyawanId = (user as { karyawanId?: string | null }).karyawanId;
         token.tenantId = (user as { tenantId?: string }).tenantId;
+        token.jabatan = (user as { jabatan?: string | null }).jabatan ?? null;
+        token.nik = (user as { nik?: string | null }).nik ?? null;
       }
       return token;
     },
@@ -57,6 +59,8 @@ export const authConfig = {
         session.user.role = token.role as Role;
         session.user.karyawanId = (token.karyawanId as string | null) ?? null;
         session.user.tenantId = (token.tenantId as string) ?? "";
+        session.user.jabatan = (token.jabatan as string | null) ?? null;
+        session.user.nik = (token.nik as string | null) ?? null;
       }
       return session;
     },

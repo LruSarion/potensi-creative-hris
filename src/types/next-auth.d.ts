@@ -8,6 +8,8 @@ declare module "next-auth" {
       role: Role;
       karyawanId: string | null;
       tenantId: string;
+      jabatan?: string | null;
+      nik?: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -17,5 +19,7 @@ declare module "next-auth/jwt" {
     role?: Role;
     karyawanId?: string | null;
     tenantId?: string;
+    jabatan?: string | null;
+    nik?: string | null;
   }
 }

@@ -99,6 +99,43 @@ function createDefaultForm(id: number, isExpanded = true): FormKaryawan {
   };
 }
 
+// --- Normalisasi nilai hasil parse sheet untuk import ---
+/** Tanggal dari sheet (dd/mm/yyyy, yyyy-mm-dd, serial Excel) → yyyy-mm-dd. Kosong bila tak valid. */
+function normImportDate(val: string): string {
+  const s = (val ?? "").trim();
+  if (!s) return "";
+  const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, "0")}-${dmy[1].padStart(2, "0")}`;
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  const serial = Number(s);
+  if (!isNaN(serial) && serial > 20000 && serial < 80000) {
+    const d = new Date(Math.round((serial - 25569) * 86400 * 1000));
+    return isNaN(d.getTime()) ? "" : d.toISOString().split("T")[0];
+  }
+  const parsed = new Date(s);
+  return isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
+}
+
+/** Tipe jadwal dari sheet → enum form. */
+function normImportTipe(val: string): string {
+  const u = (val ?? "").trim().toUpperCase();
+  if (!u) return "Shift";
+  if (u.includes("OFFICE")) return "Office Hours";
+  if (u.includes("LIVE") || u.includes("FLEX")) return "Flexible Hours";
+  return "Shift";
+}
+
+/** Status aktif dari sheet → enum form. */
+function normImportStatus(val: string): string {
+  const u = (val ?? "").trim().toUpperCase();
+  if (!u) return "Aktif";
+  if (u.includes("NON")) return "Non-Aktif";
+  if (u.includes("CUTI")) return "Cuti";
+  if (u.includes("IZIN")) return "Izin";
+  return "Aktif";
+}
+
 function populateEditForm(emp: any): FormKaryawan {
   const cleanSuffix = (phone?: string | null) => {
     if (!phone) return "";
@@ -231,6 +268,8 @@ export default function InputKaryawanPage() {
   const [fullEditForm, setFullEditForm] = useState<FormKaryawan>(createDefaultForm(1, true));
   const [editRows, setEditRows] = useState<EditRow[]>([{ field: "", value: "" }]);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingEmployee, setDeletingEmployee] = useState(false);
+  const [showDeleteEmployeeModal, setShowDeleteEmployeeModal] = useState(false);
 
   // PIN Change Modal
   const [showPinModal, setShowPinModal] = useState(false);
@@ -253,6 +292,7 @@ export default function InputKaryawanPage() {
   const [importRows, setImportRows] = useState<FormKaryawan[]>([]);
   const [importRawHeaders, setImportRawHeaders] = useState<string[]>([]);
   const [importRawPreview, setImportRawPreview] = useState<any[]>([]);
+  const [importRawCount, setImportRawCount] = useState(0);
   const [importMatchedHeaders, setImportMatchedHeaders] = useState<string[]>([]);
   const [importDupSkipped, setImportDupSkipped] = useState(0);
   const importFileRef = useRef<HTMLInputElement | null>(null);
@@ -634,6 +674,28 @@ export default function InputKaryawanPage() {
     }
   }
 
+  function handleDeleteEmployee() {
+    if (!targetEmployee || !targetEmployee.id) return;
+    setShowDeleteEmployeeModal(true);
+  }
+
+  async function executeConfirmDeleteEmployee() {
+    if (!targetEmployee || !targetEmployee.id) return;
+    setDeletingEmployee(true);
+    try {
+      await sendJson(`/api/employees?id=${targetEmployee.id}&permanent=true`, "DELETE");
+      toast.success(`Karyawan ${targetEmployee.namaLengkap} (${targetEmployee.idKaryawan}) berhasil dihapus permanen dari database!`);
+      setShowDeleteEmployeeModal(false);
+      setTargetEmployee(null);
+      setSearchEditId("");
+      await loadAllEmployees();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menghapus karyawan"));
+    } finally {
+      setDeletingEmployee(false);
+    }
+  }
+
   async function handleChangePin(e: React.FormEvent) {
     e.preventDefault();
     if (!pinTarget) return;
@@ -663,6 +725,7 @@ export default function InputKaryawanPage() {
     setImportRows([]);
     setImportRawHeaders([]);
     setImportRawPreview([]);
+    setImportRawCount(0);
     setImportMatchedHeaders([]);
     setImportDupSkipped(0);
   }
@@ -670,119 +733,179 @@ export default function InputKaryawanPage() {
   function processImportedData(data: any) {
     const rawRows: Record<string, string>[] = data.rows || [];
     const headers: string[] = data.headers || [];
+    // Simpan data mentah + ringkasan DULU — panel hasil dirender berdasarkan
+    // rawRows, bukan importRows, supaya preview tetap muncul walau 0 baris
+    // valid (semua duplikat / kolom tidak dikenali).
     setImportRawHeaders(headers);
     setImportRawPreview(rawRows.slice(0, 5).map((r) => headers.map((h) => r[h] || "")));
+    setImportRawCount(rawRows.length);
 
-    // Normalisasi nama kolom: lowercase + buang titik/underscore/hyphen/spasi ganda.
-    // "No. Telepon" = "no telepon", "No_Hp" = "nohp" — pencocokan alias jadi robust.
+    // Normalisasi nama kolom: lowercase + buang titik/underscore/hyphen/spasi.
+    // "No. Telepon" = "notelepon", "No_Hp" = "nohp" — pencocokan alias jadi robust.
     const normKey = (k: string) =>
-      k.trim().toLowerCase().replace(/[.\-_/]/g, "").replace(/\s+/g, " ").replace(/\s/g, "");
-    const row0 = rawRows[0] ?? {};
-    const rowKeys = new Map(Object.keys(row0).map((k) => [k, normKey(k)]));
+      k.trim().toLowerCase().replace(/[.\-_/]/g, "").replace(/\s+/g, "");
 
-    const pickVal = (aliases: string[], row: Record<string, string>) => {
-      // Pass 1: exact match (setelah normalisasi)
-      for (const a of aliases) {
-        const na = normKey(a);
-        const found = [...rowKeys.entries()].find(([, nk]) => nk === na);
-        if (found) {
-          const v = row[found[0]];
-          if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
-        }
+    // Definisi field DB -> daftar alias header sheet. Kolom dideteksi SEKALI
+    // dari header (bukan per baris) — nama header sheets beda dari nama field
+    // database, contoh: "Nomor Telepon" (sheet) = "Nomor WA" (DB) = field nomorTelepon.
+    const FIELD_ALIASES: Record<string, string[]> = {
+      namaLengkap: ["namalengkap", "nama", "fullname", "name", "namapegawai", "namakaryawan"],
+      namaPanggilan: ["namapanggilan", "panggilan", "nickname"],
+      gender: ["gender", "jeniskelamin", "sex"],
+      tempatLahir: ["tempatlahir", "kotalahir"],
+      tanggalLahir: ["tanggallahir", "tgllahir", "birthdate", "dateofbirth", "ttl"],
+      agama: ["agama", "religion"],
+      nomorTelepon: ["nomorwa", "nowa", "nomorwhatsapp", "whatsapp", "wa",
+        "nomortelepon", "notelepon", "telepon", "telpon", "nomortelp", "notelp",
+        "nohp", "nomorhp", "hp", "handphone", "nomorhandphone",
+        "phone", "mobile", "nomorseluler", "noseluler"],
+      emergencyContact: ["emergencycontact", "kontakdarurat", "nomordarurat", "nomorkontakdarurat"],
+      email: ["email", "emailaddress", "surel"],
+      statusPerkawinan: ["statusperkawinan", "statusnikah", "maritalstatus", "statuskawin"],
+      riwayatPenyakit: ["riwayatpenyakit", "penyakit"],
+      jabatan: ["jabatan", "posisi", "position", "jobtitle", "role", "pekerjaan"],
+      kategori: ["kategori", "category", "tipekaryawan"],
+      tipeJadwal: ["tipejadwal", "tipeschedule", "jadwal"],
+      startDate: ["startdate", "tanggalmulai", "tglmulai", "joindate", "tanggalmulakerja", "tanggalmasuk", "tanggabergabung"],
+      endDate: ["enddate", "tanggalselesai", "tglselesai", "contractend"],
+      statusAktif: ["statusaktif", "statuskepegawaian", "status", "active"],
+      nik: ["nik", "nikktp", "noktp", "nomorktp", "nomorindukkependudukan"],
+      npwp: ["npwp", "nonpwp", "nomornpwp"],
+      statusPtkp: ["statusptkp", "ptkp"],
+      alamatKtp: ["alamatktp", "alamatsesuaiktp", "alamatktpktp"],
+      alamatDomisili: ["alamatdomisili", "domisili", "alamatdomisiliktp", "alamattinggal"],
+      namaBank: ["namabank", "bank"],
+      nomorRekening: ["nomorrekening", "norekening", "norek", "rek", "accountnumber", "norekeningbank"],
+      namaPemilikRek: ["namapemilikrekening", "namapemilikrek", "pemilikrekening", "atasnama", "accountholder"],
+      scanKtp: ["scanktp", "linkktp", "linkscanktp", "fotoktp", "ktpdrive", "linkfotoktp", "dokumenktp"],
+      scanKk: ["scankk", "linkkk", "linkscankk", "fotokk", "kkdrive", "linkfotokk", "dokumenkk"],
+      scanNpwp: ["scannpwp", "linknpwp", "linkscannpwp", "fotonpwp", "npwpdrive", "linkfotonpwp", "dokumennpwp"],
+    };
+
+    // Deteksi kolom: pass 1 exact match, pass 2 includes (header mengandung alias).
+    // Alias terlalu pendek/umum (hp, wa, rek, ktp, dsb.) hanya boleh exact match —
+    // includes "ktp" akan salah tangkap "Scan KTP" milik field lain.
+    const INCLUDE_BLOCKLIST = new Set([
+      "hp", "wa", "rek", "status", "nama", "role", "bank", "phone", "mail",
+      "email", "ktp", "kk", "npwp", "ttl", "sex",
+    ]);
+    const headerToField = new Map<string, string>();
+    const matchedOriginal: string[] = [];
+    const normalized = headers.map((h) => ({ original: h, norm: normKey(h) }));
+    const takeHeader = (field: string, alias: string): string | undefined => {
+      const found = normalized.find((h) => h.norm !== "" && h.norm === alias && !headerToField.has(h.original));
+      if (found) {
+        headerToField.set(found.original, field);
+        matchedOriginal.push(found.original);
+        return found.original;
       }
-      // Pass 2: includes match (setelah normalisasi)
-      for (const a of aliases) {
-        const na = normKey(a);
-        const found = [...rowKeys.entries()].find(([, nk]) => nk.includes(na));
-        if (found) {
-          const v = row[found[0]];
-          if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
-        }
+      return undefined;
+    };
+    for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
+      // Pass 1: exact
+      let done = aliases.some((a) => takeHeader(field, a));
+      // Pass 2: includes — hanya alias cukup spesifik
+      if (!done) {
+        done = aliases.some((a) => {
+          if (a.length < 4 || INCLUDE_BLOCKLIST.has(a)) return false;
+          const found = normalized.find(
+            (h) => h.norm !== "" && h.norm.includes(a) && !headerToField.has(h.original)
+          );
+          if (found) {
+            headerToField.set(found.original, field);
+            matchedOriginal.push(found.original);
+            return true;
+          }
+          return false;
+        });
+      }
+    }
+
+    const pick = (field: string, row: Record<string, string>): string => {
+      for (const [h, f] of headerToField.entries()) {
+        if (f !== field) continue;
+        const v = row[h];
+        if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
       }
       return "";
     };
 
-    // Dedupe: kunci gabungan no HP (suffix) + email. Normalisasi kedua sisi
-    // (sheet "0812..." vs DB "62812..." dianggap sama). Baris dengan HP dan
-    // email yang sama-sama terisi & cocok tidak dimasukkan lagi.
+    // Dedupe: no HP ATAU email sudah ada di DB / di file sebelumnya → skip.
     const normSuffix = (p: string) => p.replace(/\D/g, "").replace(/^62/, "").replace(/^0+/, "");
-    const existingKeys = new Set(
-      employeeList.map((e) => `${normSuffix(e.nomorTelepon || "")}|${String(e.email || "").trim().toLowerCase()}`)
+    const existingPhones = new Set(
+      employeeList.map((e) => normSuffix(e.nomorTelepon || "")).filter(Boolean)
     );
-    const seenInFile = new Set<string>();
+    const existingEmails = new Set(
+      employeeList.map((e) => String(e.email || "").trim().toLowerCase()).filter(Boolean)
+    );
+    const seenPhonesInFile = new Set<string>();
+    const seenEmailsInFile = new Set<string>();
 
     let dupCount = 0;
     const parsedForms: FormKaryawan[] = [];
 
     rawRows.forEach((r, idx) => {
-      const nama = pickVal(["nama lengkap", "nama", "nama_lengkap", "full name", "name"], r);
+      const nama = pick("namaLengkap", r);
       if (!nama) return;
 
-      const phoneRaw = pickVal(
-        ["nomor wa", "no wa", "nomor whatsapp", "whatsapp", "wa",
-         "nomor telepon", "no telepon", "telepon", "telpon", "nomor telp", "no telp",
-         "nohp", "no hp", "nomor hp", "hp", "handphone", "nomor handphone",
-         "phone", "mobile", "nomor seluler", "no seluler"],
-        r
-      );
-      const phoneSuffix = normSuffix(phoneRaw);
-      const email = pickVal(["email", "e-mail", "mail"], r).toLowerCase().trim();
+      const phoneSuffix = normSuffix(pick("nomorTelepon", r));
+      const emergencySuffix = normSuffix(pick("emergencyContact", r));
+      const email = pick("email", r).toLowerCase().trim();
 
-      // Tanpa HP dan tanpa email → tidak bisa didedupe, langsung masuk.
-      const dupKey = phoneSuffix || email ? `${phoneSuffix}|${email}` : null;
-      if (dupKey && (existingKeys.has(dupKey) || seenInFile.has(dupKey))) {
+      // Duplikat: no HP ATAU email sama dengan yang sudah terdaftar
+      const isDuplicatePhone = phoneSuffix && (existingPhones.has(phoneSuffix) || seenPhonesInFile.has(phoneSuffix));
+      const isDuplicateEmail = email && (existingEmails.has(email) || seenEmailsInFile.has(email));
+
+      if (isDuplicatePhone || isDuplicateEmail) {
         dupCount++;
         return;
       }
-      if (dupKey) seenInFile.add(dupKey);
 
-      const genderRaw = pickVal(["gender", "jenis kelamin", "jenis_kelamin"], r).toLowerCase();
+      if (phoneSuffix) seenPhonesInFile.add(phoneSuffix);
+      if (email) seenEmailsInFile.add(email);
+
+      const genderRaw = pick("gender", r).toLowerCase();
       const gender = genderRaw.includes("l") || genderRaw.includes("pria") || genderRaw.includes("laki") ? "Laki-laki" : "Perempuan";
 
-      const jabatan = pickVal(["jabatan", "posisi", "role", "position", "job title", "pekerjaan"], r) || "Staff";
-      const kategori = pickVal(["kategori", "category", "tipe karyawan"], r) || "Host";
-      const bank = pickVal(["nama bank", "bank"], r) || "BCA";
-      const noRek = pickVal(["no rekening", "nomor rekening", "rekening", "norek", "no rek", "account number"], r);
-      const pemilikRek = pickVal(["pemilik rekening", "nama pemilik rek", "nama pemilik rekening", "atas nama", "account holder"], r) || nama;
-      const nik = pickVal(["nik", "ktp", "no ktp", "nomor ktp", "nik ktp"], r);
-      const npwp = pickVal(["npwp", "no npwp", "nomor npwp"], r);
-      const startDate = pickVal(["tanggal mulai", "start date", "tgl mulai", "join date", "tanggal masuk"], r) || new Date().toISOString().split("T")[0];
+      const nik = pick("nik", r);
+      const npwp = pick("npwp", r);
 
       parsedForms.push({
         id: idx + 1,
         namaLengkap: nama,
-        namaPanggilan: pickVal(["nama panggilan", "panggilan", "nickname"], r),
+        namaPanggilan: pick("namaPanggilan", r),
         gender,
-        tempatLahir: pickVal(["tempat lahir", "kota lahir"], r),
-        tanggalLahir: pickVal(["tanggal lahir", "tgl lahir", "birth date"], r),
-        agama: pickVal(["agama", "religion"], r) || "Islam",
+        tempatLahir: pick("tempatLahir", r),
+        tanggalLahir: normImportDate(pick("tanggalLahir", r)),
+        agama: pick("agama", r) || "Islam",
         nomorTeleponSuffix: phoneSuffix,
-        emergencyContactSuffix: "",
+        emergencyContactSuffix: emergencySuffix,
         email: email || `${nama.toLowerCase().replace(/\s+/g, ".")}@example.com`,
-        statusPerkawinan: "Belum Kawin",
-        riwayatPenyakit: "-",
-        jabatan,
-        kategori,
-        tipeJadwal: "Shift",
-        startDate,
-        endDate: "",
-        statusAktif: "Aktif",
+        statusPerkawinan: pick("statusPerkawinan", r) || "Belum Kawin",
+        riwayatPenyakit: pick("riwayatPenyakit", r) || "-",
+        jabatan: pick("jabatan", r) || "Staff",
+        kategori: pick("kategori", r) || "Host",
+        tipeJadwal: normImportTipe(pick("tipeJadwal", r)),
+        startDate: normImportDate(pick("startDate", r)) || new Date().toISOString().split("T")[0],
+        endDate: normImportDate(pick("endDate", r)),
+        statusAktif: normImportStatus(pick("statusAktif", r)),
         nik,
         npwp,
-        statusPtkp: "TK/0",
-        alamatKtp: pickVal(["alamat ktp", "alamat"], r),
-        alamatDomisili: pickVal(["alamat domisili", "domisili"], r),
-        namaBank: bank,
-        nomorRekening: noRek,
-        namaPemilikRek: pemilikRek,
-        scanKtp: null,
-        scanKk: null,
-        scanNpwp: null,
+        statusPtkp: pick("statusPtkp", r) || "TK/0",
+        alamatKtp: pick("alamatKtp", r),
+        alamatDomisili: pick("alamatDomisili", r) || pick("alamatKtp", r),
+        namaBank: pick("namaBank", r) || "BCA",
+        nomorRekening: pick("nomorRekening", r),
+        namaPemilikRek: pick("namaPemilikRek", r) || nama,
+        // Scan dokumen disimpan sebagai LINK di sheet → simpan string (Drive ID/link).
+        scanKtp: pick("scanKtp", r) || null,
+        scanKk: pick("scanKk", r) || null,
+        scanNpwp: pick("scanNpwp", r) || null,
         isExpanded: idx === 0,
       });
     });
 
-    setImportMatchedHeaders(["Nama Lengkap", "No HP", "Email", "Jabatan", "Bank & Rekening", "NIK/NPWP"]);
+    setImportMatchedHeaders(matchedOriginal);
     setImportDupSkipped(dupCount);
     setImportRows(parsedForms);
   }
@@ -843,22 +966,14 @@ export default function InputKaryawanPage() {
     }
   }
 
-  function handlePushImportToForms() {
-    if (!importRows.length) return;
-    const reindexed = importRows.slice(0, 10).map((row, i) => ({
-      ...row,
-      id: i + 1,
-      isExpanded: i === 0,
-    }));
-    setForms(reindexed);
-    setActiveTab("input");
-    toast.success(`Berhasil memindahkan ${reindexed.length} baris ke tab Input Kolektif!`);
-  }
+  // TODO(import-kolektif): tombol "Kirim ke Input Kolektif" + handlePushImportToForms
+  // dihapus — simpan langsung lewat handleSaveImportRows (bulk API).
+  // Blok asli: slice(0,10) → setForms(reindexed) → setActiveTab("input").
 
   async function handleSaveImportRows() {
     if (!importRows.length) return;
     if (importRows.length > 10) {
-      toast.warning("Maksimal 10 baris per penyimpanan batch. Kirim sebagian atau gunakan 'Kirim ke Input Kolektif'.");
+      toast.warning("Maksimal 10 baris per penyimpanan batch. Hapus baris lain atau impor bertahap.");
       return;
     }
     setImportSaving(true);
@@ -872,7 +987,7 @@ export default function InputKaryawanPage() {
         agama: f.agama || undefined,
         nomorTelepon: f.nomorTeleponSuffix ? `62${f.nomorTeleponSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
         emergencyContact: f.emergencyContactSuffix ? `62${f.emergencyContactSuffix.replace(/^62/, "").replace(/^0+/, "")}` : undefined,
-        email: f.email.trim(),
+        email: f.email.trim() || undefined,
         statusPerkawinan: f.statusPerkawinan || undefined,
         riwayatPenyakit: f.riwayatPenyakit.trim() || undefined,
         jabatan: f.jabatan,
@@ -886,9 +1001,12 @@ export default function InputKaryawanPage() {
         statusPtkp: f.statusPtkp || undefined,
         alamatKtp: f.alamatKtp.trim() || undefined,
         alamatDomisili: f.alamatDomisili.trim() || undefined,
-        namaBank: f.namaBank,
+        namaBank: f.namaBank || undefined,
         nomorRekening: f.nomorRekening.trim() || undefined,
         namaPemilikRek: f.namaPemilikRek.trim() || undefined,
+        scanKtpDriveId: f.scanKtp || undefined,
+        scanKkDriveId: f.scanKk || undefined,
+        scanNpwpDriveId: f.scanNpwp || undefined,
       }));
 
       await sendJson("/api/employees?action=bulk", "POST", { items });
@@ -1948,12 +2066,22 @@ export default function InputKaryawanPage() {
                 </div>
               </div>
 
-              {/* Action Bar */}
-              <div className="flex justify-end pt-4 border-t border-slate-100">
+              {/* Action Bar: Hapus Karyawan & Simpan Perubahan */}
+              <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleDeleteEmployee}
+                  disabled={savingEdit || deletingEmployee}
+                  className="w-full sm:w-auto px-6 py-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50 active:scale-95"
+                  title="Hapus data karyawan ini secara permanen dari database"
+                >
+                  <i className={`fa-solid ${deletingEmployee ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
+                  <span>{deletingEmployee ? "Menghapus..." : "Hapus Karyawan"}</span>
+                </button>
                 <button
                   type="submit"
-                  disabled={savingEdit}
-                  className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3.5 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                  disabled={savingEdit || deletingEmployee}
+                  className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3.5 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50 cursor-pointer active:scale-95"
                 >
                   <i className={`fa-solid ${savingEdit ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
                   <span>{savingEdit ? "Menyimpan Data..." : "Simpan Perubahan Data Karyawan"}</span>
@@ -2066,13 +2194,87 @@ export default function InputKaryawanPage() {
                   <span>Tambah Kolom Perubahan</span>
                 </button>
 
-                <div className="flex justify-end pt-4 border-t border-slate-100">
-                  <button type="submit" disabled={savingEdit} className="bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center gap-2 text-sm disabled:opacity-50">
+                <div className="flex flex-col sm:flex-row justify-end items-center gap-3 pt-4 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={handleDeleteEmployee}
+                    disabled={savingEdit || deletingEmployee}
+                    className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50 active:scale-95"
+                    title="Hapus data karyawan ini secara permanen dari database"
+                  >
+                    <i className={`fa-solid ${deletingEmployee ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
+                    <span>{deletingEmployee ? "Menghapus..." : "Hapus Karyawan"}</span>
+                  </button>
+                  <button type="submit" disabled={savingEdit || deletingEmployee} className="w-full sm:w-auto bg-[#941A0B] hover:bg-[#7D1509] text-white font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center justify-center gap-2 text-sm disabled:opacity-50 cursor-pointer active:scale-95">
                     <i className={`fa-solid ${savingEdit ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
                     <span>{savingEdit ? "Menyimpan..." : "Simpan Perubahan"}</span>
                   </button>
                 </div>
               </form>
+            </div>
+          )}
+
+          {/* Modal Konfirmasi Hapus Karyawan (Permanen) */}
+          {showDeleteEmployeeModal && targetEmployee && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+              <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in zoom-in-95 duration-150">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl shrink-0">
+                    <i className="fa-solid fa-user-xmark" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Hapus Karyawan Permanen
+                    </h3>
+                    <p className="text-xs text-rose-600 font-semibold">
+                      Tindakan ini tidak dapat dibatalkan
+                    </p>
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200 text-xs space-y-1.5">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">ID Karyawan:</span>
+                    <span className="font-mono font-bold text-rose-700">{targetEmployee.idKaryawan || targetEmployee.id}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Nama Lengkap:</span>
+                    <span className="font-bold text-slate-800">{targetEmployee.namaLengkap}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Jabatan / Kategori:</span>
+                    <span className="font-semibold text-slate-700">{targetEmployee.jabatan || "-"} ({targetEmployee.kategori || "-"})</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Email:</span>
+                    <span className="font-mono text-slate-700">{targetEmployee.email || "-"}</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Apakah Anda yakin ingin <strong>menghapus permanen</strong> data karyawan ini dari database? Seluruh riwayat presensi, izin, lembur, serta akun login akan dibersihkan.
+                </p>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteEmployeeModal(false)}
+                    disabled={deletingEmployee}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold transition cursor-pointer"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={executeConfirmDeleteEmployee}
+                    disabled={deletingEmployee}
+                    className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer disabled:opacity-50 active:scale-95"
+                  >
+                    <i className={`fa-solid ${deletingEmployee ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
+                    <span>{deletingEmployee ? "Menghapus..." : "Ya, Hapus Permanen"}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -2275,7 +2477,11 @@ export default function InputKaryawanPage() {
             </p>
           </div>
 
-          {!importRows.length ? (
+          {/* Panel hasil dirender kalau ADA data mentah (rawRows terbaca) WALAUPUN
+              importRows kosong — sebelumnya hanya cek importRows, sehingga saat
+              semua baris duplikat / kolom tidak dikenali, preview data mentah
+              tidak pernah muncul (gejala "preview belum muncul"). */}
+          {!importRawHeaders.length ? (
             <>
               {/* Pilihan Sumber: File vs Google Sheets */}
               <div className="flex gap-2 p-1 bg-slate-100 rounded-xl max-w-xs">
@@ -2370,15 +2576,21 @@ export default function InputKaryawanPage() {
               {/* Hasil parse: ringkasan + baris editable */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                    <i className="fa-solid fa-check" />
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${importRows.length ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    <i className={`fa-solid ${importRows.length ? "fa-check" : "fa-triangle-exclamation"}`} />
                   </div>
                   <div>
                     <div className="font-extrabold text-slate-900 text-sm">
                       {importRows.length} Data Karyawan Siap Diimpor
                     </div>
                     <div className="text-xs text-slate-500 mt-0.5">
-                      Kolom dikenali: <span className="font-semibold text-slate-700">{importMatchedHeaders.join(", ")}</span>
+                      {importRows.length ? (
+                        <>Kolom dikenali: <span className="font-semibold text-slate-700">{importMatchedHeaders.join(", ")}</span></>
+                      ) : importDupSkipped > 0 ? (
+                        <>Semua baris dilewati: data duplikat (no HP / email sudah terdaftar) atau kolom nama tidak dikenali.</>
+                      ) : (
+                        <>Tidak ada baris valid — periksa header sheet, kolom nama (mis. &quot;Nama Lengkap&quot;) harus ada.</>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2397,7 +2609,7 @@ export default function InputKaryawanPage() {
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
                     <span>Pratinjau Data Mentah (Menampilkan maks. 5 baris pertama)</span>
-                    <span className="text-slate-400 font-normal text-[11px]">Total: {importRows.length} baris</span>
+                    <span className="text-slate-400 font-normal text-[11px]">Total: {importRawCount} baris</span>
                   </div>
                   <div className="overflow-x-auto max-w-full border border-slate-200 rounded-xl shadow-2xs">
                     <table className="text-left text-[11px]">
@@ -2424,11 +2636,21 @@ export default function InputKaryawanPage() {
                 </div>
               )}
 
+              {/* Parse sukses tapi 0 baris mentah terbaca — sumber kosong/tidak sesuai format. */}
+              {importRawHeaders.length === 0 && (
+                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                  <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
+                  <div>
+                    <strong>Data kosong:</strong> sumber berhasil dibaca tetapi tidak ada baris data. Pastikan sheet/file memiliki baris header (mis. Nama, No HP, Email) diikuti minimal satu baris data.
+                  </div>
+                </div>
+              )}
+
               {importRows.length > 10 && (
                 <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
                   <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
                   <div>
-                    <strong>Perhatian:</strong> Terdeteksi {importRows.length} baris data. Penyimpanan langsung dibatasi maksimal 10 data per batch. Anda dapat menggunakan tombol <strong>&quot;Kirim ke Input Kolektif&quot;</strong> untuk meninjau dan menyimpan per 10 data.
+                    <strong>Perhatian:</strong> Terdeteksi {importRows.length} baris data. Penyimpanan dibatasi maksimal 10 data per batch — hanya 10 baris pertama yang akan disimpan, sisanya otomatis dilewati. Gunakan tombol Ganti Sumber untuk mengimpor sisanya setelah batch ini tersimpan.
                   </div>
                 </div>
               )}
@@ -2461,17 +2683,9 @@ export default function InputKaryawanPage() {
                 ) : (
                   <span />
                 )}
+                {/* TODO(import-kolektif): tombol "Kirim ke Input Kolektif" dihapus —
+                    simpan langsung via bulk API. Blok asli: onClick={handlePushImportToForms}. */}
                 <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
-                  <button
-                    type="button"
-                    onClick={handlePushImportToForms}
-                    disabled={importBusy || importSaving || !importRows.length}
-                    className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
-                    title="Kirim baris import ke tab Input Kolektif untuk ditinjau / diedit sebelum disimpan"
-                  >
-                    <i className="fa-solid fa-arrow-right-to-bracket" />
-                    Kirim ke Input Kolektif
-                  </button>
                   <button
                     type="button"
                     onClick={handleSaveImportRows}

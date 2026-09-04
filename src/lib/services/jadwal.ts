@@ -64,7 +64,7 @@ export async function listJadwal(params?: {
       ...(params?.tanggal ? { tanggal: new Date(params.tanggal) } : {}),
     },
     orderBy: { tanggal: "desc" },
-    include: { streamerKaryawan: true, hostKaryawan: true, otsKaryawan: true, client: true },
+    include: { streamerKaryawan: true, hostKaryawan: true, otsKaryawan: true, client: true, absensi: true },
   });
 }
 
@@ -411,6 +411,14 @@ export async function deleteJadwal(id: string) {
     include: { absensi: true },
   });
   if (!existing) throw AppError.notFound("Jadwal tidak ditemukan");
+
+  const st = String(existing.status || "").toUpperCase();
+  const allowedStatus = st === "TERJADWAL" || st === "BATAL" || st === "DIBATALKAN";
+  if (!allowedStatus) {
+    throw AppError.badRequest(
+      `Jadwal dengan status '${existing.status}' tidak dapat dihapus. Hanya jadwal berstatus 'TERJADWAL' atau 'BATAL' yang dapat dihapus.`
+    );
+  }
 
   const checkIns = existing.absensi.filter((a) => a.tipe === "CHECK_IN");
   const checkOuts = existing.absensi.filter((a) => a.tipe === "CHECK_OUT");

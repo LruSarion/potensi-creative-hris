@@ -12,11 +12,12 @@ export interface LocationCoordinates {
 interface LiveCameraCheckinProps {
   value: string;
   onChange: (photoDataUrl: string) => void;
-  onLocationChange: (location: LocationCoordinates | null) => void;
+  onLocationChange?: (location: LocationCoordinates | null) => void;
   onCameraStatusChange?: (hasCamera: boolean, errorMsg: string | null) => void;
   disabled?: boolean;
   disabledMessage?: string;
   mode?: "checkin" | "checkout" | "gmv";
+  allowGallery?: boolean;
 }
 
 const MODE_TEXT = {
@@ -37,9 +38,9 @@ const MODE_TEXT = {
   gmv: {
     photoAlt: "Foto Bukti GMV",
     inactiveTitle: "Siap Mengambil Bukti GMV",
-    inactiveDesc: "Klik tombol di bawah untuk mendeteksi lokasi GPS dan mengaktifkan kamera perangkat Anda untuk bukti GMV.",
+    inactiveDesc: "Klik tombol di bawah untuk mengaktifkan kamera dan mengambil foto layar bukti GMV sesi siaran live Anda.",
     shutter: "Ambil Bukti GMV",
-    note: "Bukti GMV wajib diambil secara live melalui kamera perangkat dan menyertakan koordinat lokasi GPS.",
+    note: "Bukti GMV dapat diambil langsung melalui kamera atau diunggah jika memiliki screenshot dashboard.",
   },
 } as const;
 
@@ -51,17 +52,21 @@ export default function LiveCameraCheckin({
   disabled = false,
   disabledMessage = "Pilih jadwal siaran live terlebih dahulu untuk membuka kamera.",
   mode = "checkin",
+  allowGallery = false,
 }: LiveCameraCheckinProps) {
   const t = MODE_TEXT[mode];
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Camera activation states
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraLoading, setCameraLoading] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [hasCamera, setHasCamera] = useState(true);
-  const [facingMode, setFacingMode] = useState<"user" | "environment">("user");
+  const [facingMode, setFacingMode] = useState<"user" | "environment">(
+    mode === "gmv" ? "environment" : "user"
+  );
   const [deviceCount, setDeviceCount] = useState(1);
   const [isFlashing, setIsFlashing] = useState(false);
 
@@ -87,7 +92,7 @@ export default function LiveCameraCheckin({
       const err = "Perangkat Anda tidak mendukung fitur lokasi (GPS).";
       setLocError(err);
       setLocLoading(false);
-      onLocationChange(null);
+      onLocationChange?.(null);
       return;
     }
 
@@ -104,7 +109,7 @@ export default function LiveCameraCheckin({
         setCurrentLoc(data);
         setLocError(null);
         setLocLoading(false);
-        onLocationChange(data);
+        onLocationChange?.(data);
       },
       (err) => {
         let msg = "Gagal mendeteksi lokasi GPS.";
@@ -117,7 +122,7 @@ export default function LiveCameraCheckin({
         }
         setLocError(msg);
         setLocLoading(false);
-        onLocationChange(null);
+        onLocationChange?.(null);
       },
       {
         enableHighAccuracy: true,
@@ -287,7 +292,7 @@ export default function LiveCameraCheckin({
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 13px sans-serif";
-    ctx.fillText(`POTENSI HRIS • ${nowStr} WIB`, 14, canvas.height - 21);
+    ctx.fillText(`POTENSI HRIS • ${mode === "gmv" ? "BUKTI GMV" : "PRESENSI"} • ${nowStr} WIB`, 14, canvas.height - 21);
 
     ctx.fillStyle = "#cbd5e1";
     ctx.font = "11px monospace";
@@ -301,6 +306,61 @@ export default function LiveCameraCheckin({
       stopStream();
       setIsCameraActive(false);
     }, 120);
+  };
+
+  // Handle gallery file upload
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const MAX_DIM = 1280;
+        let width = img.width;
+        let height = img.height;
+        if (width > height && width > MAX_DIM) {
+          height = Math.round((height * MAX_DIM) / width);
+          width = MAX_DIM;
+        } else if (height > width && height > MAX_DIM) {
+          width = Math.round((width * MAX_DIM) / height);
+          height = MAX_DIM;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          onChange(event.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Add subtle watermark on uploaded proof
+        const now = new Date();
+        const timeStr = now.toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
+        ctx.fillRect(0, height - 36, width, 36);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 13px sans-serif";
+        ctx.fillText(`POTENSI HRIS • ${mode === "gmv" ? "BUKTI GMV" : "DOKUMEN"} • ${timeStr} WIB`, 14, height - 14);
+
+        const compressed = canvas.toDataURL("image/jpeg", 0.85);
+        onChange(compressed);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      };
+    };
+    reader.readAsDataURL(file);
   };
 
   // Retake photo
@@ -347,8 +407,14 @@ export default function LiveCameraCheckin({
 
           {/* Top Bar: GPS Status + Close Button */}
           <div className="relative z-10 p-4 pt-6 sm:p-6 flex items-center justify-between pointer-events-auto">
-            {/* GPS Pill Indicator */}
-            <div className="max-w-[75%]">
+            {/* GPS Pill Indicator & GMV Title */}
+            <div className="max-w-[75%] flex flex-wrap items-center gap-2">
+              {mode === "gmv" && (
+                <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-white text-xs shadow-lg">
+                  <i className="fa-solid fa-receipt text-amber-400 text-xs" />
+                  <span className="text-[11px] font-bold">Bukti GMV</span>
+                </div>
+              )}
               {locLoading ? (
                 <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 text-white text-xs shadow-lg">
                   <i className="fa-solid fa-circle-notch animate-spin text-blue-400 text-xs" />
@@ -403,19 +469,30 @@ export default function LiveCameraCheckin({
                   <button
                     type="button"
                     onClick={handleCloseCamera}
-                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs transition cursor-pointer"
+                    className="bg-slate-700 hover:bg-slate-600 text-white font-bold px-3.5 py-1.5 rounded-xl text-sm transition cursor-pointer"
                   >
                     Tutup
                   </button>
                   <button
                     type="button"
                     onClick={() => startCamera(facingMode)}
-                    className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-4 py-1.5 rounded-xl text-xs transition inline-flex items-center gap-1.5 cursor-pointer"
+                    className="bg-[#941A0B] hover:bg-[#781408] text-white font-bold px-4 py-1.5 rounded-xl text-sm transition inline-flex items-center gap-1.5 cursor-pointer"
                   >
                     <i className="fa-solid fa-arrows-rotate" />
                     <span>Coba Lagi</span>
                   </button>
                 </div>
+              </div>
+            ) : mode === "gmv" ? (
+              <div className="relative w-72 h-52 sm:w-96 sm:h-64 border-2 border-dashed border-white/50 rounded-2xl flex items-end justify-center pb-3 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+                {/* Corner guide reticles */}
+                <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl-lg" />
+                <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white rounded-tr-lg" />
+                <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white rounded-bl-lg" />
+                <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white rounded-br-lg" />
+                <span className="text-[11px] text-white font-bold bg-black/60 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/15 shadow-lg">
+                  Arahkan ke Layar Dashboard GMV
+                </span>
               </div>
             ) : (
               <div className="relative w-64 h-80 sm:w-72 sm:h-96 border-2 border-dashed border-white/40 rounded-[52px] flex items-end justify-center pb-4 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
@@ -470,7 +547,7 @@ export default function LiveCameraCheckin({
               <button
                 type="button"
                 onClick={handleCloseCamera}
-                className="text-xs text-white/90 hover:text-white font-bold bg-black/60 hover:bg-black/80 px-3.5 py-2 rounded-full backdrop-blur-md border border-white/20 transition active:scale-90 shadow-xl cursor-pointer"
+                className="text-sm text-white/90 hover:text-white font-bold bg-black/60 hover:bg-black/80 px-3.5 py-2 rounded-full backdrop-blur-md border border-white/20 transition active:scale-90 shadow-xl cursor-pointer"
               >
                 Batal
               </button>
@@ -491,13 +568,13 @@ export default function LiveCameraCheckin({
           />
           <div className="absolute top-3 left-3 bg-emerald-600/95 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-md">
             <i className="fa-solid fa-circle-check" />
-            <span>Foto Presensi Berhasil Diambil</span>
+            <span>{mode === "gmv" ? "Foto Bukti GMV Berhasil Diambil" : "Foto Presensi Berhasil Diambil"}</span>
           </div>
           <div className="absolute bottom-3 right-3">
             <button
               type="button"
               onClick={retakePhoto}
-              className="bg-slate-900/85 hover:bg-slate-900 text-white border border-white/20 font-bold px-3.5 py-1.5 rounded-xl text-xs backdrop-blur-xs flex items-center gap-1.5 shadow-lg transition cursor-pointer"
+              className="bg-slate-900/85 hover:bg-slate-900 text-white border border-white/20 font-bold px-3.5 py-1.5 rounded-xl text-sm backdrop-blur-xs flex items-center gap-1.5 shadow-lg transition cursor-pointer"
             >
               <i className="fa-solid fa-camera-rotate text-amber-400" />
               <span>Foto Ulang</span>
@@ -513,6 +590,15 @@ export default function LiveCameraCheckin({
               : "bg-gradient-to-b from-white to-red-50/20 border-dashed border-[#941A0B]/30 hover:border-[#941A0B]/50"
           }`}
         >
+          {allowGallery && (
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/jpg"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          )}
           <div
             className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl transition ${
               disabled
@@ -536,19 +622,32 @@ export default function LiveCameraCheckin({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleOpenCamera}
-            disabled={disabled}
-            className={`font-bold px-6 py-3 rounded-xl text-xs transition flex items-center gap-2 shadow-md ${
-              disabled
-                ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
-                : "bg-[#941A0B] hover:bg-[#781408] text-white shadow-[#941A0B]/20 active:scale-95 cursor-pointer"
-            }`}
-          >
-            <i className="fa-solid fa-camera" />
-            <span>Buka Kamera & Ambil Gambar</span>
-          </button>
+          <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full justify-center">
+            <button
+              type="button"
+              onClick={handleOpenCamera}
+              disabled={disabled}
+              className={`font-bold px-6 py-3 rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-md w-full sm:w-auto ${
+                disabled
+                  ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none"
+                  : "bg-[#941A0B] hover:bg-[#781408] text-white shadow-[#941A0B]/20 active:scale-95 cursor-pointer"
+              }`}
+            >
+              <i className="fa-solid fa-camera" />
+              <span>Buka Kamera & Ambil Gambar</span>
+            </button>
+            {allowGallery && (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={disabled}
+                className="font-bold px-5 py-3 rounded-xl text-sm transition flex items-center justify-center gap-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-2xs active:scale-95 cursor-pointer w-full sm:w-auto disabled:opacity-50"
+              >
+                <i className="fa-solid fa-folder-open text-amber-600" />
+                <span>Pilih dari Galeri</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 

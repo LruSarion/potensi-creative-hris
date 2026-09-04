@@ -254,3 +254,79 @@ export async function deactivateEmployee(id: string) {
     data: { statusAktif: "NON_AKTIF" },
   });
 }
+
+export async function deleteEmployee(id: string) {
+  const user = await requirePermission("employee:write");
+  const existing = await db.karyawan.findFirst({
+    where: {
+      OR: [{ id }, { idKaryawan: id }],
+      ...tenantWhere(user),
+    },
+  });
+  if (!existing) throw AppError.notFound("Karyawan tidak ditemukan");
+
+  return db.$transaction(async (tx) => {
+    // 1. Delete dependent child records
+    await tx.absensi.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.lembur.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.izin.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.tukarShift.deleteMany({
+      where: {
+        OR: [
+          { requesterId: existing.id },
+          { targetId: existing.id },
+        ],
+      },
+    });
+    await tx.penilaianSDM.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.payroll.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.kuotaHost.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.liburStreamer.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.rosterShift.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.payoutLine.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.enrollment.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.streamerBlacklist.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.certificate.deleteMany({ where: { streamerKaryawanId: existing.id } });
+    await tx.projectApplication.deleteMany({ where: { streamerKaryawanId: existing.id } });
+    await tx.clientShortlist.deleteMany({ where: { streamerKaryawanId: existing.id } });
+    await tx.sopTaskCompletion.deleteMany({ where: { karyawanId: existing.id } });
+    await tx.qcViolation.deleteMany({ where: { streamerKaryawanId: existing.id } });
+    await tx.streamerProfile.deleteMany({ where: { karyawanId: existing.id } });
+
+    // 2. Unlink nullable references in Jadwal & Incident
+    await tx.jadwal.updateMany({
+      where: { hostKaryawanId: existing.id },
+      data: { hostKaryawanId: null },
+    });
+    await tx.jadwal.updateMany({
+      where: { streamerKaryawanId: existing.id },
+      data: { streamerKaryawanId: null },
+    });
+    await tx.jadwal.updateMany({
+      where: { otsKaryawanId: existing.id },
+      data: { otsKaryawanId: null },
+    });
+    await tx.incident.updateMany({
+      where: { streamerKaryawanId: existing.id },
+      data: { streamerKaryawanId: null },
+    });
+    await tx.incident.updateMany({
+      where: { assigneeId: existing.id },
+      data: { assigneeId: null },
+    });
+
+    const userId = existing.userId;
+
+    // 3. Delete the employee record permanently
+    const deleted = await tx.karyawan.delete({
+      where: { id: existing.id },
+    });
+
+    // 4. Delete associated login account if exists
+    if (userId) {
+      await tx.user.delete({ where: { id: userId } }).catch(() => {});
+    }
+
+    return deleted;
+  });
+}

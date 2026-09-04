@@ -28,5 +28,7 @@ export const PATCH = apiHandler(async (req: Request) => {
   const id = url.searchParams.get("id");
   const body = await req.json();
   if (!id) throw new Error("id required");
-  return updateViolationStatus(id, body.status);
+  const action = body.action === "close" ? "close" : body.action === "confirm" ? "confirm" : null;
+  if (!action) throw new Error("action must be 'confirm' or 'close'");
+  return updateViolationStatus(id, action);
 });

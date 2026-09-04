@@ -102,7 +102,7 @@ export const MENU_ITEMS: NavItem[] = [
     href: "/input-karyawan",
     label: "Input Karyawan",
     icon: "fa-solid fa-user-plus",
-    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
   },
   {
     href: "/input-jadwal",

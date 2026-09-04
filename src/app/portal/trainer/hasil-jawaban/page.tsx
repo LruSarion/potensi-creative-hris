@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { fetchJson } from "@/lib/api-client";
+import { fetchJson, sendJson } from "@/lib/api-client";
 import { TableLoadingState } from "@/components/ui/loading-states";
+import { toast } from "@/components/ui/toast";
 
 type Submission = {
   id: string;
@@ -20,12 +21,15 @@ type Submission = {
   correctCount: number;
   scorePercent: number;
   status: string;
+  pendingGradingCount?: number;
 };
 
 type SubmissionDetail = Submission & {
   passingScore: number;
   detailedResults: {
+    attemptId: string | null;
     questionId: string;
+    type: string;
     question: string;
     eventTime: number | null;
     options: string[] | null;
@@ -46,6 +50,8 @@ export default function HasilJawabanPage() {
   const [search, setSearch] = useState("");
   const [detail, setDetail] = useState<SubmissionDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [gradeScores, setGradeScores] = useState<Record<string, string>>({});
+  const [gradingBusy, setGradingBusy] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -70,6 +76,7 @@ export default function HasilJawabanPage() {
     try {
       const data = await fetchJson<SubmissionDetail>(`/api/lms?view=video-submission-detail&watchId=${id}`, { cache: "no-store" });
       setDetail(data);
+      setGradeScores({});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Koneksi gagal");
     } finally {
@@ -79,10 +86,30 @@ export default function HasilJawabanPage() {
 
   const lessons = Array.from(new Map(submissions.map((s) => [s.lessonId, s.lessonTitle])).entries());
 
+  async function saveGrade(attemptId: string, questionId: string) {
+    const raw = gradeScores[questionId];
+    const score = Number(raw);
+    if (!raw || Number.isNaN(score) || score < 0 || score > 100) {
+      toast.warning("Masukkan nilai 0-100.");
+      return;
+    }
+    setGradingBusy(questionId);
+    try {
+      await sendJson("/api/lms", "POST", { action: "grade", attemptId, score });
+      toast.success(`Nilai ${score} tersimpan.`);
+      // Refresh detail so the graded score shows immediately
+      if (detail) await openDetail(detail.id);
+    } catch {
+      toast.error("Gagal menyimpan nilai.");
+    } finally {
+      setGradingBusy(null);
+    }
+  }
+
   const filtered = submissions.filter((s) => {
     if (filterLesson !== "ALL" && s.lessonId !== filterLesson) return false;
     if (filterStatus === "PASSED" && s.scorePercent < 70) return false;
-    if (filterStatus === "FAILED" && s.scorePercent < 70) return false;
+    if (filterStatus === "FAILED" && s.scorePercent >= 70) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       if (!s.studentName.toLowerCase().includes(q) && !s.lessonTitle.toLowerCase().includes(q)) return false;
@@ -250,6 +277,11 @@ export default function HasilJawabanPage() {
                     }`}>
                       {s.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
                     </span>
+                    {(s.pendingGradingCount ?? 0) > 0 && (
+                      <span className="ml-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                        ⏳ {s.pendingGradingCount} perlu dinilai
+                      </span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5 text-slate-700 font-medium">
                     {s.submittedAt ? new Date(s.submittedAt).toLocaleString("id-ID") : "-"}
@@ -290,7 +322,16 @@ export default function HasilJawabanPage() {
                 <span>Progres: {detail.watchPercentage}%</span>
                 <span>{detail.scorePercent >= (detail.passingScore || 70) ? "LULUS" : "BELUM LULUS"}</span>
               </div>
-              {detail.detailedResults.map((r, idx) => (
+              {(detail.pendingGradingCount ?? 0) > 0 && (
+                <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 text-[11px] font-bold text-amber-800 flex items-center gap-2">
+                  <i className="fa-solid fa-hourglass-half" />
+                  {detail.pendingGradingCount} jawaban esai/audio menunggu penilaian trainer.
+                </div>
+              )}
+              {detail.detailedResults.map((r, idx) => {
+                const isManual = r.type === "ESSAY" || r.type === "AUDIO";
+                const isAudioAnswer = (r.studentAnswer ?? "").startsWith("data:audio");
+                return (
                 <div key={r.questionId} className="p-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <p className="font-bold text-slate-900 text-sm">
@@ -300,19 +341,69 @@ export default function HasilJawabanPage() {
                           @ {formatTime(r.eventTime)}
                         </span>
                       )}
+                      {isManual && (
+                        <span className={`ml-1.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          r.type === "AUDIO" ? "bg-sky-100 text-sky-800 border border-sky-300" : "bg-amber-100 text-amber-800 border border-amber-300"
+                        }`}>
+                          {r.type === "AUDIO" ? "🎙 SUARA" : "✍ ESAI"}
+                        </span>
+                      )}
                     </p>
-                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
-                      r.isCorrect ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-red-100 text-red-800 border border-red-300"
-                    }`}>
-                      {r.isCorrect ? "BENAR" : "SALAH"}
-                    </span>
+                    {isManual ? (
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 border ${
+                        r.score != null
+                          ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                          : "bg-slate-100 text-slate-600 border-slate-300"
+                      }`}>
+                        {r.score != null ? `DINILAI: ${r.score}` : "MENUNGGU NILAI"}
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+                        r.isCorrect ? "bg-emerald-100 text-emerald-800 border border-emerald-300" : "bg-red-100 text-red-800 border border-red-300"
+                      }`}>
+                        {r.isCorrect ? "BENAR" : "SALAH"}
+                      </span>
+                    )}
                   </div>
-                  <div className="text-slate-700 space-y-1 font-medium bg-white p-2.5 rounded-lg border border-slate-200">
-                    <p>Jawaban streamer: <strong className="text-slate-900 font-bold">{r.studentAnswer || "-"}</strong></p>
-                    <p>Kunci jawaban: <strong className="text-emerald-800 font-bold">{r.correctAnswer || "-"}</strong></p>
+                  <div className="text-slate-700 space-y-1.5 font-medium bg-white p-2.5 rounded-lg border border-slate-200">
+                    {isAudioAnswer ? (
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-bold text-slate-500">Jawaban rekaman suara streamer:</p>
+                        <audio controls src={r.studentAnswer ?? undefined} className="w-full h-8" />
+                      </div>
+                    ) : (
+                      <p>Jawaban streamer: <strong className="text-slate-900 font-bold">{r.studentAnswer || "-"}</strong></p>
+                    )}
+                    {r.correctAnswer && <p>Kunci jawaban: <strong className="text-emerald-800 font-bold">{r.correctAnswer}</strong></p>}
                   </div>
+                  {isManual && r.attemptId && (
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-slate-200">
+                      <label className="text-[11px] font-bold text-slate-600 shrink-0">
+                        Nilai {r.type === "AUDIO" ? "rekaman" : "esai"} (0-100):
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        defaultValue={r.score ?? ""}
+                        onChange={(e) => setGradeScores((prev) => ({ ...prev, [r.questionId]: e.target.value }))}
+                        className="w-20 border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-bold outline-none focus:ring-2 focus:ring-purple-500"
+                        placeholder="0-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveGrade(r.attemptId!, r.questionId)}
+                        disabled={gradingBusy === r.questionId}
+                        className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-60 text-white text-[11px] font-bold transition flex items-center gap-1.5 shrink-0"
+                      >
+                        {gradingBusy === r.questionId ? <i className="fa-solid fa-spinner animate-spin" /> : <i className="fa-solid fa-check" />}
+                        {r.score != null ? "Update Nilai" : "Simpan Nilai"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

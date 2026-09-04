@@ -3,14 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { sendJson, errorMessage } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
+import AudioCapture from "@/components/audio-capture";
 
 type VideoQuestion = {
   id: string;
+  type?: string;
   question: string;
   options: string[] | null;
   correctAnswer: string | null;
   eventTime: number | null;
   isNote: boolean;
+  pauseVideo?: boolean | null;
 };
 
 type VideoLessonProps = {
@@ -49,6 +52,8 @@ function formatTime(sec: number): string {
 export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onSubmitted, onAnswerRecorded }: VideoLessonProps) {
   const playerRef = useRef<YTPlayer | null>(null);
   const [activeEvent, setActiveEvent] = useState<VideoQuestion | null>(null);
+  // Whether the video was actually paused for the active question (false when pauseVideo=false).
+  const activeEventWasPausedRef = useRef(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [watchSeconds, setWatchSeconds] = useState(0);
   const [videoDuration, setVideoDuration] = useState(lesson.videoDuration ?? 0);
@@ -179,7 +184,18 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
         // Check if a question at this second should trigger
         const qToTrigger = getTriggeredQuestion(t);
         if (qToTrigger) {
-          playerRef.current.pauseVideo();
+          // Flexible pause: the trainer can disable pausing per question —
+          // the question then shows while the video keeps playing.
+          if (qToTrigger.pauseVideo !== false) {
+            try {
+              playerRef.current.pauseVideo();
+              activeEventWasPausedRef.current = true;
+            } catch {
+              activeEventWasPausedRef.current = false;
+            }
+          } else {
+            activeEventWasPausedRef.current = false;
+          }
           setActiveEvent(qToTrigger);
         }
       } catch {
@@ -212,12 +228,15 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
     const answeredCount = Object.keys(answersRef.current).length;
     const allDone = answeredCount >= timedQuestions.length;
 
-    // Close modal & resume video playback
+    // Close modal & resume video playback (only if the question actually paused it)
     setActiveEvent(null);
-    try {
-      playerRef.current?.playVideo();
-    } catch {
-      // ignore
+    if (activeEventWasPausedRef.current) {
+      try {
+        playerRef.current?.playVideo();
+      } catch {
+        // ignore
+      }
+      activeEventWasPausedRef.current = false;
     }
 
     // If all questions answered, optionally auto-submit
@@ -358,12 +377,33 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
                 {activeEvent.question}
               </h4>
               <p className="text-[11px] text-slate-400 mt-1">
-                Video dijeda otomatis. Pilih jawaban yang benar untuk melanjutkan video.
+                {activeEvent.pauseVideo === false
+                  ? "Video tetap berjalan — jawab kapan pun selama video diputar."
+                  : activeEvent.type === "AUDIO"
+                    ? "Rekam jawaban suara Anda untuk dinilai trainer."
+                    : activeEvent.type === "ESSAY"
+                      ? "Tulis uraian jawaban Anda — dinilai manual oleh trainer."
+                      : "Video dijeda otomatis. Pilih jawaban yang benar untuk melanjutkan video."}
               </p>
             </div>
 
-            <div className="space-y-2.5">
-              {(activeEvent.options ?? []).map((opt, idx) => {
+            {activeEvent.type === "AUDIO" ? (
+              <AudioCapture
+                value={answers[activeEvent.id] ?? ""}
+                onChange={(dataUrl) => setAnswers((prev) => ({ ...prev, [activeEvent.id]: dataUrl }))}
+                label="🎙️ Rekam Jawaban Anda"
+              />
+            ) : activeEvent.type === "ESSAY" ? (
+              <textarea
+                rows={4}
+                value={answers[activeEvent.id] ?? ""}
+                onChange={(e) => setAnswers((prev) => ({ ...prev, [activeEvent.id]: e.target.value }))}
+                placeholder="Tulis uraian jawaban Anda..."
+                className="w-full border border-slate-300 rounded-2xl p-3.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+              />
+            ) : (
+              <div className="space-y-2.5">
+                {(activeEvent.options ?? []).map((opt, idx) => {
                 const letter = String.fromCharCode(65 + idx);
                 const isSelected =
                   answers[activeEvent.id] === letter ||
@@ -391,7 +431,8 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
                   </label>
                 );
               })}
-            </div>
+              </div>
+            )}
 
             <button
               type="button"
@@ -400,7 +441,7 @@ export default function VideoLessonPlayer({ lesson, enrollmentId, questions, onS
               className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-2xl text-xs transition shadow-lg shadow-purple-600/20 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               <i className="fa-solid fa-play text-xs" />
-              <span>Jawab & Lanjutkan Video</span>
+              <span>{activeEvent.pauseVideo === false ? "Kirim Jawaban" : "Jawab & Lanjutkan Video"}</span>
             </button>
           </div>
         </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import VideoLessonPlayer from "@/components/lms/video-lesson-player";
+import AudioCapture from "@/components/audio-capture";
 import { fetchJson } from "@/lib/api-client";
 
 type Question = {
@@ -14,6 +15,7 @@ type Question = {
   eventTime?: number | null;
   lessonId?: string | null;
   isNote?: boolean;
+  pauseVideo?: boolean | null;
 };
 
 type Lesson = {
@@ -70,7 +72,7 @@ export default function TabLms() {
   const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [quizResult, setQuizResult] = useState<{ correct: number; total: number; scorePct: number; passed: boolean } | null>(null);
+  const [quizResult, setQuizResult] = useState<{ correct: number; total: number; scorePct: number; passed: boolean; pendingManual?: number } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<"ALL" | "IN_PROGRESS" | "COMPLETED" | "CERTIFIED">("ALL");
 
@@ -172,15 +174,20 @@ export default function TabLms() {
     setSubmitting(true);
     setError("");
     try {
-      let correct = 0;
       const quizQuestions = activeModule.questions.filter((q) => !q.isNote);
-      const total = quizQuestions.length;
+      // Only auto-gradable MCQs count toward the score; ESSAY/AUDIO wait for trainer grading.
+      const gradableQuestions = quizQuestions.filter((q) => q.type === "MCQ" && q.correctAnswer);
+      const manualQuestions = quizQuestions.filter((q) => q.type === "ESSAY" || q.type === "AUDIO");
+
+      let correct = 0;
+      const total = gradableQuestions.length;
 
       for (const q of quizQuestions) {
         const ans = answers[q.id] ?? "";
-        let isRight = evaluateAnswer(ans, q.correctAnswer, q.options);
+        const isGradable = q.type === "MCQ" && q.correctAnswer;
+        let isRight = isGradable ? evaluateAnswer(ans, q.correctAnswer, q.options) : false;
 
-        // Try syncing attempt with backend
+        // Sync attempt with backend (records ESSAY/AUDIO answers for trainer grading too)
         try {
           const res = await fetch("/api/lms", {
             method: "POST",
@@ -193,7 +200,7 @@ export default function TabLms() {
             }),
           }).then((x) => x.json());
 
-          if (res.data?.score === 100) isRight = true;
+          if (isGradable && res.data?.score === 100) isRight = true;
         } catch {
           // Keep evaluateAnswer result
         }
@@ -201,11 +208,11 @@ export default function TabLms() {
         if (isRight) correct++;
       }
 
-      const scorePct = total > 0 ? Math.round((correct / total) * 100) : 100;
+      const scorePct = total > 0 ? Math.round((correct / total) * 100) : manualQuestions.length > 0 ? 100 : 0;
       const passingScore = activeModule.passingScore || 70;
       const passed = scorePct >= passingScore;
 
-      setQuizResult({ correct, total, scorePct, passed });
+      setQuizResult({ correct, total, scorePct, passed, pendingManual: manualQuestions.filter((q) => answers[q.id]).length });
 
       // Hitung ulang progress kursus secara otomatis
       fetch("/api/lms", {
@@ -319,11 +326,13 @@ export default function TabLms() {
                 .filter((q) => q.lessonId === lesson.id || (!q.lessonId && activeModule.lessons.filter((x) => x.videoId).length === 1 && q.eventTime != null))
                 .map((q) => ({
                   id: q.id,
+                  type: q.type,
                   question: q.question,
                   options: q.options,
                   correctAnswer: q.correctAnswer ?? null,
                   eventTime: q.eventTime ?? null,
                   isNote: q.isNote ?? false,
+                  pauseVideo: q.pauseVideo ?? true,
                 }));
               const hasTimedQuestions = lessonQuestions.some((q) => q.eventTime != null);
 
@@ -440,6 +449,17 @@ export default function TabLms() {
                             );
                           })}
                         </div>
+                      ) : q.type === "AUDIO" ? (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3">
+                          <p className="text-[10px] font-bold text-sky-700 mb-1.5 flex items-center gap-1.5">
+                            <i className="fa-solid fa-microphone" />
+                            Jawab dengan rekaman suara Anda — dinilai manual oleh trainer.
+                          </p>
+                          <AudioCapture
+                            value={answers[q.id] ?? ""}
+                            onChange={(dataUrl) => setAnswers((a) => ({ ...a, [q.id]: dataUrl }))}
+                          />
+                        </div>
                       ) : (
                         <textarea
                           rows={3}
@@ -493,6 +513,12 @@ export default function TabLms() {
                 Skor Anda: <strong>{quizResult.scorePct}%</strong> ({quizResult.correct} dari {quizResult.total} soal benar).
                 {quizResult.passed ? " Progress materi Anda telah diperbarui." : ` Nilai minimum kelulusan modul ini adalah ${activeModule.passingScore || 70}%.`}
               </p>
+              {quizResult.pendingManual ? (
+                <p className="text-[11px] text-amber-700 mt-1.5 font-semibold">
+                  <i className="fa-regular fa-hourglass-half mr-1" />
+                  {quizResult.pendingManual} soal esai/audio Anda menunggu penilaian trainer.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex items-center justify-center gap-3 pt-2">
@@ -602,6 +628,15 @@ export default function TabLms() {
               <div className="text-[11px] text-emerald-700 mt-0.5">
                 Diterbitkan pada: {new Date(cert.issuedAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}
               </div>
+              <a
+                href={`/portal/streamer/sertifikat/${cert.code}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition shadow-sm"
+              >
+                <i className="fa-solid fa-file-arrow-down" />
+                Lihat & Unduh Sertifikat
+              </a>
             </div>
           </div>
         )}

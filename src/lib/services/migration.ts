@@ -36,6 +36,16 @@ export async function fetchGoogleSheet(url: string): Promise<Record<string, stri
     throw AppError.badRequest("Tidak dapat mengakses sheet. Pastikan di-share ke 'siapa saja yang memiliki link'.");
   }
   const csv = await res.text();
+  // Google membalas halaman login HTML dengan status 200 bila sheet tidak di-share
+  // publik — tanpa cek ini parseCsv menghasilkan kolom sampah dan di client
+  // preview "tidak muncul" tanpa pesan error yang jelas.
+  const head = csv.slice(0, 2000);
+  if (/^\s*<(!doctype|html)/i.test(csv) || /accounts\.google\.com|Sign in/i.test(head)) {
+    throw AppError.badRequest("Sheet tidak dapat dibaca sebagai data. Pastikan share diatur ke 'Siapa saja yang memiliki link (Anyone with the link can view)'.");
+  }
+  if (!csv.trim()) {
+    throw AppError.badRequest("Sheet kosong — tidak ada baris data yang bisa dibaca.");
+  }
   return parseCsv(csv);
 }
 

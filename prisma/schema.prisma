@@ -793,6 +793,7 @@ enum EnrollmentStatus {
 enum QuizQuestionType {
   MCQ
   ESSAY
+  AUDIO
 }
 
 model Course {
@@ -861,6 +862,8 @@ model QuizQuestion {
   order       Int               @default(1)
   eventTime   Int?
   isNote      Boolean           @default(false)
+  // When false, a timed question shows WITHOUT pausing the video (flexible pause).
+  pauseVideo  Boolean           @default(true)
 
   module      Module            @relation(fields: [moduleId], references: [id], onDelete: Cascade)
   lesson      Lesson?           @relation(fields: [lessonId], references: [id], onDelete: SetNull)
@@ -1293,7 +1296,11 @@ model QcViolation {
   photoUrl      String?           // bukti capture foto dari live streaming
   videoUrl      String?           // bukti capture video dari live streaming
   capturedById  String?           // QC reviewer user id
-  status        String            @default("OPEN") // OPEN | REVIEWED | CLOSED
+  status        String            @default("OPEN") // OPEN (pending) | CONFIRMED | CLOSED
+  categoryLabel String?           // kategori free-text (wajib saat category = OTHER)
+  occurredAt    DateTime?         // waktu kejadian (input manual QC; fallback createdAt)
+  confirmedById String?           // approver user id
+  confirmedAt   DateTime?         // when QC_MANAGER confirmed the violation
   createdAt     DateTime          @default(now())
 
   tenant        Tenant?           @relation(fields: [tenantId], references: [id])

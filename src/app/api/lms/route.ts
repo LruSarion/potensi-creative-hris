@@ -21,6 +21,7 @@ import {
   submitVideoLesson,
   listVideoSubmissions,
   getVideoSubmissionDetail,
+  getCertificateByCode,
 } from "@/lib/services/lms";
 import { listCertifications } from "@/lib/services/marketplace";
 
@@ -30,10 +31,12 @@ export const GET = apiHandler(async (req: Request) => {
   const courseId = url.searchParams.get("courseId") ?? undefined;
   const lessonId = url.searchParams.get("lessonId") ?? undefined;
   const watchId = url.searchParams.get("watchId") ?? undefined;
+  const certCode = url.searchParams.get("code") ?? undefined;
   if (view === "enrollments") return listEnrollments(courseId);
   if (view === "certifications") return listCertifications();
   if (view === "video-submissions") return listVideoSubmissions({ courseId, lessonId });
   if (view === "video-submission-detail" && watchId) return getVideoSubmissionDetail(watchId);
+  if (view === "certificate" && certCode) return getCertificateByCode(certCode);
   return listCourses();
 });
 

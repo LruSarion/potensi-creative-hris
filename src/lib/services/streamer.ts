@@ -429,6 +429,10 @@ export async function getTerbatasData() {
   const now = new Date();
   const eightHoursAgo = new Date(now.getTime() - 8 * 60 * 60 * 1000);
   const startOfYesterday = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+  // Batas atas sesi "segera check-in": akhir hari ini (ref-deploy JADWAL_TOKEN
+  // adalah daftar referensi harian — sesi besok tampil saat harinya tiba).
+  const endOfToday = new Date(now);
+  endOfToday.setHours(23, 59, 59, 999);
 
   // 1. Perlu Lapor:
   // - CHECK_OUT with null reportedGmv
@@ -489,18 +493,21 @@ export async function getTerbatasData() {
   const perluLapor = Array.from(perluLaporMap.values());
 
   // 2. Jeda Terbatas:
-  // Sessions eligible for instant Check-Out:
+  // Jadwal yang harus SEGERA di-check-in (ref-deploy JADWAL_TOKEN — sesi jeda
+  // hari ini yang belum selesai, streamer memprosesnya via "Absen Instan"
+  // MASUK_PULANG_TERBATAS: check-in + check-out sekali jalan):
   // a) Short scheduled duration (< 30 minutes), OR
   // b) Back-to-back gap to the streamer's NEXT session < 30 minutes (TOKEN_JEDA),
   //    including chains of 3+ tight sessions per day.
-  // Still must have started and be within the 8-hour reporting window.
+  // Jendela: sudah lewat s.d. akhir hari ini (belum mulai pun tampil — sesi
+  // mendatang perlu disiapkan sebelum jeda tiba), maks. 8 jam setelah selesai.
   const jedaCandidates = await db.jadwal.findMany({
     where: {
       ...(seeAll ? {} : { streamerKaryawanId: karyawanId! }),
-      tanggal: { gte: startOfYesterday },
+      tanggal: { gte: startOfYesterday, lte: endOfToday },
       status: { not: "SELESAI" },
       liveState: { not: "CLOSED" },
-      jamMulaiLive: { lte: now },
+      jamMulaiLive: { lte: endOfToday },
     },
     orderBy: { jamMulaiLive: "asc" },
     include: {
@@ -518,7 +525,7 @@ export async function getTerbatasData() {
   const allSessions = await db.jadwal.findMany({
     where: {
       ...(seeAll ? {} : { streamerKaryawanId: karyawanId! }),
-      tanggal: { gte: startOfYesterday },
+      tanggal: { gte: startOfYesterday, lte: endOfToday },
     },
     orderBy: { jamMulaiLive: "asc" },
     select: { id: true, streamerKaryawanId: true, jamMulaiLive: true, jamSelesaiLive: true }
@@ -549,7 +556,7 @@ export async function getTerbatasData() {
     }
 
     if (!isShortDuration && !isMepetNext) return false;
-    // Past the 8-hour window it escalates to Perlu Lapor instead
+    // Lebih dari 8 jam setelah selesai → eskalasi ke Perlu Lapor, bukan Jeda.
     return now.getTime() <= j.jamSelesaiLive.getTime() + 8 * 60 * 60 * 1000;
   });
 

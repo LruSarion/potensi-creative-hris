@@ -122,6 +122,106 @@ export default function StreamerDashboardPage() {
   const [selectedLocationTab, setSelectedLocationTab] = useState<"keluar" | "masuk">("keluar");
   const [previewImageModal, setPreviewImageModal] = useState<{ url: string; title: string } | null>(null);
 
+  // Tab Slider Horizontal Drag-to-Scroll & Mouse Wheel Scroll (ref-deploy parity)
+  const tabSliderRef = useRef<HTMLDivElement | null>(null);
+  const isTabDraggingRef = useRef(false);
+  const startXTabRef = useRef(0);
+  const scrollLeftTabRef = useRef(0);
+  const hasTabDraggedRef = useRef(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollButtons = () => {
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+    setCanScrollLeft(slider.scrollLeft > 5);
+    setCanScrollRight(slider.scrollLeft < slider.scrollWidth - slider.clientWidth - 5);
+  };
+
+  const scrollTabs = (direction: "left" | "right") => {
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+    const offset = direction === "left" ? -240 : 240;
+    slider.scrollBy({ left: offset, behavior: "smooth" });
+    setTimeout(updateScrollButtons, 350);
+  };
+
+  useEffect(() => {
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+
+    updateScrollButtons();
+    slider.addEventListener("scroll", updateScrollButtons);
+    window.addEventListener("resize", updateScrollButtons);
+
+    const handleWheel = (e: WheelEvent) => {
+      if (slider.scrollWidth <= slider.clientWidth) return;
+      // If scrolling mouse wheel vertically on laptop, convert deltaY into horizontal scroll
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        const canLeft = slider.scrollLeft > 0;
+        const canRight = slider.scrollLeft < (slider.scrollWidth - slider.clientWidth - 1);
+        if ((e.deltaY < 0 && canLeft) || (e.deltaY > 0 && canRight)) {
+          e.preventDefault();
+          slider.scrollLeft += e.deltaY;
+          updateScrollButtons();
+        }
+      }
+    };
+
+    slider.addEventListener("wheel", handleWheel, { passive: false });
+    return () => {
+      slider.removeEventListener("scroll", updateScrollButtons);
+      slider.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("resize", updateScrollButtons);
+    };
+  }, []);
+
+  // Auto-scroll active tab into view smoothly
+  useEffect(() => {
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+    const activeBtn = slider.querySelector(`[data-tab-id="${activeTab}"]`) as HTMLElement | null;
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+    }
+    setTimeout(updateScrollButtons, 350);
+  }, [activeTab]);
+
+  // Catatan: TANPA setPointerCapture — capture mengarahkan mouseup/click ke
+  // container sehingga onClick tombol tab tidak pernah terpicu (tab tak bisa
+  // dipilih). Drag cukup dilacak via pointermove di container + threshold,
+  // klik ditelan hanya bila pointer benar-benar digeser > 6px.
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+    isTabDraggingRef.current = true;
+    hasTabDraggedRef.current = false;
+    startXTabRef.current = e.clientX;
+    scrollLeftTabRef.current = slider.scrollLeft;
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isTabDraggingRef.current) return;
+    const slider = tabSliderRef.current;
+    if (!slider) return;
+    const dx = e.clientX - startXTabRef.current;
+    if (Math.abs(dx) > 6) {
+      hasTabDraggedRef.current = true;
+    }
+    slider.scrollLeft = scrollLeftTabRef.current - dx * 1.5;
+    updateScrollButtons();
+  };
+
+  const handlePointerUp = () => {
+    if (!isTabDraggingRef.current) return;
+    isTabDraggingRef.current = false;
+    // Reset setelah click event sempat membaca flag (click menyusul pointerup).
+    setTimeout(() => {
+      hasTabDraggedRef.current = false;
+    }, 80);
+  };
+
   useEffect(() => {
     loadData();
     loadRequestStatus();
@@ -772,55 +872,93 @@ export default function StreamerDashboardPage() {
         </div>
       )}
 
-      {/* TAB NAVIGATION — Horizontal scroll (ref-deploy scrollableTabContainer) */}
-      <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto no-scrollbar" style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}>
-        <div className="flex gap-1.5 min-w-max">
-          {visibleTabs.map((tab) => {
-            const isActive = activeTab === tab.id;
-            const isCheckInLocked = tab.id === "checkin" && Boolean(activeSession);
-            return (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  if (isCheckInLocked) {
-                    setActiveTab("checkout");
-                    setError("Anda sedang dalam sesi live aktif (ON AIR). Tab Check-In terkunci sampai Anda menyelesaikan Check-Out.");
-                    return;
-                  }
-                  setActiveTab(tab.id);
-                  setError("");
-                  setSuccess("");
-                }}
-                className={`shrink-0 whitespace-nowrap py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
-                  isCheckInLocked
-                    ? "opacity-65 bg-slate-200/70 text-slate-500 hover:bg-slate-200"
-                    : isActive
-                    ? "bg-[#941A0B] text-white shadow-md shadow-[#941A0B]/20 scale-[1.02]"
-                    : "text-[#4D4D4D] hover:text-[#000000] hover:bg-[#F1F1F1]"
-                }`}
-                title={isCheckInLocked ? "Terkunci: Anda sedang siaran aktif. Selesaikan checkout terlebih dahulu." : undefined}
-              >
-                <i className={`${isCheckInLocked ? "fa-solid fa-lock text-amber-600" : tab.icon} ${isActive && !isCheckInLocked ? "text-white" : "text-slate-400"}`} />
-                <span className="truncate">{tab.label}</span>
-                {isCheckInLocked && (
-                  <span className="bg-amber-400 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
-                    Live
-                  </span>
-                )}
-                {tab.id === "checkout" && pendingGmvList.length > 0 && (
-                  <span className="bg-amber-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
-                    {pendingGmvList.length}
-                  </span>
-                )}
-                {tab.id === "terbatas" && (terbatasData?.perluLapor?.length || pendingGmvList.length) > 0 && (
-                  <span className="bg-red-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
-                    {terbatasData?.perluLapor?.length || pendingGmvList.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+      {/* TAB NAVIGATION — Horizontal scroll (ref-deploy scrollableTabContainer: Drag-to-Scroll + Wheel + Arrows) */}
+      <div className="relative group">
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={() => scrollTabs("left")}
+            aria-label="Geser tab ke kiri"
+            className="hidden md:flex absolute -left-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md items-center justify-center text-slate-600 hover:text-[#941A0B] hover:bg-slate-50 transition cursor-pointer"
+          >
+            <i className="fa-solid fa-chevron-left text-xs" />
+          </button>
+        )}
+
+        <div
+          ref={tabSliderRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerUp}
+          className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 shadow-xs overflow-x-auto no-scrollbar cursor-grab active:cursor-grabbing select-none"
+          style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x" }}
+        >
+          <div className="flex gap-1.5 min-w-max">
+            {visibleTabs.map((tab) => {
+              const isActive = activeTab === tab.id;
+              const isCheckInLocked = tab.id === "checkin" && Boolean(activeSession);
+              return (
+                <button
+                  key={tab.id}
+                  data-tab-id={tab.id}
+                  draggable={false}
+                  onClick={(e) => {
+                    if (hasTabDraggedRef.current) {
+                      e.preventDefault();
+                      return;
+                    }
+                    if (isCheckInLocked) {
+                      setActiveTab("checkout");
+                      setError("Anda sedang dalam sesi live aktif (ON AIR). Tab Check-In terkunci sampai Anda menyelesaikan Check-Out.");
+                      return;
+                    }
+                    setActiveTab(tab.id);
+                    setError("");
+                    setSuccess("");
+                  }}
+                  className={`shrink-0 whitespace-nowrap py-2.5 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
+                    isCheckInLocked
+                      ? "opacity-65 bg-slate-200/70 text-slate-500 hover:bg-slate-200"
+                      : isActive
+                      ? "bg-[#941A0B] text-white shadow-md shadow-[#941A0B]/20 scale-[1.02]"
+                      : "text-[#4D4D4D] hover:text-[#000000] hover:bg-[#F1F1F1]"
+                  }`}
+                  title={isCheckInLocked ? "Terkunci: Anda sedang siaran aktif. Selesaikan checkout terlebih dahulu." : undefined}
+                >
+                  <i className={`${isCheckInLocked ? "fa-solid fa-lock text-amber-600" : tab.icon} ${isActive && !isCheckInLocked ? "text-white" : "text-slate-400"}`} />
+                  <span className="truncate">{tab.label}</span>
+                  {isCheckInLocked && (
+                    <span className="bg-amber-400 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
+                      Live
+                    </span>
+                  )}
+                  {tab.id === "checkout" && pendingGmvList.length > 0 && (
+                    <span className="bg-amber-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                      {pendingGmvList.length}
+                    </span>
+                  )}
+                  {tab.id === "terbatas" && (terbatasData?.perluLapor?.length || pendingGmvList.length) > 0 && (
+                    <span className="bg-red-600 text-white text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                      {terbatasData?.perluLapor?.length || pendingGmvList.length}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {canScrollRight && (
+          <button
+            type="button"
+            onClick={() => scrollTabs("right")}
+            aria-label="Geser tab ke kanan"
+            className="hidden md:flex absolute -right-3 top-1/2 -translate-y-1/2 z-20 w-8 h-8 bg-white border border-slate-200 rounded-full shadow-md items-center justify-center text-slate-600 hover:text-[#941A0B] hover:bg-slate-50 transition cursor-pointer"
+          >
+            <i className="fa-solid fa-chevron-right text-xs" />
+          </button>
+        )}
       </div>
 
       {/* ======== TAB: DAFTAR & PROFIL STREAMER (ROLE-AWARE) ======== */}

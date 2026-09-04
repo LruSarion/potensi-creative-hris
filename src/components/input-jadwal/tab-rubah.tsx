@@ -22,6 +22,119 @@ import { sendJson } from "@/lib/api-client";
 import { FlatpickrTimeInput } from "./flatpickr-time-input";
 import { inputCls, selectCls, labelCls, getStatusBadgeClass } from "./shared-styles";
 
+export type LiveSessionStatusType = "ON AIR" | "PREPARE" | "PERLU LAPOR" | "SELESAI" | "TERJADWAL" | "BATAL" | "LIBUR";
+
+/**
+ * Kalkulasi status sesi live streaming real-time berbasis absensi & jam jadwal
+ * Sama persis dengan formula yang digunakan di Streamer Dashboard
+ */
+export function getLiveSessionStatus(j: any, nowMs: number = Date.now()): LiveSessionStatusType {
+  const checkIn = Array.isArray(j.absensi)
+    ? j.absensi.find((a: any) => a.tipe === "CHECK_IN")
+    : null;
+  const checkOut = Array.isArray(j.absensi)
+    ? j.absensi.find((a: any) => a.tipe === "CHECK_OUT")
+    : null;
+
+  if (checkOut) {
+    return (checkOut.reportedGmv === null || checkOut.reportedGmv === undefined)
+      ? "PERLU LAPOR"
+      : "SELESAI";
+  }
+
+  if (checkIn) {
+    const schedStartMs = j.jamMulaiLive ? new Date(j.jamMulaiLive).getTime() : NaN;
+    let schedEndMs = j.jamSelesaiLive ? new Date(j.jamSelesaiLive).getTime() : NaN;
+    if (!isNaN(schedStartMs) && !isNaN(schedEndMs) && schedEndMs < schedStartMs) {
+      schedEndMs += 24 * 60 * 60 * 1000;
+    }
+
+    if (!isNaN(schedStartMs) && nowMs < schedStartMs) {
+      return "PREPARE";
+    }
+    if (!isNaN(schedEndMs) && nowMs > schedEndMs) {
+      return "PERLU LAPOR";
+    }
+    return "ON AIR";
+  }
+
+  const rawStatus = (j.status || "").toUpperCase();
+  const rawLive = (j.liveState || "").toUpperCase();
+
+  if (rawStatus === "BATAL" || rawStatus === "DIBATALKAN" || rawStatus === "CANCEL" || rawStatus === "REJECTED") {
+    return "BATAL";
+  }
+  if (rawStatus === "LIBUR") {
+    return "LIBUR";
+  }
+  if (rawLive === "LIVE" || rawStatus === "ON_GOING" || rawStatus === "BERJALAN" || rawStatus === "ON AIR") {
+    return "ON AIR";
+  }
+  if (rawStatus === "SELESAI" || rawLive === "CLOSED") {
+    return "SELESAI";
+  }
+
+  return "TERJADWAL";
+}
+
+export function renderSessionStatusBadge(status: LiveSessionStatusType | string) {
+  const s = String(status).toUpperCase();
+  if (s === "ON AIR") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-rose-50 text-rose-700 border-rose-200 animate-pulse whitespace-nowrap inline-flex items-center gap-1">
+        🔴 ON AIR
+      </span>
+    );
+  }
+  if (s === "PREPARE") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap inline-flex items-center gap-1">
+        🟡 PREPARE
+      </span>
+    );
+  }
+  if (s === "PERLU LAPOR") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-orange-50 text-orange-700 border-orange-200 whitespace-nowrap inline-flex items-center gap-1">
+        🟠 PERLU LAPOR
+      </span>
+    );
+  }
+  if (s === "SELESAI") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap inline-flex items-center gap-1">
+        🟢 SELESAI
+      </span>
+    );
+  }
+  if (s === "TERJADWAL") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-blue-50 text-blue-700 border-blue-200 whitespace-nowrap inline-flex items-center gap-1">
+        🔵 TERJADWAL
+      </span>
+    );
+  }
+  if (s === "BATAL" || s === "DIBATALKAN" || s === "CANCEL" || s === "REJECTED") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap inline-flex items-center gap-1">
+        ⚪ BATAL
+      </span>
+    );
+  }
+  if (s === "LIBUR") {
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap inline-flex items-center gap-1">
+        ⚪ LIBUR
+      </span>
+    );
+  }
+  return (
+    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-slate-100 text-slate-700 border-slate-200 whitespace-nowrap inline-flex items-center gap-1">
+      {status}
+    </span>
+  );
+}
+
 export function TabRubah({
   allJadwal,
   streamers,
@@ -242,8 +355,18 @@ export function TabRubah({
     }
   }
 
+  const currentJadwalStatus = String(editJadwalForm.status || selectedEditJadwal?.status || "").toUpperCase();
+  const canDeleteJadwal = currentJadwalStatus === "TERJADWAL" || currentJadwalStatus === "BATAL" || currentJadwalStatus === "DIBATALKAN";
+
   function handleDeleteJadwal() {
     if (!selectedEditJadwal || !editJadwalForm.id) return;
+
+    if (!canDeleteJadwal) {
+      toast.warning(
+        `Jadwal berstatus '${editJadwalForm.status || currentJadwalStatus}' tidak dapat dihapus. Hanya status TERJADWAL dan BATAL yang dapat dihapus.`
+      );
+      return;
+    }
 
     // Check if schedule is actively ON AIR (has check-in without check-out or liveState LIVE)
     const abs = selectedEditJadwal?.absensi || [];
@@ -345,8 +468,9 @@ export function TabRubah({
     }
 
     // Filter Kolom & Teks
+    const sessionStatus = getLiveSessionStatus(j);
     if (liveFilterCol === "1" && liveFilterStatus) {
-      if ((j.status || "").toUpperCase() !== liveFilterStatus) return false;
+      if (sessionStatus !== liveFilterStatus) return false;
     } else if (liveFilterCol === "6") {
       if (liveFilterCabang) {
         const cStr = `${j.cabangStudio || ""} ${j.studio || ""}`.toLowerCase();
@@ -363,7 +487,8 @@ export function TabRubah({
         j.streamerKaryawan?.namaLengkap?.toLowerCase().includes(q) ||
         j.streamerNama?.toLowerCase().includes(q) ||
         j.client?.namaClient?.toLowerCase().includes(q) ||
-        j.platform?.toLowerCase().includes(q);
+        j.platform?.toLowerCase().includes(q) ||
+        sessionStatus.toLowerCase().includes(q);
       if (!match) return false;
     }
 
@@ -1178,9 +1303,17 @@ export function TabRubah({
                 <button
                   type="button"
                   onClick={handleDeleteJadwal}
-                  disabled={deletingJadwal || savingEditJadwal}
-                  className="w-full sm:w-auto px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold transition shadow-md flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50 active:scale-95"
-                  title="Hapus jadwal ini secara permanen dari database"
+                  disabled={!canDeleteJadwal || deletingJadwal || savingEditJadwal}
+                  className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 text-sm border ${
+                    canDeleteJadwal
+                      ? "bg-rose-600 hover:bg-rose-700 text-white border-rose-600 shadow-md cursor-pointer active:scale-95"
+                      : "bg-slate-200 text-slate-400 border-slate-300 cursor-not-allowed opacity-75 shadow-none"
+                  }`}
+                  title={
+                    canDeleteJadwal
+                      ? "Hapus jadwal ini secara permanen dari database"
+                      : `Jadwal berstatus '${editJadwalForm.status}' tidak dapat dihapus (hanya status TERJADWAL dan BATAL)`
+                  }
                 >
                   <i className={`fa-solid ${deletingJadwal ? "fa-circle-notch fa-spin" : "fa-trash"}`} />
                   <span>{deletingJadwal ? "Menghapus..." : "Hapus Jadwal"}</span>
@@ -1427,32 +1560,56 @@ export function TabRubah({
                 </label>
                 <select
                   value={liveFilterCol}
-                  onChange={(e) => setLiveFilterCol(e.target.value as any)}
+                  onChange={(e) => {
+                    const val = e.target.value as any;
+                    setLiveFilterCol(val);
+                    if (val !== "1") setLiveFilterStatus("");
+                    setLivePage(1);
+                  }}
                   className={selectCls}
                 >
                   <option value="ALL">Semua Kolom</option>
                   <option value="0">ID Jadwal</option>
-                  <option value="1">Status</option>
+                  <option value="1">Status Sesi</option>
                   <option value="3">Platform / Brand</option>
                   <option value="5">Nama Streamer</option>
                 </select>
               </div>
 
-              {/* BLOK 4: Input Pencarian */}
+              {/* BLOK 4: Input Pencarian atau Dropdown Status */}
               <div className="flex flex-col gap-1.5 w-full">
                 <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  Kata Kunci
+                  {liveFilterCol === "1" ? "Pilih Status" : "Kata Kunci"}
                 </label>
-                <input
-                  type="text"
-                  value={liveFilterText}
-                  onChange={(e) => {
-                    setLiveFilterText(e.target.value);
-                    setLivePage(1);
-                  }}
-                  placeholder="Ketik pencarian..."
-                  className={inputCls}
-                />
+                {liveFilterCol === "1" ? (
+                  <select
+                    value={liveFilterStatus}
+                    onChange={(e) => {
+                      setLiveFilterStatus(e.target.value);
+                      setLivePage(1);
+                    }}
+                    className={selectCls}
+                  >
+                    <option value="">-- Semua Status --</option>
+                    <option value="TERJADWAL">🔵 TERJADWAL</option>
+                    <option value="PREPARE">🟡 PREPARE</option>
+                    <option value="ON AIR">🔴 ON AIR</option>
+                    <option value="PERLU LAPOR">🟠 PERLU LAPOR</option>
+                    <option value="SELESAI">🟢 SELESAI</option>
+                    <option value="BATAL">⚪ BATAL</option>
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={liveFilterText}
+                    onChange={(e) => {
+                      setLiveFilterText(e.target.value);
+                      setLivePage(1);
+                    }}
+                    placeholder="Ketik pencarian..."
+                    className={inputCls}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -1479,13 +1636,8 @@ export function TabRubah({
                     </td>
                   </tr>
                 ) : (
-                  paginatedLive.map((j, idx) => {
-                    const st = (j.status || "TERJADWAL").toUpperCase();
-                    const isLive = j.liveState === "LIVE" || st === "ON_GOING" || st === "BERJALAN";
-                    const isSelesai = st === "SELESAI" || j.liveState === "CLOSED";
-
-                    return (
-                      <tr key={j.id || idx} className="hover:bg-slate-50/80 transition">
+                  paginatedLive.map((j, idx) => (
+                    <tr key={j.id || idx} className="hover:bg-slate-50/80 transition">
                         <td className="px-4 py-3.5 font-mono font-bold text-slate-700">
                           {j.idJadwal || "–"}
                           <div className="text-[10px] text-slate-400 font-sans font-normal">
@@ -1516,15 +1668,7 @@ export function TabRubah({
                             : <span className="text-[10px] text-slate-400 font-normal italic">Belum ada</span>}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                            isLive
-                              ? "bg-rose-50 text-rose-700 border-rose-200 animate-pulse"
-                              : isSelesai
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-[#941A0B]/10 text-[#941A0B] border-[#941A0B]/20"
-                          }`}>
-                            {isLive ? "🔴 ON AIR" : st}
-                          </span>
+                          {renderSessionStatusBadge(getLiveSessionStatus(j))}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -1539,8 +1683,7 @@ export function TabRubah({
                           </div>
                         </td>
                       </tr>
-                    );
-                  })
+                  ))
                 )}
               </tbody>
             </table>

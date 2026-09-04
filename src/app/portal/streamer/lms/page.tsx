@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import VideoLessonPlayer from "@/components/lms/video-lesson-player";
+import AudioCapture from "@/components/audio-capture";
 import { fetchJson, sendJson } from "@/lib/api-client";
 
 type Question = {
@@ -14,6 +15,7 @@ type Question = {
   eventTime?: number | null;
   lessonId?: string | null;
   isNote?: boolean;
+  pauseVideo?: boolean | null;
 };
 type Lesson = { id: string; title: string; order: number; content?: string | null; videoId?: string | null; videoDuration?: number | null };
 type Module = { id: string; title: string; order: number; passingScore: number; lessons: Lesson[]; questions: Question[] };
@@ -68,10 +70,11 @@ export default function LmsAkademiPage() {
     if (!activeEnroll || !activeModule) return;
     setSubmitting(true);
     try {
+      // Only auto-gradable MCQs count toward the score; ESSAY/AUDIO wait for trainer grading.
+      const gradable = activeModule.questions.filter((q) => !q.isNote && q.eventTime == null && q.type === "MCQ" && q.correctAnswer);
       let correct = 0;
-      const total = activeModule.questions.filter((q) => !q.isNote).length;
       for (const q of activeModule.questions) {
-        if (q.isNote) continue;
+        if (q.isNote || q.eventTime != null) continue;
         const ans = answers[q.id] ?? "";
         const res = await sendJson<{ score?: number }>("/api/lms", "POST", {
           action: "answer",
@@ -79,9 +82,9 @@ export default function LmsAkademiPage() {
           questionId: q.id,
           answerText: ans,
         });
-        if (res?.score === 100) correct++;
+        if (gradable.some((g) => g.id === q.id) && res?.score === 100) correct++;
       }
-      setQuizResult({ correct, total });
+      setQuizResult({ correct, total: gradable.length });
       await sendJson("/api/lms", "POST", { action: "progress", enrollmentId: activeEnroll.id }).catch(() => null);
       load();
     } catch {
@@ -130,11 +133,13 @@ export default function LmsAkademiPage() {
                 .filter((q) => q.lessonId === l.id || (!q.lessonId && activeModule.lessons.filter((x) => x.videoId).length === 1 && q.eventTime != null))
                 .map((q) => ({
                   id: q.id,
+                  type: q.type,
                   question: q.question,
                   options: q.options,
                   correctAnswer: q.correctAnswer ?? null,
                   eventTime: q.eventTime ?? null,
                   isNote: q.isNote ?? false,
+                  pauseVideo: q.pauseVideo ?? true,
                 }));
               const hasTimedQuestions = lessonQuestions.some((q) => q.eventTime != null);
               return (
@@ -180,6 +185,17 @@ export default function LmsAkademiPage() {
                           {opt}
                         </label>
                       ))}
+                    </div>
+                  ) : q.type === "AUDIO" ? (
+                    <div className="rounded-xl border border-sky-200 bg-sky-50/50 p-3">
+                      <p className="text-[10px] font-bold text-sky-700 mb-1.5 flex items-center gap-1.5">
+                        <i className="fa-solid fa-microphone" />
+                        Jawab dengan rekaman suara — dinilai manual oleh trainer.
+                      </p>
+                      <AudioCapture
+                        value={answers[q.id] ?? ""}
+                        onChange={(dataUrl) => setAnswers((a) => ({ ...a, [q.id]: dataUrl }))}
+                      />
                     </div>
                   ) : (
                     <textarea rows={3} value={answers[q.id] ?? ""} onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} placeholder="Tulis jawaban Anda..." className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500" />
@@ -237,11 +253,20 @@ export default function LmsAkademiPage() {
         {activeEnroll.certificates.length > 0 && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3">
             <i className="fa-solid fa-certificate text-emerald-600 text-2xl" />
-            <div>
+            <div className="flex-1 min-w-0">
               <div className="text-sm font-bold text-emerald-800">Sertifikat Diterbitkan</div>
               <div className="text-xs text-emerald-600 font-mono">{activeEnroll.certificates[0].code}</div>
               <div className="text-[10px] text-emerald-500 mt-0.5">Dikeluarkan: {new Date(activeEnroll.certificates[0].issuedAt).toLocaleDateString("id-ID")}</div>
             </div>
+            <a
+              href={`/portal/streamer/sertifikat/${activeEnroll.certificates[0].code}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold transition shadow-sm shrink-0"
+            >
+              <i className="fa-solid fa-file-arrow-down" />
+              Lihat & Unduh
+            </a>
           </div>
         )}
         <div className="space-y-3">

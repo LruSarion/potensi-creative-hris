@@ -5,7 +5,6 @@
 // verbatim from page.tsx (refactor only — markup and behavior unchanged).
 
 import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
-import BuktiGmvInput from "./bukti-gmv-input";
 import type { ActiveSession } from "./types";
 import { formatTimeSafe } from "@/lib/utils/date-format";
 import { useEffect, useState } from "react";
@@ -200,14 +199,21 @@ export function TabCheckOut({
 
             {/* Right Column: Bukti GMV (Kamera / File) & Foto Keluar (Selfie Kamera + GPS) */}
             <div className="space-y-4">
-              {/* Foto Bukti GMV (Kamera atau File Upload) */}
-              <BuktiGmvInput
-                value={checkoutFotoGmv}
-                onChange={onFotoGmvChange}
-                disabled={!activeSession}
-                label="Bukti GMV (Screenshot / Foto Dashboard) *"
-                required={true}
-              />
+              {/* Foto Bukti GMV (Kamera Langsung & GPS / Galeri) */}
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-1 flex items-center justify-between">
+                  <span>Bukti GMV (Kamera Langsung & GPS / Galeri) *</span>
+                  <span className="text-[11px] text-[#941A0B] font-semibold">Wajib Kamera / Galeri</span>
+                </label>
+                <LiveCameraCheckin
+                  value={checkoutFotoGmv}
+                  onChange={onFotoGmvChange}
+                  mode="gmv"
+                  disabled={!activeSession}
+                  disabledMessage="Tidak ada sesi live aktif untuk upload bukti GMV."
+                  allowGallery={true}
+                />
+              </div>
 
               {/* Foto Selfie Keluar */}
               <div>

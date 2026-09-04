@@ -122,6 +122,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           role: user.role as Role,
           karyawanId: user.karyawan?.id ?? null,
           tenantId: user.tenantId ?? "",
+          jabatan: user.karyawan?.jabatan ?? null,
+          nik: user.karyawan?.nik ?? null,
         };
       },
     }),
@@ -178,6 +180,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           token.role = dbUser.role as Role;
           token.karyawanId = dbUser.karyawan?.id ?? null;
           token.tenantId = dbUser.tenantId ?? "";
+          token.jabatan = dbUser.karyawan?.jabatan ?? null;
+          token.nik = dbUser.karyawan?.nik ?? null;
 
           // Self-heal a missing karyawan link (user pre-existed without it):
           // match by email and link on Google login, so legacy accounts recover
@@ -237,6 +241,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.role = (user as { role?: Role }).role;
         token.karyawanId = (user as { karyawanId?: string | null }).karyawanId;
         token.tenantId = (user as { tenantId?: string }).tenantId;
+        token.jabatan = (user as { jabatan?: string | null }).jabatan ?? null;
+        token.nik = (user as { nik?: string | null }).nik ?? null;
       }
       return token;
     },

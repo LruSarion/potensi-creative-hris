@@ -17,6 +17,7 @@ type Question = {
   correctAnswer: string | null;
   eventTime: number | null;
   isNote: boolean;
+  pauseVideo?: boolean | null;
 };
 
 type Lesson = {
@@ -64,10 +65,12 @@ export default function LearningTestPage() {
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
 
   const [questionModal, setQuestionModal] = useState(false);
+  const [qType, setQType] = useState<"MCQ" | "ESSAY" | "AUDIO">("MCQ");
   const [qEventTime, setQEventTime] = useState("60");
   const [qQuestion, setQQuestion] = useState("");
   const [qOptions, setQOptions] = useState<string[]>([...DEFAULT_OPTIONS]);
   const [qCorrect, setQCorrect] = useState("A");
+  const [qPauseVideo, setQPauseVideo] = useState(true);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
 
   async function load() {
@@ -181,16 +184,20 @@ export default function LearningTestPage() {
   function openQuestionModal(q?: Question) {
     setEditingQuestion(q ?? null);
     if (q) {
+      setQType(q.type === "ESSAY" || q.type === "AUDIO" ? q.type : "MCQ");
       setQEventTime(String(q.eventTime ?? 60));
       setQQuestion(q.question);
       setQOptions(q.options && q.options.length > 0 ? [...q.options] : [...DEFAULT_OPTIONS]);
       const optIndex = (q.options ?? []).indexOf(q.correctAnswer ?? "");
       setQCorrect(String.fromCharCode(65 + Math.max(0, optIndex)));
+      setQPauseVideo(q.pauseVideo ?? true);
     } else {
+      setQType("MCQ");
       setQEventTime("60");
       setQQuestion("");
       setQOptions([...DEFAULT_OPTIONS]);
       setQCorrect("A");
+      setQPauseVideo(true);
     }
     setQuestionModal(true);
   }
@@ -209,27 +216,33 @@ export default function LearningTestPage() {
       setError("Pilih materi video terlebih dahulu, lalu tambahkan pertanyaannya.");
       return;
     }
-    const options = qOptions.map((o) => o.trim()).filter(Boolean);
-    const correctIndex = qCorrect.charCodeAt(0) - 65;
-    const correctAnswer = options[correctIndex] ?? options[0] ?? "";
-    if (options.length < 2) {
-      toast.warning("Minimal 2 pilihan jawaban.");
-      setError("Minimal 2 pilihan jawaban.");
-      return;
-    }
     const parsedSec = parseSeconds(qEventTime);
+    const isManual = qType === "ESSAY" || qType === "AUDIO";
+    let options: string[] | undefined;
+    let correctAnswer: string | undefined;
+    if (!isManual) {
+      options = qOptions.map((o) => o.trim()).filter(Boolean);
+      const correctIndex = qCorrect.charCodeAt(0) - 65;
+      correctAnswer = options[correctIndex] ?? options[0] ?? "";
+      if (options.length < 2) {
+        toast.warning("Minimal 2 pilihan jawaban.");
+        setError("Minimal 2 pilihan jawaban.");
+        return;
+      }
+    }
     try {
       const payload: Record<string, unknown> = {
         action: "question",
         moduleId: selectedModuleId,
         lessonId: activeLessonId,
         id: editingQuestion?.id,
-        type: "MCQ",
+        type: qType,
         question: qQuestion.trim(),
-        options,
-        correctAnswer,
+        options: options ?? [],
+        correctAnswer: correctAnswer ?? null,
         eventTime: parsedSec,
         isNote: false,
+        pauseVideo: qPauseVideo,
       };
       await sendJson("/api/lms", "POST", payload);
       const msg = editingQuestion ? "Pertanyaan diperbarui." : `Pertanyaan pada ${formatTime(parsedSec)} berhasil ditambahkan.`;
@@ -460,6 +473,21 @@ export default function LearningTestPage() {
                         <span className="px-2 py-0.5 rounded-lg bg-purple-100 text-purple-700 text-[10px] font-bold flex-shrink-0">
                           @ {formatTime(q.eventTime ?? 0)}
                         </span>
+                        {q.type !== "MCQ" && (
+                          <span
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold flex-shrink-0 ${
+                              q.type === "AUDIO" ? "bg-sky-100 text-sky-700" : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            <i className={`fa-solid ${q.type === "AUDIO" ? "fa-microphone" : "fa-pen-to-square"} mr-1`} />
+                            {q.type === "AUDIO" ? "Suara" : "Esai"}
+                          </span>
+                        )}
+                        {q.pauseVideo === false && (
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-500 text-[10px] font-bold flex-shrink-0">
+                            <i className="fa-solid fa-play mr-1" />No Pause
+                          </span>
+                        )}
                         <p className="text-xs text-slate-700 font-medium truncate">{qi + 1}. {q.question}</p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
@@ -578,6 +606,37 @@ export default function LearningTestPage() {
             </div>
             <form onSubmit={saveQuestion} className="space-y-3.5 text-xs">
               <div>
+                <label className="block font-semibold text-slate-700 mb-1.5">Tipe Soal</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: "MCQ", label: "Pilihan Ganda", icon: "fa-list-check", desc: "Otomatis dinilai" },
+                    { value: "ESSAY", label: "Esai", icon: "fa-pen-to-square", desc: "Dinilai trainer" },
+                    { value: "AUDIO", label: "Jawaban Suara", icon: "fa-microphone", desc: "Rekaman streamer" },
+                  ] as const).map((t) => (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setQType(t.value)}
+                      className={`p-2.5 rounded-xl border-2 text-left transition ${
+                        qType === t.value
+                          ? "border-purple-600 bg-purple-50 shadow-sm"
+                          : "border-slate-200 hover:border-purple-200 bg-white"
+                      }`}
+                    >
+                      <i className={`fa-solid ${t.icon} ${qType === t.value ? "text-purple-600" : "text-slate-400"}`} />
+                      <p className="font-bold text-slate-800 text-[11px] mt-1">{t.label}</p>
+                      <p className="text-[9px] text-slate-400">{t.desc}</p>
+                    </button>
+                  ))}
+                </div>
+                {qType !== "MCQ" && (
+                  <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-2 flex items-center gap-1.5">
+                    <i className="fa-solid fa-circle-info" />
+                    Soal {qType === "ESSAY" ? "esai" : "audio"} dinilai manual oleh trainer — tidak memengaruhi skor otomatis streamer.
+                  </p>
+                )}
+              </div>
+              <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="font-semibold text-slate-700">Waktu Muncul Video (Detik / MM:SS)</label>
                   <span className="text-[11px] font-bold font-mono text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-lg border border-purple-200">
@@ -617,35 +676,61 @@ export default function LearningTestPage() {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block font-semibold text-slate-700 mb-1">Pilihan Jawaban</label>
-                {qOptions.map((opt, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <label className="flex items-center gap-1.5 text-slate-500 font-bold w-8">
+              {qType === "MCQ" ? (
+                <div className="space-y-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Pilihan Jawaban</label>
+                  {qOptions.map((opt, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-slate-500 font-bold w-8">
+                        <input
+                          type="radio"
+                          name="correct"
+                          checked={qCorrect === String.fromCharCode(65 + idx)}
+                          onChange={() => setQCorrect(String.fromCharCode(65 + idx))}
+                          className="accent-emerald-600"
+                        />
+                        {String.fromCharCode(65 + idx)}
+                      </label>
                       <input
-                        type="radio"
-                        name="correct"
-                        checked={qCorrect === String.fromCharCode(65 + idx)}
-                        onChange={() => setQCorrect(String.fromCharCode(65 + idx))}
-                        className="accent-emerald-600"
+                        type="text"
+                        value={opt}
+                        onChange={(e) => {
+                          const next = [...qOptions];
+                          next[idx] = e.target.value;
+                          setQOptions(next);
+                        }}
+                        placeholder={`Pilihan ${String.fromCharCode(65 + idx)}`}
+                        className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500"
                       />
-                      {String.fromCharCode(65 + idx)}
-                    </label>
-                    <input
-                      type="text"
-                      value={opt}
-                      onChange={(e) => {
-                        const next = [...qOptions];
-                        next[idx] = e.target.value;
-                        setQOptions(next);
-                      }}
-                      placeholder={`Pilihan ${String.fromCharCode(65 + idx)}`}
-                      className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-purple-500"
-                    />
-                  </div>
-                ))}
-                <p className="text-[10px] text-slate-400">Tandai pilihan yang benar dengan tombol radio hijau.</p>
-              </div>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-slate-400">Tandai pilihan yang benar dengan tombol radio hijau.</p>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 space-y-1">
+                  <p className="font-bold text-sky-800 text-[11px] flex items-center gap-1.5">
+                    <i className={`fa-solid ${qType === "AUDIO" ? "fa-microphone" : "fa-pen-to-square"}`} />
+                    {qType === "AUDIO" ? "Streamer menjawab dengan merekam suara (maks. 60 detik)." : "Streamer menjawab dengan menulis uraian panjang."}
+                  </p>
+                  <p className="text-[10px] text-slate-500">Jawaban masuk ke menu "Hasil Jawaban" untuk dinilai manual (0-100).</p>
+                </div>
+              )}
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={qPauseVideo}
+                  onChange={(e) => setQPauseVideo(e.target.checked)}
+                  className="accent-purple-600 mt-0.5"
+                />
+                <span>
+                  <span className="font-bold text-slate-800 block">Pause video saat soal muncul</span>
+                  <span className="text-[10px] text-slate-500">
+                    {qPauseVideo
+                      ? "Video berhenti otomatis — streamer harus menjawab untuk melanjutkan."
+                      : "Video tetap berjalan — soal muncul tanpa menghentikan video."}
+                  </span>
+                </span>
+              </label>
               <button
                 type="submit"
                 className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2.5 rounded-xl text-xs transition"

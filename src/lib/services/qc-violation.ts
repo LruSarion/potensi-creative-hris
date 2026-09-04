@@ -8,6 +8,7 @@ import { sendQCViolationEmail } from "@/lib/services/email";
 import type { Role } from "@/generated/prisma/enums";
 
 const QC_ROLES: Role[] = ["QC_MANAGER", "QC_REVIEWER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
+const QC_APPROVER_ROLES: Role[] = ["QC_MANAGER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
 const STREAMER_ROLES: Role[] = ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"];
 
 const violationSchema = z.object({
@@ -18,14 +19,27 @@ const violationSchema = z.object({
   description: z.string().optional().nullable(),
   photoUrl: z.string().optional().nullable(),
   videoUrl: z.string().optional().nullable(),
+  // Free-text category (required when category = OTHER).
+  categoryLabel: z.string().optional().nullable(),
+  // When the violation actually happened (manual QC input; defaults to now).
+  occurredAt: z.string().optional().nullable(),
 });
 
 export type QcViolationInput = z.infer<typeof violationSchema>;
 
-/** QC reviewer: record a live-streaming violation with photo evidence. */
+/** Human-readable label for a violation: free-text label when present, else the enum label. */
+function resolveCategoryLabel(category: string, categoryLabel?: string | null): string {
+  if (categoryLabel && categoryLabel.trim()) return categoryLabel.trim();
+  return VIOLATION_LABELS[category] ?? category;
+}
+
+/** QC reviewer: record a live-streaming violation with photo evidence. Starts as OPEN (pending confirmation). */
 export async function createViolation(input: QcViolationInput) {
   const user = await requireRole(...QC_ROLES);
   const parsed = violationSchema.parse(input);
+  if (parsed.category === "OTHER" && !(parsed.categoryLabel ?? "").trim()) {
+    throw AppError.badRequest("Kategori Lainnya wajib diisi manual");
+  }
   const streamer = await db.karyawan.findFirst({
     where: { id: parsed.streamerKaryawanId, ...tenantWhere(user) },
   });
@@ -36,6 +50,8 @@ export async function createViolation(input: QcViolationInput) {
       jadwalId: parsed.jadwalId ?? null,
       streamerKaryawanId: parsed.streamerKaryawanId,
       category: parsed.category,
+      categoryLabel: parsed.categoryLabel ?? null,
+      occurredAt: parsed.occurredAt ? new Date(parsed.occurredAt) : null,
       severity: parsed.severity ?? "MEDIUM",
       description: parsed.description ?? null,
       photoUrl: parsed.photoUrl ?? null,
@@ -46,9 +62,9 @@ export async function createViolation(input: QcViolationInput) {
   });
 
   // Auto-notify: the streamer (via their karyawan link), every SUPER_ADMIN, and every TRAINER.
-  const catLabel = VIOLATION_LABELS[parsed.category] ?? parsed.category;
+  const catLabel = resolveCategoryLabel(parsed.category, parsed.categoryLabel);
   const title = `Pelanggaran QC: ${catLabel}`;
-  const message = `${streamer.namaLengkap} mendapat pelanggaran ${catLabel} (${parsed.severity}). ${parsed.description ?? ""}`;
+  const message = `${streamer.namaLengkap} mendapat pelanggaran ${catLabel} (${parsed.severity}) — menunggu konfirmasi QC Manager. ${parsed.description ?? ""}`;
   const link = "/qc-violations";
 
   const recipients: { userId?: string; karyawanId?: string }[] = [];
@@ -80,17 +96,8 @@ export async function createViolation(input: QcViolationInput) {
   // Push to bound Telegram chats (respects per-user prefs for QC_VIOLATION).
   await pushViolationTelegram(recipients, title, message, link, user.tenantId);
 
-  // Send Email Notification to Streamer if email is available
-  if (streamer.email) {
-    sendQCViolationEmail({
-      to: streamer.email,
-      nama: streamer.namaLengkap,
-      jenisPelanggaran: catLabel,
-      poinPenalti: parsed.severity === "CRITICAL" || parsed.severity === "HIGH" ? 15 : parsed.severity === "MEDIUM" ? 10 : 5,
-      catatan: parsed.description ?? "Evaluasi audit QC siaran live",
-      tanggal: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
-    }).catch((e) => console.error("[QC Email Error]:", e));
-  }
+  // NOTE: the penalty email is sent when a QC Manager CONFIRMS the violation,
+  // not at creation time — pending violations carry no consequences yet.
 
   return violation;
 }
@@ -141,29 +148,103 @@ export async function listViolations(params?: { streamerKaryawanId?: string }) {
   });
 }
 
-/** Update violation status (QC/admin). */
-export async function updateViolationStatus(id: string, status: "OPEN" | "REVIEWED" | "CLOSED") {
-  const user = await requireRole(...QC_ROLES);
-  const v = await db.qcViolation.findFirst({ where: { id, ...tenantWhere(user) } });
+/**
+ * Confirm or close a violation.
+ * CONFIRM: QC_MANAGER/Admin validates a pending (OPEN) violation — it becomes official,
+ *          the penalty email is sent, and the streamer is notified.
+ * CLOSE:   marks a confirmed violation as resolved.
+ */
+export async function updateViolationStatus(id: string, action: "confirm" | "close") {
+  const user = await requireRole(...QC_APPROVER_ROLES);
+  const v = await db.qcViolation.findFirst({
+    where: { id, ...tenantWhere(user) },
+    include: { streamer: true },
+  });
   if (!v) throw AppError.notFound("Pelanggaran tidak ditemukan");
-  return db.qcViolation.update({ where: { id }, data: { status } });
+
+  if (action === "confirm") {
+    if (v.status === "CONFIRMED" || v.status === "CLOSED") {
+      throw AppError.conflict("Pelanggaran sudah dikonfirmasi");
+    }
+    const confirmed = await db.qcViolation.update({
+      where: { id },
+      data: { status: "CONFIRMED", confirmedById: user.id, confirmedAt: new Date() },
+      include: { streamer: true },
+    });
+
+    // Penalty email now that the violation is official.
+    const catLabel = resolveCategoryLabel(confirmed.category, confirmed.categoryLabel);
+    if (confirmed.streamer.email) {
+      sendQCViolationEmail({
+        to: confirmed.streamer.email,
+        nama: confirmed.streamer.namaLengkap,
+        jenisPelanggaran: catLabel,
+        poinPenalti: confirmed.severity === "CRITICAL" || confirmed.severity === "HIGH" ? 15 : confirmed.severity === "MEDIUM" ? 10 : 5,
+        catatan: confirmed.description ?? "Evaluasi audit QC siaran live",
+        tanggal: (confirmed.occurredAt ?? confirmed.createdAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }),
+      }).catch((e) => console.error("[QC Email Error]:", e));
+    }
+
+    // Notify the streamer + staff that the violation is confirmed.
+    const title = `Pelanggaran QC Dikonfirmasi: ${catLabel}`;
+    const message = `Pelanggaran ${catLabel} atas ${confirmed.streamer.namaLengkap} telah dikonfirmasi QC Manager dan berlaku resmi.`;
+    const link = "/qc-violations";
+    const recipients: { userId?: string }[] = [];
+    if (confirmed.streamer.userId) recipients.push({ userId: confirmed.streamer.userId });
+    const staff = await db.user.findMany({
+      where: { role: { in: ["SUPER_ADMIN", "TRAINER"] }, tenantId: user.tenantId ?? undefined },
+      select: { id: true },
+    });
+    for (const u of staff) if (u.id !== user.id) recipients.push({ userId: u.id });
+    for (const r of recipients) {
+      await db.logAktivitas.create({
+        data: {
+          tenantId: user.tenantId || undefined,
+          userId: r.userId,
+          aksi: "NOTIFICATION",
+          detail: JSON.stringify({
+            targetUserId: r.userId ?? null,
+            targetKaryawanId: null,
+            title,
+            message,
+            link,
+            type: "QC_VIOLATION",
+          }),
+        },
+      }).catch(() => {});
+    }
+    await pushViolationTelegram(recipients, title, message, link, user.tenantId);
+
+    return confirmed;
+  }
+
+  // close
+  return db.qcViolation.update({ where: { id }, data: { status: "CLOSED" } });
 }
 
-/** Streamer's violation summary (count by category) for the dashboard. */
+/** Streamer's violation summary (count by category) for the dashboard. Only confirmed/closed violations count. */
 export async function myViolationSummary() {
   const user = await requireRole(...STREAMER_ROLES);
-  if (!user.karyawanId) return { count: 0, byCategory: {} };
+  if (!user.karyawanId) return { count: 0, byCategory: {}, pending: 0, critical: 0 };
   const rows = await db.qcViolation.findMany({
     where: { streamerKaryawanId: user.karyawanId },
-    select: { category: true, severity: true },
+    select: { category: true, severity: true, status: true },
   });
   const byCategory: Record<string, number> = {};
   let critical = 0;
+  let pending = 0;
+  let confirmedCount = 0;
   for (const r of rows) {
+    if (r.status === "OPEN") {
+      pending++;
+      continue;
+    }
+    // CONFIRMED | CLOSED | legacy REVIEWED (treated as confirmed) count as official.
+    confirmedCount++;
     byCategory[r.category] = (byCategory[r.category] ?? 0) + 1;
     if (r.severity === "HIGH" || r.severity === "CRITICAL") critical++;
   }
-  return { count: rows.length, byCategory, critical };
+  return { count: confirmedCount, byCategory, pending, critical };
 }
 
 /** Streamers currently LIVE (for QC reviewer to pick from). */

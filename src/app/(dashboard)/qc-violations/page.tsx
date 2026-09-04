@@ -15,6 +15,13 @@ const CATEGORY_COLORS: Record<string, string> = {
   OTHER: "bg-gray-100 text-gray-600",
 };
 
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  OPEN: { label: "Menunggu Konfirmasi", cls: "bg-amber-100 text-amber-700 border border-amber-300" },
+  CONFIRMED: { label: "Dikonfirmasi", cls: "bg-red-100 text-red-700 border border-red-300" },
+  REVIEWED: { label: "Dikonfirmasi", cls: "bg-red-100 text-red-700 border border-red-300" },
+  CLOSED: { label: "Selesai", cls: "bg-slate-100 text-slate-500 border border-slate-300" },
+};
+
 export default function QcViolationsPage() {
   const [violations, setViolations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,9 +129,10 @@ export default function QcViolationsPage() {
                 <th className="px-4 py-3">Streamer</th>
                 <th className="px-4 py-3">Kategori</th>
                 <th className="px-4 py-3">Severity</th>
+                <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Bukti</th>
                 <th className="px-4 py-3">Deskripsi</th>
-                <th className="px-4 py-3">Waktu</th>
+                <th className="px-4 py-3">Waktu Kejadian</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -133,7 +141,7 @@ export default function QcViolationsPage() {
                   <td className="px-4 py-3 font-bold text-slate-800">{v.streamer?.namaLengkap ?? "-"}</td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${CATEGORY_COLORS[v.category] ?? "bg-slate-100 text-slate-600"}`}>
-                      {v.category}
+                      {v.categoryLabel || v.category}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -141,6 +149,11 @@ export default function QcViolationsPage() {
                       v.severity === "CRITICAL" || v.severity === "HIGH" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-600"
                     }`}>
                       {v.severity}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_BADGE[v.status]?.cls ?? STATUS_BADGE.OPEN.cls}`}>
+                      {STATUS_BADGE[v.status]?.label ?? v.status}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -156,7 +169,7 @@ export default function QcViolationsPage() {
                   </td>
                   <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{v.description || "-"}</td>
                   <td className="px-4 py-3 text-slate-400">
-                    {new Date(v.createdAt).toLocaleString("id-ID")}
+                    {new Date(v.occurredAt ?? v.createdAt).toLocaleString("id-ID")}
                   </td>
                 </tr>
               ))}

@@ -264,12 +264,12 @@ export default function KaryawanProfilePage() {
                     {v.severity}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-slate-800 text-xs">{v.category}</div>
+                    <div className="font-semibold text-slate-800 text-xs">{v.categoryLabel || v.category}</div>
                     {v.description && <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-2">{v.description}</div>}
-                    <div className="text-[10px] text-slate-400 mt-1">{fmt(v.createdAt)}</div>
+                    <div className="text-[10px] text-slate-400 mt-1">{fmt(v.occurredAt ?? v.createdAt)}</div>
                   </div>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${v.status === "CLOSED" ? "bg-red-100 text-red-700" : v.status === "REVIEWED" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}>
-                    {v.status}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${v.status === "CLOSED" ? "bg-gray-100 text-gray-500" : v.status === "CONFIRMED" || v.status === "REVIEWED" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                    {v.status === "OPEN" ? "Menunggu Konfirmasi" : v.status === "CONFIRMED" ? "Dikonfirmasi" : v.status === "REVIEWED" ? "Dikonfirmasi" : v.status}
                   </span>
                 </div>
               ))}

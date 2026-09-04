@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 import CameraCapture from "@/components/camera-capture";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
@@ -47,32 +48,47 @@ type LiveStreamer = {
   client: { namaClient: string } | null;
 };
 
+const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
+  OPEN: { label: "Menunggu Konfirmasi", cls: "bg-amber-100 text-amber-700 border border-amber-300" },
+  CONFIRMED: { label: "Dikonfirmasi", cls: "bg-red-100 text-red-700 border border-red-300" },
+  REVIEWED: { label: "Dikonfirmasi", cls: "bg-red-100 text-red-700 border border-red-300" },
+  CLOSED: { label: "Selesai", cls: "bg-slate-100 text-slate-500 border border-slate-300" },
+};
+
 type Violation = {
   id: string;
   category: string;
+  categoryLabel?: string | null;
   severity: string;
   description: string | null;
   photoUrl: string | null;
   videoUrl: string | null;
   createdAt: string;
+  occurredAt?: string | null;
+  status: string;
   streamer: { namaLengkap: string } | null;
 };
 
 export default function QcLiveMonitor() {
+  const { data: session } = useSession();
+  const canApprove = ["QC_MANAGER", "SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(session?.user?.role as string);
   const [liveStreamers, setLiveStreamers] = useState<LiveStreamer[]>([]);
   const [violations, setViolations] = useState<Violation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const [selectedStreamer, setSelectedStreamer] = useState("");
   const [selectedJadwal, setSelectedJadwal] = useState("");
   const [category, setCategory] = useState("");
+  const [categoryLabel, setCategoryLabel] = useState("");
   const [severity, setSeverity] = useState("MEDIUM");
   const [photoUrl, setPhotoUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [description, setDescription] = useState("");
+  const [occurredAt, setOccurredAt] = useState("");
 
   async function load() {
     setLoading(true);
@@ -110,6 +126,20 @@ export default function QcLiveMonitor() {
     setSelectedJadwal(j?.id ?? "");
   }
 
+  async function handleApproval(id: string, action: "confirm" | "close") {
+    setApprovingId(id);
+    try {
+      await sendJson("/api/qc-violation?id=" + id, "PATCH", { action });
+      toast.success(action === "confirm" ? "Pelanggaran dikonfirmasi — denda & notifikasi dikirim." : "Pelanggaran ditutup.");
+      load();
+    } catch (err) {
+      const msg = errorMessage(err, "Gagal memperbarui status pelanggaran");
+      toast.error(msg);
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
   async function submitViolation(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -124,23 +154,32 @@ export default function QcLiveMonitor() {
       setError("Pilih jenis pelanggaran");
       return;
     }
+    if (category === "OTHER" && !categoryLabel.trim()) {
+      toast.warning("Tulis jenis pelanggaran (kategori Lainnya wajib diisi manual)");
+      setError("Tulis jenis pelanggaran (kategori Lainnya wajib diisi manual)");
+      return;
+    }
     setSubmitting(true);
     try {
       await sendJson("/api/qc-violation", "POST", {
         streamerKaryawanId: selectedStreamer,
         jadwalId: selectedJadwal || null,
         category,
+        categoryLabel: category === "OTHER" ? categoryLabel.trim() : null,
         severity,
         description: description || null,
         photoUrl: photoUrl || null,
         videoUrl: videoUrl || null,
+        occurredAt: occurredAt ? new Date(occurredAt).toISOString() : null,
       });
-      toast.success("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
-      setSuccess("Pelanggaran tercatat! Bukti (foto/video) terlampir.");
+      toast.success("Pelanggaran tercatat! Menunggu konfirmasi QC Manager.");
+      setSuccess("Pelanggaran tercatat! Menunggu konfirmasi QC Manager sebelum resmi & denda dikirim.");
       setCategory("");
+      setCategoryLabel("");
       setPhotoUrl("");
       setVideoUrl("");
       setDescription("");
+      setOccurredAt("");
       load();
     } catch (err) {
       const msg = errorMessage(err, "Gagal mencatat pelanggaran");
@@ -212,6 +251,24 @@ export default function QcLiveMonitor() {
             </div>
           </div>
 
+          {/* Step 2b: free-text category when OTHER */}
+          {category === "OTHER" && (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1.5">
+                Tulis Jenis Pelanggaran <span className="text-red-600">*</span>
+              </label>
+              <input
+                type="text"
+                value={categoryLabel}
+                onChange={(e) => setCategoryLabel(e.target.value)}
+                placeholder="mis. Pelanggaran kontrak brand, jam offline, dll."
+                className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-red-400"
+                required
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Kategori "Lainnya" wajib dijelaskan manual.</p>
+            </div>
+          )}
+
           {/* Step 3: severity */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1.5">3. Tingkat Keparahan</label>
@@ -231,16 +288,28 @@ export default function QcLiveMonitor() {
             </div>
           </div>
 
-          {/* Step 4: photo/video evidence */}
+          {/* Step 4: waktu kejadian */}
           <div>
-            <label className="block font-semibold text-slate-700 mb-1.5">4. Bukti Foto / Video (Capture)</label>
+            <label className="block font-semibold text-slate-700 mb-1.5">4. Waktu Kejadian (opsional)</label>
+            <input
+              type="datetime-local"
+              value={occurredAt}
+              onChange={(e) => setOccurredAt(e.target.value)}
+              className="w-full border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-red-400"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">Kosongkan untuk memakai waktu sekarang.</p>
+          </div>
+
+          {/* Step 5: photo/video evidence */}
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1.5">5. Bukti Foto / Video (Capture)</label>
             <div className="space-y-2">
               <CameraCapture value={photoUrl} onChange={setPhotoUrl} label="📷 Ambil Foto Bukti" />
               <CameraCapture value={videoUrl} onChange={setVideoUrl} label="🎥 Rekam Video Bukti" mode="video" />
             </div>
           </div>
 
-          {/* Step 5: note */}
+          {/* Step 6: note */}
           <div>
             <label className="block font-semibold text-slate-700 mb-1.5">Catatan (opsional)</label>
             <textarea
@@ -286,19 +355,47 @@ export default function QcLiveMonitor() {
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${VIOLATION_COLOR[v.category] ?? "bg-slate-100 text-slate-600"}`}>
-                    {VIOLATION_CATEGORIES.find((c) => c.key === v.category)?.label ?? v.category}
+                    {v.categoryLabel || VIOLATION_CATEGORIES.find((c) => c.key === v.category)?.label || v.category}
                   </span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${SEVERITY.find((s) => s.key === v.severity)?.color}`}>
                     {v.severity}
                   </span>
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_BADGE[v.status]?.cls ?? STATUS_BADGE.OPEN.cls}`}>
+                    {STATUS_BADGE[v.status]?.label ?? v.status}
+                  </span>
                 </div>
                 <div className="text-xs font-bold text-slate-800 mt-1">{v.streamer?.namaLengkap ?? "-"}</div>
                 {v.description && <div className="text-[11px] text-slate-600 mt-0.5">{v.description}</div>}
-                <div className="text-[10px] text-slate-400 mt-1">
-                  {new Date(v.createdAt).toLocaleString("id-ID")}
+                <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1.5">
+                  <i className="fa-solid fa-clock" />
+                  {new Date(v.occurredAt ?? v.createdAt).toLocaleString("id-ID")}
                 </div>
+                {canApprove && (v.status === "OPEN" || v.status === "CONFIRMED") && (
+                  <div className="flex items-center gap-2 mt-2">
+                    {v.status === "OPEN" && (
+                      <button
+                        type="button"
+                        onClick={() => handleApproval(v.id, "confirm")}
+                        disabled={approvingId === v.id}
+                        className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white text-[10px] font-bold transition flex items-center gap-1.5"
+                      >
+                        <i className="fa-solid fa-check" />
+                        Konfirmasi
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleApproval(v.id, "close")}
+                      disabled={approvingId === v.id}
+                      className="px-2.5 py-1 rounded-lg bg-slate-600 hover:bg-slate-700 disabled:opacity-60 text-white text-[10px] font-bold transition flex items-center gap-1.5"
+                    >
+                      <i className="fa-solid fa-xmark" />
+                      Tutup
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}

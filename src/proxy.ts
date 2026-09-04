@@ -23,7 +23,7 @@ const PORTAL_ROUTES: Record<string, string[]> = Object.fromEntries(
 const ROLE_ROUTES: Record<string, string[]> = {
   "/payroll": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"],
   "/view-data": ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
-  "/input-karyawan": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
+  "/input-karyawan": ["SUPER_ADMIN", "ADMIN_OPERASIONAL"],
   "/approval": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "CLIENT", "CLIENT_ADMIN"],
   "/history-log": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   "/streamer-directory": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "CLIENT", "CLIENT_ADMIN"],

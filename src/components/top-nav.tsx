@@ -1,7 +1,9 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
+import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
+import LogoutConfirmModal from "@/components/logout-confirm-modal";
 
 export default function TopNav({
   onToggleMobileMenu,
@@ -14,6 +16,7 @@ export default function TopNav({
 }) {
   const { data: session } = useSession();
   const pathname = usePathname();
+  const [logoutOpen, setLogoutOpen] = useState(false);
 
   const pathTitles: Record<string, string> = {
     "/dashboard": "Dashboard",
@@ -86,13 +89,15 @@ export default function TopNav({
         </div>
 
         <button
-          onClick={() => signOut({ callbackUrl: "/login" })}
+          onClick={() => setLogoutOpen(true)}
           className="w-9 h-9 rounded-xl flex items-center justify-center text-[#919191] hover:text-[#FA3737] hover:bg-[#941A0B]/10 transition cursor-pointer"
           title="Keluar / Logout"
         >
           <i className="fa-solid fa-arrow-right-from-bracket text-lg" />
         </button>
       </div>
+
+      <LogoutConfirmModal open={logoutOpen} onClose={() => setLogoutOpen(false)} />
     </header>
   );
 }

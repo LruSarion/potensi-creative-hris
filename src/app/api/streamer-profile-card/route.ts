@@ -196,7 +196,7 @@ export const GET = apiHandler(async (req: Request) => {
   }> = [];
 
   for (const q of qcViolations) {
-    const dt = new Date(q.createdAt);
+    const dt = new Date(q.occurredAt ?? q.createdAt);
     const dateFormatted = dt.toLocaleDateString("id-ID", {
       day: "2-digit",
       month: "short",
@@ -209,9 +209,10 @@ export const GET = apiHandler(async (req: Request) => {
     violationLogs.push({
       tanggal: dateFormatted,
       sesi: timeFormatted,
-      jenisPelanggaran: q.description || q.category.replace(/_/g, " ") || "SOP Breach",
+      jenisPelanggaran: q.description || q.categoryLabel || q.category.replace(/_/g, " ") || "SOP Breach",
       sanksi: q.severity === "CRITICAL" ? "SP 1" : "Teguran Ringan",
-      status: q.status === "CLOSED" ? "Resolved" : q.status === "OPEN" ? "Pending" : "Resolved",
+      // OPEN = menunggu konfirmasi QC Manager (belum resmi); CONFIRMED/CLOSED = resmi.
+      status: q.status === "OPEN" ? "Menunggu Konfirmasi" : "Resolved",
     });
   }
 

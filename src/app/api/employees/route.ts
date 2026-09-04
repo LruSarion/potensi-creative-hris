@@ -6,6 +6,7 @@ import {
   createBulkEmployees,
   updateEmployee,
   deactivateEmployee,
+  deleteEmployee,
 } from "@/lib/services/employees";
 
 export const GET = apiHandler(async (req: Request) => {
@@ -51,5 +52,9 @@ export const DELETE = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   if (!id) throw new Error("id required");
+  const permanent = url.searchParams.get("permanent") === "true";
+  if (permanent) {
+    return deleteEmployee(id);
+  }
   return deactivateEmployee(id);
 });

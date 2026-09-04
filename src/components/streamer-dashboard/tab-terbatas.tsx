@@ -6,6 +6,7 @@
 // and behavior unchanged).
 
 import type React from "react";
+import { useEffect, useState } from "react";
 import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
 import BuktiGmvInput from "./bukti-gmv-input";
 import type { JedaJadwal, PerluLaporItem, SelectedTerbatasJadwal } from "./types";
@@ -15,6 +16,20 @@ import {
 } from "@/lib/utils/date-format";
 
 export type TerbatasFilterCol = "ALL" | "DATE" | "PLATFORM" | "STREAMER";
+
+/**
+ * Jam saat ini untuk badge Segera/Berlangsung. Date.now() dilarang dipanggil
+ * langsung saat render (react-compiler) — snapshot via state + effect, diperbarui
+ * tiap 60 detik supaya badge berganti saat sesi mulai/selesai.
+ */
+function useNowMs(): number {
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return nowMs;
+}
 
 export function TabTerbatas({
   sessionUserName,
@@ -79,6 +94,7 @@ export function TabTerbatas({
   onLocKeluarChange: (loc: LocationCoordinates | null) => void;
   onSubmitTerbatas: (e: React.FormEvent) => void;
 }) {
+  const nowMs = useNowMs();
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm space-y-6">
       {/* Header with Sub-tabs */}
@@ -126,7 +142,7 @@ export function TabTerbatas({
           <div className="text-xs text-slate-600 bg-slate-50 border border-slate-200 p-3.5 rounded-xl flex items-start gap-2">
             <i className="fa-solid fa-circle-info text-[#941A0B] mt-0.5 text-sm" />
             <span>
-              Berikut adalah daftar jadwal jeda singkat (&lt; 30 menit). Silakan pilih jadwal untuk melakukan proses <strong>Check-Out instan</strong>.
+              Daftar jadwal sesi jeda singkat hari ini (&lt; 30 menit atau mepet sesi berikutnya) yang harus segera Anda check-in. Pilih jadwal lalu <strong>Absen Instan</strong> untuk menyelesaikan sesi sekaligus (check-in + check-out instan).
             </span>
           </div>
 
@@ -177,7 +193,14 @@ export function TabTerbatas({
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
                 {filteredJeda.length > 0 ? (
-                  filteredJeda.map((j, idx) => (
+                  filteredJeda.map((j, idx) => {
+                    const mulaiMs = new Date(j.jamMulaiLive).getTime();
+                    const selesaiMs = new Date(j.jamSelesaiLive).getTime();
+                    // Ref-deploy: sesi belum mulai = "segera check-in" (badge Segera),
+                    // sudah berjalan = badge Berlangsung.
+                    const belumMulai = nowMs < mulaiMs;
+                    const sedangBerlangsung = nowMs >= mulaiMs && nowMs <= selesaiMs;
+                    return (
                     <tr key={j.id} className="hover:bg-amber-50/60 transition group">
                       <td className="px-3.5 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
                       <td className="px-4 py-3 text-center font-mono font-bold text-[#941A0B] whitespace-nowrap">
@@ -188,7 +211,19 @@ export function TabTerbatas({
                         <div className="text-[10px] text-slate-400 font-mono">{j.streamerKaryawan?.idKaryawan || "-"}</div>
                       </td>
                       <td className="px-4 py-3 align-top">
-                        <div className="font-bold text-slate-900">{j.platform || "Platform"} • {j.client?.namaClient || "Klien"}</div>
+                        <div className="font-bold text-slate-900">
+                          {j.platform || "Platform"} • {j.client?.namaClient || "Klien"}
+                          {belumMulai && (
+                            <span className="ml-1.5 bg-blue-100 text-blue-700 border border-blue-200 text-[9px] font-black px-1.5 py-0.5 rounded uppercase align-middle" title="Sesi akan mulai — siapkan absen instan">
+                              Segera
+                            </span>
+                          )}
+                          {sedangBerlangsung && (
+                            <span className="ml-1.5 bg-emerald-100 text-emerald-700 border border-emerald-200 text-[9px] font-black px-1.5 py-0.5 rounded uppercase align-middle" title="Sesi sedang berlangsung">
+                              Berlangsung
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[11px] text-emerald-600 mt-0.5 flex items-center gap-1">
                           <i className="fa-regular fa-calendar text-[10px]" />
                           <span>{formatDateSafe(j.tanggal)}</span>
@@ -209,12 +244,13 @@ export function TabTerbatas({
                         </button>
                       </td>
                     </tr>
-                  ))
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-4 py-10 text-center text-slate-400 text-xs">
                       <i className="fa-solid fa-calendar-check text-2xl text-slate-300 block mb-2" />
-                      Tidak ada jadwal jeda singkat saat ini.
+                      Tidak ada jadwal jeda singkat hari ini.
                     </td>
                   </tr>
                 )}

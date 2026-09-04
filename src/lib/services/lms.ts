@@ -105,12 +105,14 @@ export async function deleteCourse(id: string) {
 const questionSchema = z.object({
   moduleId: z.string().min(1),
   lessonId: z.string().optional().nullable(),
-  type: z.enum(["MCQ", "ESSAY"]),
+  type: z.enum(["MCQ", "ESSAY", "AUDIO"]),
   question: z.string().min(1),
   options: z.array(z.string()).optional().nullable(),
   correctAnswer: z.string().optional().nullable(),
   eventTime: z.coerce.number().int().optional().nullable(),
   isNote: z.coerce.boolean().optional().default(false),
+  // When false, a timed question shows without pausing the video (flexible pause).
+  pauseVideo: z.coerce.boolean().optional().default(true),
 });
 
 export async function addQuestion(input: z.infer<typeof questionSchema> & { id?: string }) {
@@ -124,6 +126,7 @@ export async function addQuestion(input: z.infer<typeof questionSchema> & { id?:
     correctAnswer: parsed.correctAnswer ?? null,
     eventTime: parsed.eventTime ?? null,
     isNote: parsed.isNote ?? false,
+    pauseVideo: parsed.pauseVideo ?? true,
   };
   if (input.id) {
     return db.quizQuestion.update({ where: { id: input.id }, data });
@@ -287,7 +290,10 @@ export async function enrollCohort(courseId: string, karyawanIds: string[], dueD
 
 export async function computeProgress(enrollmentId: string) {
   const user = await requireRole();
-  const enroll = await db.enrollment.findFirst({ where: { id: enrollmentId, ...(user.karyawanId ? { karyawanId: user.karyawanId } : {}) } });
+  const enroll = await db.enrollment.findFirst({
+    where: { id: enrollmentId, ...(user.karyawanId ? { karyawanId: user.karyawanId } : {}) },
+    include: { course: true },
+  });
   if (!enroll) throw AppError.notFound("Enrollment tidak ditemukan");
   const modules = await db.module.findMany({ where: { courseId: enroll.courseId }, include: { questions: true } });
   const attempts = await db.quizAttempt.findMany({ where: { enrollmentId } });
@@ -300,12 +306,19 @@ export async function computeProgress(enrollmentId: string) {
   const lessons = await db.lesson.count({ where: { moduleId: { in: modules.map((m) => m.id) } } });
   const progressPct = totalQuestions > 0 ? Math.round((answered / totalQuestions) * 100) : lessons > 0 ? 50 : 0;
   const completed = !answeredModules.size || Array.from(answeredModules).length === modules.filter((m) => m.questions.length > 0).length;
+  const isCompleted = completed && progressPct >= 100;
 
   await db.enrollment.update({
     where: { id: enrollmentId },
-    data: { progressPct, status: completed && progressPct >= 100 ? "COMPLETED" : progressPct > 0 ? "IN_PROGRESS" : "ASSIGNED", completedAt: completed && progressPct >= 100 ? new Date() : undefined },
+    data: { progressPct, status: isCompleted ? "COMPLETED" : progressPct > 0 ? "IN_PROGRESS" : "ASSIGNED", completedAt: isCompleted ? new Date() : undefined },
   });
-  return { progressPct, answered, totalQuestions, completed: completed && progressPct >= 100 };
+
+  // Auto-issue certificate for certification courses upon completion.
+  if (isCompleted && enroll.course.isCertification) {
+    await ensureCertificate(enrollmentId);
+  }
+
+  return { progressPct, answered, totalQuestions, completed: isCompleted };
 }
 
 export async function listEnrollments(courseId?: string) {
@@ -354,8 +367,8 @@ export async function listEnrollments(courseId?: string) {
 
 // ---------- T21: Certificates ----------
 
-export async function issueCertificate(enrollmentId: string, opts?: { validTo?: string }) {
-  const user = await requireRole(...TRAINER_ROLES);
+/** Internal: create certificate for a completed enrollment (idempotent). No role check — callers enforce. */
+async function ensureCertificate(enrollmentId: string, opts?: { validTo?: string }) {
   const enroll = await db.enrollment.findUnique({ where: { id: enrollmentId }, include: { course: true } });
   if (!enroll) throw AppError.notFound("Enrollment tidak ditemukan");
   if (enroll.status !== "COMPLETED") throw AppError.conflict("Course belum selesai");
@@ -372,6 +385,26 @@ export async function issueCertificate(enrollmentId: string, opts?: { validTo?: 
       validTo: opts?.validTo ? new Date(opts.validTo) : undefined,
     },
   });
+}
+
+export async function issueCertificate(enrollmentId: string, opts?: { validTo?: string }) {
+  await requireRole(...TRAINER_ROLES);
+  return ensureCertificate(enrollmentId, opts);
+}
+
+/** Fetch one certificate by its public code (for the certificate view/print page). */
+export async function getCertificateByCode(code: string) {
+  const cert = await db.certificate.findUnique({
+    where: { code },
+    include: {
+      course: { select: { id: true, title: true, description: true, isCertification: true } },
+      streamer: { select: { id: true, namaLengkap: true, idKaryawan: true } },
+      client: { select: { id: true, namaClient: true } },
+    },
+  });
+  if (!cert) throw AppError.notFound("Sertifikat tidak ditemukan");
+  if (cert.revokedAt) throw AppError.conflict("Sertifikat telah dicabut");
+  return cert;
 }
 
 export async function revokeCertificate(id: string) {
@@ -509,6 +542,10 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
       }
     }
     const scorePercent = gradedQuestions.length > 0 ? Math.round((correctCount / gradedQuestions.length) * 100) : 100;
+    // Manual questions (ESSAY/AUDIO) answered but not yet scored by a trainer.
+    const pendingGradingCount = questions.filter(
+      (q) => q.correctAnswer == null && attempts.some((x) => x.questionId === q.id && x.score == null)
+    ).length;
     results.push({
       id: w.id,
       lessonId: w.lessonId,
@@ -522,6 +559,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
       totalQuestions: gradedQuestions.length,
       correctCount,
       scorePercent,
+      pendingGradingCount,
       status: scorePercent >= (w.lesson.module.passingScore ?? 70) ? "PASSED" : "FAILED",
     });
   }
@@ -577,6 +615,9 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
     }
     const scorePercent = gradedQuestions.length > 0 ? Math.round((correctCount / gradedQuestions.length) * 100) : 100;
     const firstLesson = mod.lessons[0];
+    const pendingGradingCount = questions.filter(
+      (q: any) => q.correctAnswer == null && group.attempts.some((x: any) => x.questionId === q.id && x.score == null)
+    ).length;
 
     results.push({
       id: `quiz_${group.enrollment.id}_${mod.id}`,
@@ -591,6 +632,7 @@ export async function listVideoSubmissions(input: { courseId?: string; lessonId?
       totalQuestions: gradedQuestions.length,
       correctCount,
       scorePercent,
+      pendingGradingCount,
       status: scorePercent >= (mod.passingScore ?? 70) ? "PASSED" : "FAILED",
     });
   }
@@ -629,7 +671,9 @@ export async function getVideoSubmissionDetail(watchId: string) {
         isCorrect = a?.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options);
       }
       return {
+        attemptId: a?.id ?? null,
         questionId: q.id,
+        type: q.type,
         question: q.question,
         eventTime: q.eventTime,
         options: q.options as string[] | null,
@@ -640,8 +684,11 @@ export async function getVideoSubmissionDetail(watchId: string) {
       };
     });
 
-    const correctCount = detailedResults.filter((d) => d.isCorrect).length;
-    const scorePercent = detailedResults.length > 0 ? Math.round((correctCount / detailedResults.length) * 100) : 0;
+    // Only auto-gradable questions (MCQ with correctAnswer) count toward the score;
+    // ESSAY/AUDIO stay "menunggu penilaian trainer".
+    const gradable = detailedResults.filter((d) => d.correctAnswer != null);
+    const correctCount = gradable.filter((d) => d.isCorrect).length;
+    const scorePercent = gradable.length > 0 ? Math.round((correctCount / gradable.length) * 100) : 0;
     const latestAttempt = attempts[attempts.length - 1];
 
     return {
@@ -656,7 +703,8 @@ export async function getVideoSubmissionDetail(watchId: string) {
       passingScore: mod.passingScore ?? 70,
       scorePercent,
       correctCount,
-      totalQuestions: detailedResults.length,
+      totalQuestions: gradable.length,
+      pendingGradingCount: detailedResults.length - gradable.length,
       detailedResults,
     };
   }
@@ -680,7 +728,9 @@ export async function getVideoSubmissionDetail(watchId: string) {
       isCorrect = a?.score === 100 || checkAnswerMatch(a.answerText, q.correctAnswer, q.options);
     }
     return {
+      attemptId: a?.id ?? null,
       questionId: q.id,
+      type: q.type,
       question: q.question,
       eventTime: q.eventTime,
       options: q.options as string[] | null,
@@ -690,8 +740,11 @@ export async function getVideoSubmissionDetail(watchId: string) {
       isCorrect,
     };
   });
-  const correctCount = detailedResults.filter((d) => d.isCorrect).length;
-  const scorePercent = detailedResults.length > 0 ? Math.round((correctCount / detailedResults.length) * 100) : 0;
+  // Only auto-gradable questions (MCQ with correctAnswer) count toward the score;
+  // ESSAY/AUDIO stay "menunggu penilaian trainer".
+  const gradable = detailedResults.filter((d) => d.correctAnswer != null);
+  const correctCount = gradable.filter((d) => d.isCorrect).length;
+  const scorePercent = gradable.length > 0 ? Math.round((correctCount / gradable.length) * 100) : 0;
 
   return {
     id: w.id,
@@ -705,7 +758,8 @@ export async function getVideoSubmissionDetail(watchId: string) {
     passingScore: w.lesson.module.passingScore ?? 70,
     scorePercent,
     correctCount,
-    totalQuestions: detailedResults.length,
+    totalQuestions: gradable.length,
+    pendingGradingCount: detailedResults.length - gradable.length,
     detailedResults,
   };
 }
