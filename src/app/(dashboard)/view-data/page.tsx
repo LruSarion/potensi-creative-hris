@@ -4,10 +4,26 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { SectionLoader } from "@/components/ui/loading-states";
 
+type TabKey = "karyawan" | "jadwal-streamer" | "jadwal-ots" | "absensi";
+
+const TAB_CONFIG: Record<TabKey, { label: string; countKey: keyof Counts; dataKey: string; icon: string }> = {
+  karyawan: { label: "DB Karyawan", countKey: "karyawan", dataKey: "karyawan", icon: "fa-database" },
+  "jadwal-streamer": { label: "Jadwal Streamers", countKey: "jadwalStreamer", dataKey: "jadwalStreamer", icon: "fa-video" },
+  "jadwal-ots": { label: "Jadwal OTS", countKey: "jadwalOts", dataKey: "jadwalOts", icon: "fa-desktop" },
+  absensi: { label: "Data Absensi", countKey: "absensi", dataKey: "absensi", icon: "fa-id-badge" },
+};
+
+type Counts = {
+  karyawan: number;
+  jadwalStreamer: number;
+  jadwalOts: number;
+  absensi: number;
+};
+
 export default function ViewDataPage() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("karyawan");
+  const [activeTab, setActiveTab] = useState<TabKey>("karyawan");
   const [search, setSearch] = useState("");
   const [tabLoading, setTabLoading] = useState(false);
 
@@ -21,9 +37,10 @@ export default function ViewDataPage() {
       .catch(() => setError("Koneksi error"));
   }, []);
 
-  function handleTabChange(key: string) {
+  function handleTabChange(key: TabKey) {
     setActiveTab(key);
-    if (data && !data[key]) {
+    const dataKey = TAB_CONFIG[key].dataKey;
+    if (data && !data[dataKey]) {
       setTabLoading(true);
       fetch(`/api/view-data?tab=${key}`)
         .then((r) => r.json())
@@ -43,7 +60,7 @@ export default function ViewDataPage() {
   if (error) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold text-slate-900">Master Data Explorer</h1>
+        <h1 className="text-2xl font-bold text-slate-900">View Data</h1>
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl p-4">{error}</div>
       </div>
     );
@@ -62,62 +79,225 @@ export default function ViewDataPage() {
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12">
           <SectionLoader
             text="Menarik Master Data Operasional..."
-            subtext="Menyelaraskan data karyawan, jadwal, absensi & payroll dari server..."
+            subtext="Menyelaraskan data karyawan, jadwal, absensi dari server..."
           />
         </div>
       </div>
     );
   }
 
-  const tabConfig: Record<string, { label: string; count: number; icon: string }> = {
-    karyawan: { label: "Karyawan & Host", count: data.counts?.karyawan ?? data.karyawan?.length ?? 0, icon: "fa-users" },
-    clients: { label: "Brand Partner", count: data.counts?.clients ?? data.clients?.length ?? 0, icon: "fa-building" },
-    jadwal: { label: "Jadwal Siaran", count: data.counts?.jadwal ?? data.jadwal?.length ?? 0, icon: "fa-calendar" },
-    absensi: { label: "Log Presensi", count: data.counts?.absensi ?? data.absensi?.length ?? 0, icon: "fa-id-badge" },
-    lembur: { label: "Pengajuan Lembur", count: data.counts?.lembur ?? data.lembur?.length ?? 0, icon: "fa-clock" },
-    izin: { label: "Pengajuan Izin", count: data.counts?.izin ?? data.izin?.length ?? 0, icon: "fa-file-signature" },
-    payroll: { label: "Payroll", count: data.counts?.payroll ?? data.payroll?.length ?? 0, icon: "fa-money-bill-wave" },
-    tiering: { label: "Master Tiering", count: data.counts?.tiering ?? data.tiering?.length ?? 0, icon: "fa-layer-group" },
+  const counts: Counts = data.counts ?? {
+    karyawan: data.karyawan?.length ?? 0,
+    jadwalStreamer: data.jadwalStreamer?.length ?? 0,
+    jadwalOts: data.jadwalOts?.length ?? 0,
+    absensi: data.absensi?.length ?? 0,
   };
 
-  const allRows: any[] = data[activeTab] ?? [];
+  const allRows: any[] = data[TAB_CONFIG[activeTab].dataKey] ?? [];
 
-  // Apply search filter across all visible (non-object) fields
-  const currentRows = search
-    ? allRows.filter((row) =>
-        Object.keys(row)
-          .filter((k) => typeof row[k] !== "object")
-          .some((k) => String(row[k] ?? "").toLowerCase().includes(search.toLowerCase()))
-      )
-    : allRows;
+  // Search text per row — flatten relasi nested (nama host/OTS/client)
+  function rowSearchText(row: any): string {
+    const parts: string[] = [];
+    for (const v of Object.values(row)) {
+      if (v == null) continue;
+      if (typeof v === "object") {
+        if ("namaLengkap" in (v as any)) parts.push(String((v as any).namaLengkap ?? ""));
+        else if ("namaClient" in (v as any)) parts.push(String((v as any).namaClient ?? ""));
+        continue;
+      }
+      parts.push(String(v));
+    }
+    return parts.join(" ").toLowerCase();
+  }
+
+  // Apply search filter across all visible fields incl. nested relations
+  const currentRows = search ? allRows.filter((row) => rowSearchText(row).includes(search.toLowerCase())) : allRows;
+
+  // Format WA link
+  function formatWaLink(phoneRaw: string | null | undefined) {
+    if (!phoneRaw || phoneRaw === "-") return "-";
+    let clean = phoneRaw.toString().replace(/\D/g, "");
+    if (clean.startsWith("0")) clean = "62" + clean.substring(1);
+    return (
+      <a href={`https://wa.me/${clean}`} target="_blank" rel="noopener noreferrer" className="text-emerald-600 hover:text-emerald-700 font-medium flex items-center gap-1.5 transition">
+        <i className="fa-brands fa-whatsapp text-lg" />
+        {phoneRaw}
+      </a>
+    );
+  }
+
+  // Status badge for karyawan
+  function statusBadgeKaryawan(status: string) {
+    const isActive = status === "AKTIF";
+    return (
+      <span className={`px-2 py-1 rounded text-xs font-bold ${isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>
+        {status}
+      </span>
+    );
+  }
+
+  // Status badge for jadwal
+  function statusBadgeJadwal(status: string) {
+    const isBatal = status === "BATAL" || status === "DIBATALKAN";
+    return (
+      <span className={`px-2 py-1 rounded text-xs font-bold border ${isBatal ? "bg-red-50 text-red-700 border-red-200" : "bg-slate-50 text-slate-600 border-slate-200"}`}>
+        {status}
+      </span>
+    );
+  }
+
+  // Status badge for absensi
+  function statusBadgeAbsensi(status: string) {
+    let cls = "bg-slate-100 text-slate-600";
+    if (status === "HADIR") cls = "bg-emerald-50 text-emerald-700";
+    else if (status === "TELAT" || status === "BELUM KELUAR") cls = "bg-red-50 text-red-700";
+    else if (status === "IZIN" || status === "SAKIT" || status === "TANPA MASUK") cls = "bg-amber-50 text-amber-700";
+    return <span className={`px-2 py-1 rounded text-xs font-bold ${cls}`}>{status}</span>;
+  }
+
+  // Render table header per tab
+  function renderHeader() {
+    switch (activeTab) {
+      case "karyawan":
+        return (
+          <tr>
+            <th className="px-4 py-3 font-medium">ID KARYAWAN</th>
+            <th className="px-4 py-3 font-medium">NAMA LENGKAP</th>
+            <th className="px-4 py-3 font-medium">JABATAN</th>
+            <th className="px-4 py-3 font-medium">KATEGORI</th>
+            <th className="px-4 py-3 font-medium">STATUS</th>
+            <th className="px-4 py-3 font-medium">KONTAK (WA)</th>
+          </tr>
+        );
+      case "jadwal-streamer":
+        return (
+          <tr>
+            <th className="px-4 py-3 font-medium">TANGGAL</th>
+            <th className="px-4 py-3 font-medium">ID JADWAL</th>
+            <th className="px-4 py-3 font-medium">NAMA HOST</th>
+            <th className="px-4 py-3 font-medium">PLATFORM</th>
+            <th className="px-4 py-3 font-medium">JAM LIVE</th>
+            <th className="px-4 py-3 font-medium text-center">STATUS</th>
+          </tr>
+        );
+      case "jadwal-ots":
+        return (
+          <tr>
+            <th className="px-4 py-3 font-medium">TANGGAL</th>
+            <th className="px-4 py-3 font-medium">ID JADWAL</th>
+            <th className="px-4 py-3 font-medium">NAMA OTS</th>
+            <th className="px-4 py-3 font-medium">STUDIO</th>
+            <th className="px-4 py-3 font-medium">JAM KERJA</th>
+            <th className="px-4 py-3 font-medium text-center">STATUS</th>
+          </tr>
+        );
+      case "absensi":
+        return (
+          <tr>
+            <th className="px-4 py-3 font-medium">TANGGAL</th>
+            <th className="px-4 py-3 font-medium">ID KARYAWAN</th>
+            <th className="px-4 py-3 font-medium">NAMA LENGKAP</th>
+            <th className="px-4 py-3 font-medium">JAM MASUK</th>
+            <th className="px-4 py-3 font-medium">JAM KELUAR</th>
+            <th className="px-4 py-3 font-medium">STATUS</th>
+          </tr>
+        );
+    }
+  }
+
+  // Render table row per tab
+  function renderRow(row: any, idx: number) {
+    switch (activeTab) {
+      case "karyawan":
+        return (
+          <tr key={row.idKaryawan ?? idx} className="border-b border-slate-100 table-row-hover data-row hover:bg-slate-50/80 transition">
+            <td className="px-4 py-4 font-medium text-slate-700">
+              <Link href={`/karyawan/${row.idKaryawan}`} className="text-blue-600 hover:underline font-semibold">
+                {row.idKaryawan}
+              </Link>
+            </td>
+            <td className="px-4 py-4 font-medium text-slate-900">{row.namaLengkap}</td>
+            <td className="px-4 py-4 text-slate-600">{row.jabatan ?? "-"}</td>
+            <td className="px-4 py-4 text-slate-600 text-xs">{row.kategori ?? "-"}</td>
+            <td className="px-4 py-4">{statusBadgeKaryawan(row.statusAktif)}</td>
+            <td className="px-4 py-4">{formatWaLink(row.nomorTelepon)}</td>
+          </tr>
+        );
+      case "jadwal-streamer":
+        return (
+          <tr key={row.id ?? idx} className="border-b border-slate-100 table-row-hover data-row hover:bg-slate-50/80 transition">
+            <td className="px-4 py-4 text-slate-600">
+              {row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
+            </td>
+            <td className="px-4 py-4 font-medium text-slate-700">{row.idJadwal ?? "-"}</td>
+            <td className="px-4 py-4 font-medium text-slate-900">
+              {row.hostKaryawan?.namaLengkap ?? row.streamerKaryawan?.namaLengkap ?? "-"}
+            </td>
+            <td className="px-4 py-4 text-slate-600 text-xs">{row.client?.namaClient ?? row.platform ?? "-"}</td>
+            <td className="px-4 py-4 text-slate-600 font-medium">
+              {row.jamMulaiLive ? new Date(row.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}
+              {" - "}
+              {row.jamSelesaiLive ? new Date(row.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}
+            </td>
+            <td className="px-4 py-4 text-center">{statusBadgeJadwal(row.status)}</td>
+          </tr>
+        );
+      case "jadwal-ots":
+        return (
+          <tr key={row.id ?? idx} className="border-b border-slate-100 table-row-hover data-row hover:bg-slate-50/80 transition">
+            <td className="px-4 py-4 text-slate-600">
+              {row.tanggal ? new Date(row.tanggal).toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }) : "-"}
+            </td>
+            <td className="px-4 py-4 font-medium text-slate-700">{row.idJadwal ?? "-"}</td>
+            <td className="px-4 py-4 font-medium text-slate-900">{row.otsKaryawan?.namaLengkap ?? "-"}</td>
+            <td className="px-4 py-4 text-slate-600">
+              {(row.cabangStudio ?? "-") + " " + (row.nomorStudio ?? "")}
+            </td>
+            <td className="px-4 py-4 text-slate-600 font-medium">
+              {row.jamMulaiLive ? new Date(row.jamMulaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}
+              {" - "}
+              {row.jamSelesaiLive ? new Date(row.jamSelesaiLive).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) : "-"}
+            </td>
+            <td className="px-4 py-4 text-center">{statusBadgeJadwal(row.status)}</td>
+          </tr>
+        );
+      case "absensi":
+        return (
+          <tr key={idx} className="border-b border-slate-100 table-row-hover data-row hover:bg-slate-50/80 transition">
+            <td className="px-4 py-4 text-slate-600">{row.TANGGAL}</td>
+            <td className="px-4 py-4 font-medium text-slate-700">{row.ID_KARYAWAN}</td>
+            <td className="px-4 py-4 font-medium text-slate-900">{row.NAMA_LENGKAP}</td>
+            <td className="px-4 py-4 text-emerald-600 font-bold">{row.WAKTU_ABSEN_MASUK ?? "-"}</td>
+            <td className="px-4 py-4 text-red-500 font-bold">{row.WAKTU_ABSEN_KELUAR ?? "-"}</td>
+            <td className="px-4 py-4">{statusBadgeAbsensi(row.STATUS_KEHADIRAN)}</td>
+          </tr>
+        );
+    }
+  }
 
   return (
     <div className="space-y-6">
-      {/* Header persis ref-website-lama/view-data.html */}
+      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">View Data</h1>
         <p className="text-slate-500 text-sm mt-1">Lihat dan cari data operasional dari database pusat.</p>
       </div>
 
-
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-2">
-        {Object.entries(tabConfig).map(([key, cfg]) => {
+      {/* Tabs - Grid style like ref-deploy */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-slate-100 p-1.5 rounded-xl border border-slate-200 mb-6">
+        {(Object.keys(TAB_CONFIG) as TabKey[]).map((key) => {
+          const cfg = TAB_CONFIG[key];
           const active = activeTab === key;
           return (
             <button
               key={key}
               onClick={() => handleTabChange(key)}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
-                active
-                  ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20"
-                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
-              }`}
+              className={`tab-btn ${active ? "tab-active" : "tab-inactive"}`}
             >
-              <i className={`fa-solid ${cfg.icon}`} />
+              <i className={`fa-solid ${cfg.icon} mr-1.5`} />
               <span>{cfg.label}</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${active ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-600"}`}>
-                {cfg.count}
+              <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">
+                {counts[cfg.countKey]}
               </span>
             </button>
           );
@@ -125,87 +305,47 @@ export default function ViewDataPage() {
       </div>
 
       {/* Data Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <h3 className="font-bold text-slate-800 text-sm">
-            Tabel {tabConfig[activeTab]?.label ?? activeTab}
-            <span className="text-slate-400 font-normal ml-2">({currentRows.length} baris{search ? ` dari ${allRows.length}` : ""})</span>
-          </h3>
+      <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 flex flex-col h-full min-h-[500px]">
+        <div className="mb-6">
+          <h3 id="panel-title" className="font-bold text-lg text-slate-900">{TAB_CONFIG[activeTab].label}</h3>
+          <p id="panel-desc" className="text-sm text-slate-500 mt-1 mb-4">
+            {activeTab === "karyawan" && "Data overview untuk seluruh karyawan teregistrasi."}
+            {activeTab === "jadwal-streamer" && "Daftar jadwal live streaming Host."}
+            {activeTab === "jadwal-ots" && "Daftar penugasan Operator studio."}
+            {activeTab === "absensi" && "Rekapitulasi jam masuk dan keluar harian."}
+          </p>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            {/* Search */}
-            <div className="relative flex-1 sm:flex-none">
-              <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Cari di kolom mana pun..."
-                className="w-full sm:w-44 pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-              />
-            </div>
-
-            <button
-              onClick={() => {
-                if (currentRows.length === 0) return;
-                const headers = Object.keys(currentRows[0]).filter((k) => typeof currentRows[0][k] !== "object");
-                const csvContent =
-                  headers.join(",") +
-                  "\n" +
-                  currentRows.map((r) => headers.map((h) => `"${String(r[h] ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-                const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = `Export_${activeTab}_${new Date().toISOString().slice(0, 10)}.csv`;
-                a.click();
-              }}
-              className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold flex items-center gap-1.5 shadow-sm transition whitespace-nowrap"
-            >
-              <i className="fa-solid fa-file-csv text-emerald-600" />
-              <span>Ekspor CSV</span>
-            </button>
+          <div className="flex items-center bg-white border border-slate-300 rounded-lg px-3 py-2 w-full md:w-1/2 focus-within:ring-2 focus-within:ring-blue-500 transition">
+            <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-sm" />
+            <input
+              type="text"
+              id="searchInput"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search data..."
+              className="border-none bg-transparent focus:ring-0 outline-none text-sm w-full text-slate-700 placeholder-slate-400"
+            />
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto flex-1 border rounded-lg border-slate-200 relative">
           {tabLoading ? (
             <div className="p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
               <i className="fa-solid fa-spinner animate-spin text-blue-600" />
-              <span>Memuat data {tabConfig[activeTab]?.label}...</span>
+              <span>Memuat data {TAB_CONFIG[activeTab].label}...</span>
             </div>
           ) : currentRows.length > 0 ? (
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-                <tr>
-                  {Object.keys(currentRows[0]).filter((k) => typeof currentRows[0][k] !== "object").map((col) => (
-                    <th key={col} className="px-4 py-3 uppercase tracking-wider font-mono text-[10px]">{col}</th>
-                  ))}
-                </tr>
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead id="table-head" className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
+                {renderHeader()}
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {currentRows.map((row, idx) => (
-                  <tr key={row.id ?? idx} className="hover:bg-slate-50/80 transition">
-                    {Object.keys(row)
-                      .filter((k) => typeof row[k] !== "object")
-                      .map((col, colIdx) => (
-                        <td key={col} className="px-4 py-3 font-mono text-slate-700 max-w-xs truncate">
-                          {activeTab === "karyawan" && colIdx === 0 ? (
-                            <Link href={`/karyawan/${row.id}`} className="text-blue-600 hover:underline font-semibold">
-                              {String(row[col] ?? "–")}
-                            </Link>
-                          ) : (
-                            String(row[col] ?? "–")
-                          )}
-                        </td>
-                      ))}
-                  </tr>
-                ))}
+              <tbody id="table-body">
+                {currentRows.map((row, idx) => renderRow(row, idx))}
               </tbody>
             </table>
           ) : (
-            <div className="p-8 text-center text-slate-400 text-xs">
-              {search ? "Tidak ada data yang cocok dengan pencarian Anda." : "Tidak ada data pada tabel ini."}
+            <div className="p-8 text-center text-slate-500 italic">
+              {search ? "Tidak ada data yang cocok dengan pencarian Anda." : "Database kosong atau tidak ada data valid."}
             </div>
           )}
         </div>

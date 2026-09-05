@@ -230,7 +230,7 @@ export function TabOts({
   return (
     <div className="space-y-6">
       {success && (
-        <div className="p-4 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold">
+        <div className="p-4 bg-red-50 text-red-800 border border-red-200 rounded-xl text-xs font-bold">
           {success}
         </div>
       )}
@@ -257,7 +257,7 @@ export function TabOts({
               className="bg-slate-50 border-b border-slate-200 p-4 flex justify-between items-center cursor-pointer hover:bg-slate-100 transition"
             >
               <div className="flex items-center gap-3">
-                <div className="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
+                <div className="bg-[#941A0B] text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm">
                   #{idx + 1}
                 </div>
                 <h3 className="font-bold text-slate-800 text-sm leading-tight">
@@ -278,7 +278,7 @@ export function TabOts({
                 <button
                   type="button"
                   onClick={() => updateOtsField(idx, "isCollapsed", !isCollapsed)}
-                  className="text-blue-600 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
+                  className="text-[#941A0B] bg-red-100 hover:bg-red-200 px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1"
                 >
                   <i className={`fa-solid ${isCollapsed ? "fa-chevron-down" : "fa-chevron-up"}`} />
                 </button>
@@ -304,7 +304,7 @@ export function TabOts({
                   <select
                     value={item.cabangStudio || ""}
                     onChange={(e) => updateOtsField(idx, "cabangStudio", e.target.value)}
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 bg-white outline-none"
                     required
                   >
                     <option value="" disabled>Pilih Cabang Penugasan</option>
@@ -342,7 +342,7 @@ export function TabOts({
                       }
                     }}
                     placeholder="Ketik ID / Nama / Telepon..."
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none"
                     required
                   />
                   <datalist id={`listOts-${item.id}`}>
@@ -387,7 +387,7 @@ export function TabOts({
                         if (times.masuk) updateOtsField(idx, "jamMulaiLive", times.masuk);
                         if (times.keluar) updateOtsField(idx, "jamSelesaiLive", times.keluar);
                       }}
-                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none"
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-red-500 bg-white outline-none"
                     >
                       <option value="">Kustom</option>
                       <option value="07:00-15:00">Shift 1 (07:00-15:00)</option>
@@ -432,7 +432,7 @@ export function TabOts({
                     value={item.catatanOts || ""}
                     onChange={(e) => updateOtsField(idx, "catatanOts", e.target.value)}
                     placeholder="Instruksi tugas OTS..."
-                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none"
                   />
                 </div>
               </div>
@@ -444,7 +444,7 @@ export function TabOts({
                   <button
                     type="button"
                     onClick={() => updateOtsField(idx, "filesOts", [...(item.filesOts || [""]), ""])}
-                    className="text-xs text-blue-600 hover:text-blue-800 font-bold bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded transition"
+                    className="text-xs text-[#941A0B] hover:text-red-800 font-bold bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded transition"
                   >
                     <i className="fa-solid fa-plus mr-1" /> Tambah Link
                   </button>
@@ -461,7 +461,7 @@ export function TabOts({
                           updateOtsField(idx, "filesOts", next);
                         }}
                         placeholder="Paste link file/dokumen di sini..."
-                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none"
                       />
                       <button
                         type="button"
@@ -497,7 +497,7 @@ export function TabOts({
             className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs ${
               otsForms.length >= 100
                 ? "opacity-50 cursor-not-allowed text-slate-400 bg-slate-100"
-                : "text-blue-600 bg-blue-50 hover:bg-blue-100"
+                : "text-[#941A0B] bg-red-50 hover:bg-red-100"
             }`}
           >
             <i className={`fa-solid ${otsForms.length >= 100 ? "fa-ban" : "fa-plus"}`} />
@@ -508,7 +508,7 @@ export function TabOts({
             <button
               type="button"
               onClick={checkBebasCrashOts}
-              className="w-full sm:w-auto px-6 py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
+              className="w-full sm:w-auto px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 font-bold transition shadow-md flex items-center justify-center gap-2 text-xs"
             >
               <i className="fa-solid fa-shield-halved" /> Bebas Crash
             </button>

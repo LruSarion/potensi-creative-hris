@@ -305,6 +305,152 @@ export async function getPayrollSummary(periode: string) {
   };
 }
 
+// ---------- MASTER GAJI (ref-deploy Master_Gaji) ----------
+const masterGajiSchema = z.object({
+  karyawanId: z.string().min(1),
+  gajiPokok: z.number().min(0).default(0),
+  tunjTransport: z.number().min(0).default(0),
+  tunjMakan: z.number().min(0).default(0),
+});
+
+export type MasterGajiInput = z.infer<typeof masterGajiSchema>;
+
+/** Daftar master gaji + info karyawan (untuk tab Atur Master Gaji). */
+export async function listMasterGaji() {
+  const user = await requireRole(...PAYROLL_ROLES);
+  const karyawan = await db.karyawan.findMany({
+    where: { ...tenantWhere(user) },
+    orderBy: { namaLengkap: "asc" },
+    include: { masterGaji: true },
+  });
+  return karyawan.map((k) => ({
+    karyawanId: k.id,
+    idKaryawan: k.idKaryawan,
+    namaLengkap: k.namaLengkap,
+    kategori: k.kategori ?? k.jabatan ?? "-",
+    gajiPokok: k.masterGaji ? Number(k.masterGaji.gajiPokok) : 0,
+    tunjTransport: k.masterGaji ? Number(k.masterGaji.tunjTransport) : 0,
+    tunjMakan: k.masterGaji ? Number(k.masterGaji.tunjMakan) : 0,
+  }));
+}
+
+export async function upsertMasterGaji(input: MasterGajiInput) {
+  const user = await requireRole(...PAYROLL_ROLES);
+  const parsed = masterGajiSchema.parse(input);
+  const karyawan = await db.karyawan.findFirst({
+    where: { id: parsed.karyawanId, ...tenantWhere(user) },
+  });
+  if (!karyawan) throw AppError.notFound("Karyawan tidak ditemukan");
+  return db.masterGaji.upsert({
+    where: { karyawanId: parsed.karyawanId },
+    update: {
+      gajiPokok: parsed.gajiPokok,
+      tunjTransport: parsed.tunjTransport,
+      tunjMakan: parsed.tunjMakan,
+    },
+    create: {
+      tenantId: user.tenantId ?? undefined,
+      karyawanId: parsed.karyawanId,
+      gajiPokok: parsed.gajiPokok,
+      tunjTransport: parsed.tunjTransport,
+      tunjMakan: parsed.tunjMakan,
+    },
+  });
+}
+
+/**
+ * Bangun/refresh baris arsip payroll periode berjalan dari master gaji.
+ * THP = gajiPokok + transport + makan - potongan. Baris baru berstatus MENUNGGU.
+ */
+export async function syncPayrollFromMaster(periodeLabel: string, potonganByKaryawan: Record<string, number> = {}) {
+  const user = await requireRole(...PAYROLL_ROLES);
+  const rows = await listMasterGaji();
+  const result = [];
+  for (const r of rows) {
+    const totalTunjangan = r.tunjTransport + r.tunjMakan;
+    const totalPotongan = potonganByKaryawan[r.karyawanId] ?? 0;
+    const takeHomePay = Math.max(0, r.gajiPokok + totalTunjangan - totalPotongan);
+    result.push(await db.payroll.upsert({
+      where: { karyawanId_periode: { karyawanId: r.karyawanId, periode: periodeLabel } },
+      update: {
+        gajiPokok: r.gajiPokok,
+        tunjTransport: r.tunjTransport,
+        tunjMakan: r.tunjMakan,
+        totalTunjangan,
+        totalPotongan,
+        takeHomePay,
+      },
+      create: {
+        tenantId: user.tenantId ?? undefined,
+        karyawanId: r.karyawanId,
+        periode: periodeLabel,
+        totalJam: 0,
+        ratePerJam: 0,
+        grossPay: takeHomePay,
+        gajiPokok: r.gajiPokok,
+        tunjTransport: r.tunjTransport,
+        tunjMakan: r.tunjMakan,
+        totalTunjangan,
+        totalPotongan,
+        takeHomePay,
+        statusPersetujuan: "MENUNGGU",
+      },
+      include: { karyawan: true },
+    }));
+  }
+  return result;
+}
+
+/** Daftar payroll periode berjalan (tab Payroll Bulan Ini, ala ref renderTablePayroll). */
+export async function listPayrollPeriode(periodeLabel: string) {
+  const user = await requireRole(...PAYROLL_ROLES);
+  await syncPayrollFromMaster(periodeLabel);
+  return db.payroll.findMany({
+    where: { periode: periodeLabel, ...tenantWhere(user) },
+    orderBy: { createdAt: "asc" },
+    include: { karyawan: true },
+  });
+}
+
+/** Arsip historis: semua periode (tab History, ala ref renderTableHistory). */
+export async function listPayrollHistory() {
+  const user = await requireRole(...PAYROLL_ROLES);
+  return db.payroll.findMany({
+    where: { ...tenantWhere(user) },
+    orderBy: [{ periode: "desc" }, { createdAt: "desc" }],
+    include: { karyawan: true },
+  });
+}
+
+/** Approve / Revisi satu slip (ala ref updateStatusPayroll). */
+export async function updatePayrollStatus(id: string, status: "DISETUJUI" | "REVISI") {
+  const user = await requireRole(...PAYROLL_ROLES);
+  const row = await db.payroll.findFirst({ where: { id, ...tenantWhere(user) } });
+  if (!row) throw AppError.notFound("Data payroll tidak ditemukan");
+  return db.payroll.update({ where: { id }, data: { statusPersetujuan: status } });
+}
+
+const BULAN_INDO = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/** "2026-08" -> "Agustus 2026". Melewatkan nilai yang sudah berupa label. */
+export function periodeLabelFromMonth(v: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(v.trim());
+  if (!m) return v;
+  return `${BULAN_INDO[Number(m[2]) - 1]} ${m[1]}`;
+}
+
+/** "Agustus 2026" -> "2026-08" (untuk input type=month). */
+export function monthFromPeriodeLabel(label: string): string {
+  const m = /^(\w+)\s+(\d{4})$/.exec(label.trim());
+  if (!m) return "";
+  const idx = BULAN_INDO.findIndex((b) => b.toLowerCase() === m[1].toLowerCase());
+  if (idx === -1) return "";
+  return `${m[2]}-${String(idx + 1).padStart(2, "0")}`;
+}
+
 /** Convenience: compute period label for a date. */
 export function periodeForDate(d: Date): string {
   return computePeriodeBulan(d);

@@ -1026,8 +1026,8 @@ export default function StreamerDashboardPage() {
 
       {/* Global Alerts */}
       {success && (
-        <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-2">
-          <i className="fa-solid fa-circle-check text-emerald-600 text-sm" />
+        <div className="text-xs text-red-800 bg-red-50 border border-red-200 rounded-2xl p-4 flex items-center gap-2">
+          <i className="fa-solid fa-circle-check text-red-600 text-sm" />
           <span>{success}</span>
         </div>
       )}
@@ -1065,11 +1065,11 @@ export default function StreamerDashboardPage() {
 
       {/* Contract Alert */}
       {dashboardData?.kontrakDaysLeft !== null && dashboardData?.kontrakDaysLeft !== undefined && dashboardData.kontrakDaysLeft <= 30 && (
-        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 flex items-start gap-3">
-          <i className="fa-solid fa-triangle-exclamation text-amber-500 text-lg mt-0.5" />
+        <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-4 flex items-start gap-3">
+          <i className="fa-solid fa-triangle-exclamation text-red-500 text-lg mt-0.5" />
           <div>
-            <div className="text-xs font-black text-amber-800">Perhatian: Kontrak Hampir Berakhir!</div>
-            <div className="text-[11px] text-amber-700 mt-0.5">
+            <div className="text-xs font-black text-red-800">Perhatian: Kontrak Hampir Berakhir!</div>
+            <div className="text-[11px] text-red-700 mt-0.5">
               Kontrak Anda ({dashboardData.karyawan?.kontrakType ?? "Kontrak"}) akan berakhir dalam <strong>{dashboardData.kontrakDaysLeft} hari</strong> lagi.
             </div>
           </div>
@@ -1130,15 +1130,15 @@ export default function StreamerDashboardPage() {
                   }`}
                   title={isCheckInLocked ? "Terkunci: Anda sedang siaran aktif. Selesaikan checkout terlebih dahulu." : undefined}
                 >
-                  <i className={`${isCheckInLocked ? "fa-solid fa-lock text-amber-600" : tab.icon} ${isActive && !isCheckInLocked ? "text-white" : "text-slate-400"}`} />
+                  <i className={`${isCheckInLocked ? "fa-solid fa-lock text-red-600" : tab.icon} ${isActive && !isCheckInLocked ? "text-white" : "text-slate-400"}`} />
                   <span className="truncate">{tab.label}</span>
                   {isCheckInLocked && (
-                    <span className="bg-amber-400 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
+                    <span className="bg-red-400 text-slate-900 text-[9px] font-black px-1.5 py-0.5 rounded uppercase">
                       Live
                     </span>
                   )}
                   {tab.id === "checkout" && pendingGmvList.length > 0 && (
-                    <span className="bg-amber-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
+                    <span className="bg-red-400 text-slate-900 text-[10px] font-black w-4 h-4 rounded-full flex items-center justify-center shadow-xs">
                       {pendingGmvList.length}
                     </span>
                   )}

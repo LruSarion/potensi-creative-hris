@@ -124,6 +124,34 @@ input[type="datetime-local"]::-webkit-calendar-picker-indicator {
   border: 1px solid #E2E8F0;
 }
 
+/* View Data tab grid (ref-deploy view-data.html parity) */
+.tab-btn {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  text-align: center;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+.tab-active {
+  background-color: #ffffff;
+  border-color: #cbd5e1;
+  font-weight: 600;
+  color: #1e293b;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+.tab-inactive {
+  color: #64748b;
+  font-weight: 500;
+}
+.tab-inactive:hover {
+  background-color: #f8fafc;
+  color: #334155;
+}
+.table-row-hover:hover {
+  background-color: #f8fafc;
+}
+
 /* Loading & Animation Utilities */
 @keyframes indeterminate {
   0% { transform: translateX(-100%); }

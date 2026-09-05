@@ -557,11 +557,11 @@ export default function StaffDashboardPage() {
   function statusBadge(status: string) {
     const s = String(status ?? "").toUpperCase();
     let c = "bg-slate-100 text-slate-700 border-slate-200";
-    if (s === "SELESAI" || s === "JADWAL FIX") c = "bg-emerald-100 text-emerald-700 border-emerald-200";
+    if (s === "SELESAI" || s === "JADWAL FIX") c = "bg-red-100 text-red-700 border-red-200";
     else if (s === "BATAL" || s === "REJECTED" || s === "DIBATALKAN") c = "bg-red-100 text-red-700 border-red-200";
     else if (s === "ON AIR" || s === "ON_GOING" || s === "BERJALAN") c = "bg-red-100 text-red-600 border-red-200 animate-pulse";
-    else if (s === "PREPARE" || s === "PENDING" || s === "BOOKED" || s === "PERLU LAPOR") c = "bg-amber-100 text-amber-700 border-amber-200";
-    else if (s === "TERJADWAL" || s === "AKTIF") c = "bg-blue-100 text-blue-700 border-blue-200";
+    else if (s === "PREPARE" || s === "PENDING" || s === "BOOKED" || s === "PERLU LAPOR") c = "bg-red-100 text-red-700 border-red-200";
+    else if (s === "TERJADWAL" || s === "AKTIF") c = "bg-red-100 text-[#781408] border-red-200";
     return <span className={`px-2 py-1 text-[10px] font-bold rounded shadow-sm border tracking-wide whitespace-nowrap ${c}`}>{status}</span>;
   }
 
@@ -573,14 +573,14 @@ export default function StaffDashboardPage() {
 
       {pageLoading && (
         <div id="loadingOverlay" className="fixed inset-0 bg-white/50 backdrop-blur-md z-[999] flex flex-col items-center justify-center">
-          <i className="fa-solid fa-circle-notch fa-spin text-blue-600 text-5xl mb-5" />
+          <i className="fa-solid fa-circle-notch fa-spin text-[#941A0B] text-5xl mb-5" />
           <h2 className="text-2xl font-black text-slate-800 tracking-tight">Memuat Ruang Kerja...</h2>
           <p className="text-sm font-medium text-slate-500 mt-2">Memindai otorisasi dan sinkronisasi server HRIS</p>
         </div>
       )}
 
       <div className="flex items-center gap-3 mb-6">
-        <i className="fa-solid fa-id-badge text-blue-600 text-2xl sm:text-3xl" />
+        <i className="fa-solid fa-id-badge text-[#941A0B] text-2xl sm:text-3xl" />
         <div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Staff Dashboard</h1>
           <p className="text-slate-500 text-xs sm:text-sm mt-0.5">Kelola absensi harian dan pantau produktivitas kerja.</p>
@@ -590,8 +590,8 @@ export default function StaffDashboardPage() {
       {isAdmin && (
         <div id="adminPanel" className="mb-6 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <h3 className="text-sm font-bold text-slate-800 mb-3 border-b border-slate-100 pb-2">
-            <i className="fa-solid fa-magnifying-glass text-blue-500 mr-2" />Panel Pengawasan (Admin)
-            {monitoredStaff && <span className="ml-2 text-xs bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full font-bold">Sedang Memantau: {monitoredStaff.namaLengkap} ({monitoredStaff.idKaryawan})</span>}
+            <i className="fa-solid fa-magnifying-glass text-red-500 mr-2" />Panel Pengawasan (Admin)
+            {monitoredStaff && <span className="ml-2 text-xs bg-red-50 text-[#781408] border border-red-200 px-3 py-1 rounded-full font-bold">Sedang Memantau: {monitoredStaff.namaLengkap} ({monitoredStaff.idKaryawan})</span>}
           </h3>
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
             <div className="flex-1 w-full">
@@ -602,12 +602,12 @@ export default function StaffDashboardPage() {
                 value={searchStaffInput}
                 onChange={(e) => setSearchStaffInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchStaff()}
-                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50"
+                className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 bg-slate-50"
                 placeholder="Masukkan ID atau Nama Staff..."
               />
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
-              <button onClick={handleSearchStaff} disabled={adminSearchLoading || !searchStaffInput.trim()} className="flex-1 sm:flex-none bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-blue-700 transition shadow-sm disabled:opacity-50">
+              <button onClick={handleSearchStaff} disabled={adminSearchLoading || !searchStaffInput.trim()} className="flex-1 sm:flex-none bg-[#941A0B] text-white px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-[#781408] transition shadow-sm disabled:opacity-50">
                 <i className={`fa-solid ${adminSearchLoading ? "fa-circle-notch fa-spin" : "fa-search"} mr-1`} />Pantau Staff
               </button>
               <button onClick={handleResetAdminSearch} className="flex-1 sm:flex-none bg-slate-200 text-slate-700 px-5 py-2.5 rounded-lg text-sm font-bold hover:bg-slate-300 transition">Reset</button>
@@ -619,16 +619,16 @@ export default function StaffDashboardPage() {
       <div className="mb-8">
         <h2 className="text-lg font-bold text-slate-900 mb-3">Halo, <span id="welcomeName">{userName}</span>! 👋</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-blue-500">
-            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-clock text-blue-500" /><span className="text-sm font-bold text-slate-500">Jam Kerja Bulan Ini</span></div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-red-500">
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-clock text-red-500" /><span className="text-sm font-bold text-slate-500">Jam Kerja Bulan Ini</span></div>
             <div className="text-2xl font-black text-slate-800" id="statJamKerja">{stats.jamKerja.toFixed(1)} Jam</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-indigo-500">
-            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-user-check text-indigo-500" /><span className="text-sm font-bold text-slate-500">Hari Aktif Bulan Ini</span></div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-red-500">
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-user-check text-red-500" /><span className="text-sm font-bold text-slate-500">Hari Aktif Bulan Ini</span></div>
             <div className="text-2xl font-black text-slate-800" id="statHariAktif">{stats.hariAktif} Hari</div>
           </div>
-          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-emerald-500">
-            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-calendar-minus text-emerald-500" /><span className="text-sm font-bold text-slate-500">Sisa Cuti</span></div>
+          <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm border-l-4 border-l-red-500">
+            <div className="flex items-center gap-2 mb-2"><i className="fa-solid fa-calendar-minus text-red-500" /><span className="text-sm font-bold text-slate-500">Sisa Cuti</span></div>
             <div className="text-xl font-black text-slate-800" id="statSisaCuti">{stats.sisaCuti} Hari</div>
           </div>
         </div>
@@ -655,7 +655,7 @@ export default function StaffDashboardPage() {
       {activeTab === "checkin" && (
         <div id="tab-checkin" className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm block">
           <h3 className="font-bold text-lg text-slate-900 border-b border-slate-100 pb-3 mb-5">
-            <i className="fa-solid fa-arrow-right-to-bracket text-blue-600 mr-2" />Form Absen Masuk
+            <i className="fa-solid fa-arrow-right-to-bracket text-[#941A0B] mr-2" />Form Absen Masuk
           </h3>
           <div id="formCheckIn" className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -664,7 +664,7 @@ export default function StaffDashboardPage() {
                   {isOtsRole ? (
                     <>
                       <label className="block text-sm font-bold text-slate-700 mb-1">Pilih Jadwal OTS <span className="text-red-500">*</span></label>
-                      <select id="ciShiftSelect" value={shiftSelectValue} onChange={(e) => handleOtsSelect(e.target.value)} disabled={jadwalLoading || shiftOptions.length === 0} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed" required>
+                      <select id="ciShiftSelect" value={shiftSelectValue} onChange={(e) => handleOtsSelect(e.target.value)} disabled={jadwalLoading || shiftOptions.length === 0} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed" required>
                         <option value="" disabled>{shiftOptions.length === 0 ? "Tidak ada jadwal aktif" : "Pilih Jadwal OTS..."}</option>
                         {shiftOptions.map((o) => <option key={o.idJadwalDb} value={o.value}>{o.value}</option>)}
                       </select>
@@ -673,9 +673,9 @@ export default function StaffDashboardPage() {
                         <div id="ciSummary" className="mt-4 bg-[#1e293b] rounded-xl p-5 shadow-lg w-full">
                           <h4 className="text-sm font-bold text-white mb-3 border-b border-slate-700 pb-2">Rangkuman Jadwal Terpilih</h4>
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-3">
-                            <div><p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p><p id="sumId" className="text-sm font-bold text-blue-400">{shiftSummary.id}</p></div>
+                            <div><p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p><p id="sumId" className="text-sm font-bold text-red-400">{shiftSummary.id}</p></div>
                             <div><p className="text-[10px] text-slate-400 mb-0.5">Tanggal</p><p id="sumTanggal" className="text-sm font-bold text-white">{shiftSummary.tanggal}</p></div>
-                            <div><p className="text-[10px] text-slate-400 mb-0.5">Waktu Kerja</p><p id="sumWaktu" className="text-sm font-bold text-emerald-400">{shiftSummary.waktu}</p></div>
+                            <div><p className="text-[10px] text-slate-400 mb-0.5">Waktu Kerja</p><p id="sumWaktu" className="text-sm font-bold text-red-400">{shiftSummary.waktu}</p></div>
                             <div><p className="text-[10px] text-slate-400 mb-0.5">ID Karyawan</p><p id="sumIdKar" className="text-sm font-bold text-white">{shiftSummary.idKar}</p></div>
                             <div><p className="text-[10px] text-slate-400 mb-0.5">Nama Lengkap</p><p id="sumNama" className="text-sm font-bold text-white">{shiftSummary.nama}</p></div>
                             <div><p className="text-[10px] text-slate-400 mb-0.5">Lokasi Studio</p><p id="sumLokasi" className="text-sm font-bold text-white">{shiftSummary.lokasi}</p></div>
@@ -687,7 +687,7 @@ export default function StaffDashboardPage() {
                     <>
                       <label className="block text-sm font-bold text-slate-700 mb-1">Shift / Periode Kerja <span className="ml-1 text-xs font-normal text-slate-400">(Office Hours)</span></label>
                       <div className="flex items-center gap-2 w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm bg-slate-100 text-slate-700 font-medium">
-                        <i className="fa-regular fa-calendar-check text-blue-500 flex-shrink-0" />
+                        <i className="fa-regular fa-calendar-check text-red-500 flex-shrink-0" />
                         <span id="ciShiftLabel">{officeHoursLabel()}</span>
                       </div>
                       <input type="hidden" id="ciShiftValue" value={shiftValue || officeHoursLabel()} />
@@ -696,19 +696,19 @@ export default function StaffDashboardPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-1">Lokasi <span className="text-red-500">*</span></label>
-                  <select id="ciLokasiSelect" value={lokasi} onChange={(e) => { setLokasi(e.target.value); if (e.target.value !== "Lainnya") setLokasiLainnya(""); }} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white" required>
+                  <select id="ciLokasiSelect" value={lokasi} onChange={(e) => { setLokasi(e.target.value); if (e.target.value !== "Lainnya") setLokasiLainnya(""); }} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white" required>
                     <option value="" disabled>Pilih Lokasi...</option>
                     <option value="Timoho">Timoho</option>
                     <option value="Berbah">Berbah</option>
                     <option value="Wiyoro">Wiyoro</option>
                     <option value="Lainnya">Lainnya</option>
                   </select>
-                  <input type="text" id="ciLokasiLainnya" value={lokasiLainnya} onChange={(e) => setLokasiLainnya(e.target.value)} placeholder="Ketik lokasi manual..." className={`${lokasi === "Lainnya" ? "" : "hidden "}mt-2 w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white`} required={lokasi === "Lainnya"} />
+                  <input type="text" id="ciLokasiLainnya" value={lokasiLainnya} onChange={(e) => setLokasiLainnya(e.target.value)} placeholder="Ketik lokasi manual..." className={`${lokasi === "Lainnya" ? "" : "hidden "}mt-2 w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white`} required={lokasi === "Lainnya"} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Foto Selfie Masuk <span className="text-red-500">*Wajib</span></label>
-                <button type="button" onClick={(e) => openCameraWithLocationStaff(e, "masuk")} disabled={camLocating} className="w-full bg-blue-50 text-blue-600 border border-blue-200 py-3 rounded-lg font-bold hover:bg-blue-100 transition shadow-sm mb-3 disabled:opacity-60">
+                <button type="button" onClick={(e) => openCameraWithLocationStaff(e, "masuk")} disabled={camLocating} className="w-full bg-red-50 text-[#941A0B] border border-red-200 py-3 rounded-lg font-bold hover:bg-red-100 transition shadow-sm mb-3 disabled:opacity-60">
                   <i className={`fa-solid ${camLocating ? "fa-location-dot fa-fade" : "fa-camera"} mr-2`} /> {camLocating ? "Mengecek Titik GPS..." : "Buka Kamera PC/HP"}
                 </button>
                 {camMasukB64 && (
@@ -721,11 +721,11 @@ export default function StaffDashboardPage() {
               </div>
               <div className="md:col-span-2 mt-2">
                 <label className="block text-sm font-bold text-slate-700 mb-1">Alasan Terlambat (Opsional)</label>
-                <textarea id="ciAlasan" value={alasan} onChange={(e) => setAlasan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-slate-50" rows={2} placeholder="Isi alasan jika Anda terlambat..." />
+                <textarea id="ciAlasan" value={alasan} onChange={(e) => setAlasan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-slate-50" rows={2} placeholder="Isi alasan jika Anda terlambat..." />
               </div>
             </div>
             <div className="border-t border-slate-100 pt-5 mt-4 flex justify-end">
-              <button id="btnSubmitCheckIn" onClick={submitCheckIn} disabled={submittingIn} className="bg-blue-600 text-white font-bold py-3 px-8 rounded-xl hover:bg-blue-700 transition shadow-md w-full md:w-auto flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+              <button id="btnSubmitCheckIn" onClick={submitCheckIn} disabled={submittingIn} className="bg-[#941A0B] text-white font-bold py-3 px-8 rounded-xl hover:bg-[#781408] transition shadow-md w-full md:w-auto flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
                 <i className={`fa-solid ${submittingIn ? "fa-spinner fa-spin" : "fa-cloud-arrow-up"}`} /> {submittingIn ? "Memproses... JANGAN Matikan Layar!" : "Submit Absen Masuk"}
               </button>
             </div>
@@ -737,7 +737,7 @@ export default function StaffDashboardPage() {
       {activeTab === "checkout" && (
         <div id="tab-checkout" className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm block">
           <h3 className="font-bold text-lg text-slate-900 border-b border-slate-100 pb-3 mb-5">
-            <i className="fa-solid fa-arrow-right-from-bracket text-amber-500 mr-2" />Form Absen Keluar
+            <i className="fa-solid fa-arrow-right-from-bracket text-red-500 mr-2" />Form Absen Keluar
           </h3>
           <div id="formCheckOut" className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -745,9 +745,9 @@ export default function StaffDashboardPage() {
                 <div id="coSummary" className="md:col-span-2 bg-[#1e293b] rounded-xl p-5 shadow-lg w-full">
                   <h4 className="text-sm font-bold text-white mb-3 border-b border-slate-700 pb-2">Detail Jadwal Sesi Ini</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-y-4 gap-x-3">
-                    <div><p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p><p id="coSumId" className="text-sm font-bold text-blue-400">{sesi.jadwal?.idJadwal ?? sesi.jadwalId ?? "-"}</p></div>
+                    <div><p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p><p id="coSumId" className="text-sm font-bold text-red-400">{sesi.jadwal?.idJadwal ?? sesi.jadwalId ?? "-"}</p></div>
                     <div><p className="text-[10px] text-slate-400 mb-0.5">Tanggal</p><p id="coSumTanggal" className="text-sm font-bold text-white">{formatDateSafe(sesi.waktu)}</p></div>
-                    <div><p className="text-[10px] text-slate-400 mb-0.5">Waktu Kerja</p><p id="coSumWaktu" className="text-sm font-bold text-emerald-400">{formatTimeSafe(sesi.waktu)} WIB</p></div>
+                    <div><p className="text-[10px] text-slate-400 mb-0.5">Waktu Kerja</p><p id="coSumWaktu" className="text-sm font-bold text-red-400">{formatTimeSafe(sesi.waktu)} WIB</p></div>
                     <div><p className="text-[10px] text-slate-400 mb-0.5">ID Karyawan</p><p id="coSumIdKar" className="text-sm font-bold text-white">{monitoredStaff?.idKaryawan ?? sesi.karyawan?.idKaryawan ?? "-"}</p></div>
                     <div><p className="text-[10px] text-slate-400 mb-0.5">Nama Lengkap</p><p id="coSumNama" className="text-sm font-bold text-white">{monitoredStaff?.namaLengkap ?? sesi.karyawan?.namaLengkap ?? userName}</p></div>
                     <div><p className="text-[10px] text-slate-400 mb-0.5">Lokasi Studio</p><p id="coSumLokasi" className="text-sm font-bold text-white">{sesi.jadwal?.cabangStudio ?? "-"}</p></div>
@@ -756,11 +756,11 @@ export default function StaffDashboardPage() {
               )}
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">ID Absen Aktif (Otomatis)</label>
-                <input type="text" id="coIdAbsen" readOnly value={coIdAbsen} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm bg-slate-100 cursor-not-allowed text-blue-700 font-mono font-bold tracking-wider" />
+                <input type="text" id="coIdAbsen" readOnly value={coIdAbsen} className="w-full border border-slate-200 rounded-lg px-4 py-2.5 text-sm bg-slate-100 cursor-not-allowed text-[#781408] font-mono font-bold tracking-wider" />
               </div>
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Foto Selfie Keluar <span className="text-red-500">*Wajib</span></label>
-                <button type="button" onClick={() => openCameraModal("keluar")} className="w-full bg-amber-50 text-amber-600 border border-amber-200 py-2.5 rounded-lg text-sm font-bold hover:bg-amber-100 transition mb-2">
+                <button type="button" onClick={() => openCameraModal("keluar")} className="w-full bg-red-50 text-red-600 border border-red-200 py-2.5 rounded-lg text-sm font-bold hover:bg-red-100 transition mb-2">
                   <i className="fa-solid fa-camera mr-2" /> Buka Kamera PC/HP
                 </button>
                 {camKeluarB64 && (
@@ -773,13 +773,13 @@ export default function StaffDashboardPage() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-bold text-slate-700 mb-1">Laporan Pekerjaan Hari Ini <span className="text-red-500">*Wajib</span></label>
-                <textarea id="coLaporan" rows={4} value={laporan} onChange={(e) => setLaporan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-amber-400 outline-none bg-slate-50 resize-none" placeholder="Deskripsikan tugas dan pekerjaan yang sudah diselesaikan hari ini..." />
+                <textarea id="coLaporan" rows={4} value={laporan} onChange={(e) => setLaporan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-400 outline-none bg-slate-50 resize-none" placeholder="Deskripsikan tugas dan pekerjaan yang sudah diselesaikan hari ini..." />
               </div>
             </div>
             <div className="border-t border-slate-100 pt-5 flex flex-col items-end">
               {checkoutLocked && <div id="warningWaktuKeluar" className="text-xs font-bold text-red-500 w-full text-center mb-3 block"><i className="fa-solid fa-lock mr-1" /> Tombol Check-Out akan terbuka otomatis pada pukul {jamSelesaiSesi} WIB</div>}
-              {!checkoutLocked && targetKeluar && <div id="warningWaktuKeluar" className="text-xs font-bold text-emerald-500 w-full text-center mb-3 block"><i className="fa-solid fa-unlock mr-1" /> Waktu Check-Out telah tiba, silahkan selesaikan sesi.</div>}
-              <button id="btnSubmitCheckOut" onClick={submitCheckOut} disabled={submittingOut || checkoutLocked} className="bg-amber-500 text-white font-bold py-3 px-8 rounded-xl hover:bg-amber-600 transition shadow-md w-full md:w-auto flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+              {!checkoutLocked && targetKeluar && <div id="warningWaktuKeluar" className="text-xs font-bold text-red-500 w-full text-center mb-3 block"><i className="fa-solid fa-unlock mr-1" /> Waktu Check-Out telah tiba, silahkan selesaikan sesi.</div>}
+              <button id="btnSubmitCheckOut" onClick={submitCheckOut} disabled={submittingOut || checkoutLocked} className="bg-red-500 text-white font-bold py-3 px-8 rounded-xl hover:bg-red-600 transition shadow-md w-full md:w-auto flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
                 <i className={`fa-solid ${submittingOut ? "fa-spinner fa-spin" : "fa-upload"}`} /> {submittingOut ? "Memproses... JANGAN Matikan Layar!" : "Selesaikan Sesi (Check-Out)"}
               </button>
             </div>
@@ -792,14 +792,14 @@ export default function StaffDashboardPage() {
         <div id="tab-jadwal" className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm block">
           <div className="mb-6 border-b border-slate-100 pb-4">
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <i className="fa-solid fa-calendar-week text-blue-600" /> Jadwal Kerja Operator Technical Support
+              <i className="fa-solid fa-calendar-week text-[#941A0B]" /> Jadwal Kerja Operator Technical Support
             </h3>
             <p className="text-sm font-medium text-slate-500 mt-1">Sistem monitoring jadwal operasional dan penugasan studio</p>
           </div>
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="lg:w-1/3 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-regular fa-calendar text-blue-500" /></div>
-              <select id="filterWaktuJadwalOTS" value={filterWaktuJadwal} onChange={(e) => { setFilterWaktuJadwal(e.target.value); setCustomDateJadwal(""); setPageJadwal(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none shadow-sm cursor-pointer">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-regular fa-calendar text-red-500" /></div>
+              <select id="filterWaktuJadwalOTS" value={filterWaktuJadwal} onChange={(e) => { setFilterWaktuJadwal(e.target.value); setCustomDateJadwal(""); setPageJadwal(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none appearance-none shadow-sm cursor-pointer">
                 <option value="all">Semua Periode</option>
                 <option value="today">Hari Ini</option>
                 <option value="last7">7 Hari Ke Belakang</option>
@@ -813,13 +813,13 @@ export default function StaffDashboardPage() {
             </div>
             {(filterWaktuJadwal === "custom_single" || filterWaktuJadwal === "custom_range") && (
               <div id="containerCustomDateOTS" className="lg:w-1/4 relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-pen-to-square text-amber-500" /></div>
-                <input type="text" id="inputCustomDateOTS" placeholder="Pilih Tanggal..." defaultValue={customDateJadwal} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm cursor-pointer" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-pen-to-square text-red-500" /></div>
+                <input type="text" id="inputCustomDateOTS" placeholder="Pilih Tanggal..." defaultValue={customDateJadwal} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none shadow-sm cursor-pointer" />
               </div>
             )}
             <div className="lg:w-1/4 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-layer-group text-blue-500" /></div>
-              <select id="kategoriCariJadwalOTS" value={kategoriJadwal} onChange={(e) => { setKategoriJadwal(e.target.value); setPageJadwal(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none shadow-sm cursor-pointer">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-layer-group text-red-500" /></div>
+              <select id="kategoriCariJadwalOTS" value={kategoriJadwal} onChange={(e) => { setKategoriJadwal(e.target.value); setPageJadwal(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none appearance-none shadow-sm cursor-pointer">
                 <option value="all">Semua Data</option>
                 <option value="id_jadwal">ID Jadwal</option>
                 <option value="status">Status</option>
@@ -830,16 +830,16 @@ export default function StaffDashboardPage() {
             </div>
             <div className="lg:flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-magnifying-glass text-slate-400" /></div>
-              <input type="text" id="cariJadwalOTS" value={cariJadwal} onChange={(e) => { setCariJadwal(e.target.value); setPageJadwal(1); }} placeholder="Ketik kata kunci pencarian..." className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+              <input type="text" id="cariJadwalOTS" value={cariJadwal} onChange={(e) => { setCariJadwal(e.target.value); setPageJadwal(1); }} placeholder="Ketik kata kunci pencarian..." className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none shadow-sm" />
             </div>
             <div className="flex gap-2">
               <button onClick={() => { setFilterWaktuJadwal("all"); setKategoriJadwal("all"); setCariJadwal(""); setCustomDateJadwal(""); setPageJadwal(1); }} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center shadow-sm" title="Reset Filter"><i className="fa-solid fa-filter-circle-xmark" /></button>
-              <button onClick={() => loadJadwal(monitoredStaff?.id)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center border border-blue-200 shadow-sm" title="Muat Ulang Data"><i className={`fa-solid fa-rotate-right ${jadwalLoading ? "fa-spin" : ""}`} /></button>
+              <button onClick={() => loadJadwal(monitoredStaff?.id)} className="bg-red-50 text-[#941A0B] hover:bg-red-100 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center border border-red-200 shadow-sm" title="Muat Ulang Data"><i className={`fa-solid fa-rotate-right ${jadwalLoading ? "fa-spin" : ""}`} /></button>
             </div>
           </div>
           {jadwalLoading ? (
             <div id="loaderJadwalOts" className="flex flex-col items-center justify-center py-12">
-              <i className="fa-solid fa-spinner fa-spin text-blue-600 text-4xl mb-4" />
+              <i className="fa-solid fa-spinner fa-spin text-[#941A0B] text-4xl mb-4" />
               <p className="text-slate-500 font-medium">Menyinkronkan Jadwal Kerja...</p>
             </div>
           ) : (
@@ -877,16 +877,16 @@ export default function StaffDashboardPage() {
                           <td className="px-4 py-3 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 font-bold text-slate-500 text-sm">{idx + 1}</td>
                           <td className="px-4 py-3 text-center align-middle whitespace-nowrap">{statusBadge(status)}</td>
                           <td className="px-4 py-3">
-                            <p className="text-[11px] font-bold text-blue-600 mb-0.5">{tanggal}</p>
+                            <p className="text-[11px] font-bold text-[#941A0B] mb-0.5">{tanggal}</p>
                             <p className="font-bold text-slate-800 text-sm whitespace-nowrap">{jam}</p>
                             <p className="text-[11px] text-slate-500 font-medium mt-0.5 whitespace-nowrap">Durasi: {dur}</p>
                           </td>
                           <td className="px-4 py-3 text-center align-middle">
-                            <div className="text-xs font-bold text-emerald-600 mb-1 whitespace-nowrap">{wajib}</div>
-                            <div className="text-xs font-bold text-slate-600 whitespace-nowrap"><i className="fa-solid fa-location-dot text-rose-500 mr-1" /> {lokasiJ}</div>
+                            <div className="text-xs font-bold text-red-600 mb-1 whitespace-nowrap">{wajib}</div>
+                            <div className="text-xs font-bold text-slate-600 whitespace-nowrap"><i className="fa-solid fa-location-dot text-red-500 mr-1" /> {lokasiJ}</div>
                           </td>
-                          <td className="px-4 py-3 text-center align-middle">{catatan ? <button onClick={() => setModalCatatan(catatan)} className="bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-sm mx-auto w-fit"><i className="fa-solid fa-note-sticky" /> Buka</button> : <span className="text-slate-300 font-bold">-</span>}</td>
-                          <td className="px-4 py-3 text-center align-middle">{fileRaw ? <button onClick={() => setModalFiles(String(fileRaw).split(","))} className="bg-blue-100 text-blue-700 hover:bg-blue-200 px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-sm mx-auto w-fit"><i className="fa-solid fa-folder-open" /> File</button> : <span className="text-slate-300 font-bold">-</span>}</td>
+                          <td className="px-4 py-3 text-center align-middle">{catatan ? <button onClick={() => setModalCatatan(catatan)} className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-sm mx-auto w-fit"><i className="fa-solid fa-note-sticky" /> Buka</button> : <span className="text-slate-300 font-bold">-</span>}</td>
+                          <td className="px-4 py-3 text-center align-middle">{fileRaw ? <button onClick={() => setModalFiles(String(fileRaw).split(","))} className="bg-red-100 text-[#781408] hover:bg-red-200 px-3 py-1.5 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 shadow-sm mx-auto w-fit"><i className="fa-solid fa-folder-open" /> File</button> : <span className="text-slate-300 font-bold">-</span>}</td>
                           <td className="px-4 py-3">
                             <p className="font-bold text-slate-700 text-sm whitespace-normal max-w-[160px] break-words">{nama}</p>
                             <p className="text-[10px] text-slate-500 font-mono mt-1 whitespace-nowrap">ID KARYAWAN: <span className="font-bold">{idKar}</span></p>
@@ -902,9 +902,9 @@ export default function StaffDashboardPage() {
                 <div id="paginationOTS" className="flex justify-between items-center px-4 py-3 bg-slate-50 border-t border-slate-200 rounded-b-xl">
                   <div className="text-[11px] text-slate-500 font-medium">Menampilkan <span className="font-bold text-slate-700">{(pageJadwal - 1) * ROWS_JADWAL + 1}-{Math.min(pageJadwal * ROWS_JADWAL, filteredJadwal.length)}</span> dari <span className="font-bold text-slate-700">{filteredJadwal.length}</span> data</div>
                   <div className="flex items-center gap-1">
-                    <button disabled={pageJadwal === 1} onClick={() => setPageJadwal((p) => p - 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-left text-[10px]" /></button>
+                    <button disabled={pageJadwal === 1} onClick={() => setPageJadwal((p) => p - 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-[#941A0B] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-left text-[10px]" /></button>
                     <div className="px-2 text-[11px] font-bold text-slate-600">{pageJadwal} / {totalPagesJadwal}</div>
-                    <button disabled={pageJadwal === totalPagesJadwal} onClick={() => setPageJadwal((p) => p + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-right text-[10px]" /></button>
+                    <button disabled={pageJadwal === totalPagesJadwal} onClick={() => setPageJadwal((p) => p + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-[#941A0B] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-right text-[10px]" /></button>
                   </div>
                 </div>
               )}
@@ -918,14 +918,14 @@ export default function StaffDashboardPage() {
         <div id="tab-riwayat" className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-sm block">
           <div className="mb-6 border-b border-slate-100 pb-4">
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <i className="fa-solid fa-clock-rotate-left text-blue-600" /> Riwayat Absensi OTS
+              <i className="fa-solid fa-clock-rotate-left text-[#941A0B]" /> Riwayat Absensi OTS
             </h3>
             <p className="text-sm font-medium text-slate-500 mt-1">Rekam jejak kehadiran dan laporan jam kerja Anda</p>
           </div>
           <div className="flex flex-col lg:flex-row gap-4 mb-6">
             <div className="lg:w-1/3 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-regular fa-calendar text-blue-500" /></div>
-              <select id="filterWaktuRiwayat" value={filterWaktuRiwayat} onChange={(e) => { setFilterWaktuRiwayat(e.target.value); setCustomDateRiwayat(""); setPageRiwayat(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none shadow-sm cursor-pointer">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-regular fa-calendar text-red-500" /></div>
+              <select id="filterWaktuRiwayat" value={filterWaktuRiwayat} onChange={(e) => { setFilterWaktuRiwayat(e.target.value); setCustomDateRiwayat(""); setPageRiwayat(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none appearance-none shadow-sm cursor-pointer">
                 <option value="all">Semua Periode</option>
                 <option value="today">Hari Ini</option>
                 <option value="last7">7 Hari Ke Belakang</option>
@@ -937,13 +937,13 @@ export default function StaffDashboardPage() {
             </div>
             {(filterWaktuRiwayat === "custom_single" || filterWaktuRiwayat === "custom_range") && (
               <div id="containerCustomDateRiwayat" className="lg:w-1/4 relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-pen-to-square text-amber-500" /></div>
-                <input type="text" id="inputCustomDateRiwayat" placeholder="Pilih Tanggal..." defaultValue={customDateRiwayat} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none shadow-sm cursor-pointer" />
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-pen-to-square text-red-500" /></div>
+                <input type="text" id="inputCustomDateRiwayat" placeholder="Pilih Tanggal..." defaultValue={customDateRiwayat} className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none shadow-sm cursor-pointer" />
               </div>
             )}
             <div className="lg:w-1/4 relative">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-layer-group text-blue-500" /></div>
-              <select id="kategoriCariRiwayat" value={kategoriRiwayat} onChange={(e) => { setKategoriRiwayat(e.target.value); setPageRiwayat(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none shadow-sm cursor-pointer">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-layer-group text-red-500" /></div>
+              <select id="kategoriCariRiwayat" value={kategoriRiwayat} onChange={(e) => { setKategoriRiwayat(e.target.value); setPageRiwayat(1); }} className="w-full pl-11 pr-10 py-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-red-500 outline-none appearance-none shadow-sm cursor-pointer">
                 <option value="all">Semua Data</option>
                 <option value="id_absen">ID Absen</option>
                 <option value="id_jadwal">ID Jadwal</option>
@@ -954,16 +954,16 @@ export default function StaffDashboardPage() {
             </div>
             <div className="lg:flex-1 relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><i className="fa-solid fa-magnifying-glass text-slate-400" /></div>
-              <input type="text" id="cariRiwayat" value={cariRiwayat} onChange={(e) => { setCariRiwayat(e.target.value); setPageRiwayat(1); }} placeholder="Ketik kata kunci..." className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+              <input type="text" id="cariRiwayat" value={cariRiwayat} onChange={(e) => { setCariRiwayat(e.target.value); setPageRiwayat(1); }} placeholder="Ketik kata kunci..." className="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500 outline-none shadow-sm" />
             </div>
             <div className="flex gap-2">
               <button onClick={() => { setFilterWaktuRiwayat("all"); setKategoriRiwayat("all"); setCariRiwayat(""); setCustomDateRiwayat(""); setPageRiwayat(1); }} className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center shadow-sm" title="Reset Filter"><i className="fa-solid fa-filter-circle-xmark" /></button>
-              <button onClick={() => loadHistory(monitoredStaff?.id)} className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center border border-blue-200 shadow-sm" title="Muat Ulang Data"><i className={`fa-solid fa-rotate-right ${historyLoading ? "fa-spin" : ""}`} /></button>
+              <button onClick={() => loadHistory(monitoredStaff?.id)} className="bg-red-50 text-[#941A0B] hover:bg-red-100 px-4 py-3 rounded-xl text-sm font-bold transition flex items-center justify-center border border-red-200 shadow-sm" title="Muat Ulang Data"><i className={`fa-solid fa-rotate-right ${historyLoading ? "fa-spin" : ""}`} /></button>
             </div>
           </div>
           {historyLoading ? (
             <div id="loaderRiwayatStaff" className="flex flex-col items-center justify-center py-12">
-              <i className="fa-solid fa-spinner fa-spin text-blue-600 text-4xl mb-4" />
+              <i className="fa-solid fa-spinner fa-spin text-[#941A0B] text-4xl mb-4" />
               <p className="text-slate-500 font-medium">Menarik Riwayat Absensi...</p>
             </div>
           ) : (
@@ -999,17 +999,17 @@ export default function StaffDashboardPage() {
                           <td className="px-4 py-3 text-center sticky left-0 bg-white group-hover:bg-slate-50 z-10 font-bold text-slate-500 text-sm">{idx + 1}</td>
                           <td className="px-4 py-3">
                             <div className="font-bold text-slate-800 text-sm whitespace-nowrap">{idAbsen}</div>
-                            <div className="text-[11px] text-slate-500 mt-1 whitespace-nowrap">ID Jadwal: <span className="font-bold text-blue-500">{idJadwal}</span></div>
+                            <div className="text-[11px] text-slate-500 mt-1 whitespace-nowrap">ID Jadwal: <span className="font-bold text-red-500">{idJadwal}</span></div>
                             <div className="text-[11px] font-bold text-slate-600 mt-0.5 whitespace-nowrap">{namaId}</div>
                           </td>
                           <td className="px-4 py-3 text-center align-middle whitespace-nowrap">{statusBadge(status)}</td>
                           <td className="px-4 py-3">
-                            <div className="font-bold text-slate-800 text-sm whitespace-nowrap">{tanggal} <span className="text-slate-300 mx-1">|</span> <span className="text-rose-600"><i className="fa-solid fa-location-dot mr-1" />{cabang}</span></div>
-                            <div className="text-[11px] font-bold text-emerald-600 mt-1 whitespace-nowrap"><i className="fa-solid fa-clock mr-1" /> {jamAktual}</div>
+                            <div className="font-bold text-slate-800 text-sm whitespace-nowrap">{tanggal} <span className="text-slate-300 mx-1">|</span> <span className="text-red-600"><i className="fa-solid fa-location-dot mr-1" />{cabang}</span></div>
+                            <div className="text-[11px] font-bold text-red-600 mt-1 whitespace-nowrap"><i className="fa-solid fa-clock mr-1" /> {jamAktual}</div>
                             <div className="text-[11px] font-medium text-slate-500 mt-0.5 whitespace-nowrap">Keterlambatan: <span className={`font-bold ${isTerlambat ? "text-red-500" : "text-slate-500"}`}>{keterlambatan}</span></div>
                           </td>
                           <td className="px-4 py-3 text-center align-middle">
-                            {isTerlambat ? <a href={waLink} target="_blank" rel="noreferrer" className="bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1.5 shadow-sm w-fit mx-auto border border-amber-200"><i className="fa-brands fa-whatsapp text-sm" /> Banding</a> : <span className="text-slate-300 font-bold">-</span>}
+                            {isTerlambat ? <a href={waLink} target="_blank" rel="noreferrer" className="bg-red-100 text-red-700 hover:bg-red-200 px-3 py-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1.5 shadow-sm w-fit mx-auto border border-red-200"><i className="fa-brands fa-whatsapp text-sm" /> Banding</a> : <span className="text-slate-300 font-bold">-</span>}
                           </td>
                         </tr>
                       );
@@ -1021,9 +1021,9 @@ export default function StaffDashboardPage() {
                 <div id="paginationRiwayat" className="flex justify-between items-center px-4 py-3 bg-slate-50 border-t border-slate-200 rounded-b-xl">
                   <div className="text-[11px] text-slate-500 font-medium">Menampilkan <span className="font-bold text-slate-700">{(pageRiwayat - 1) * ROWS_RIWAYAT + 1}-{Math.min(pageRiwayat * ROWS_RIWAYAT, filteredRiwayat.length)}</span> dari <span className="font-bold text-slate-700">{filteredRiwayat.length}</span> data</div>
                   <div className="flex items-center gap-1">
-                    <button disabled={pageRiwayat === 1} onClick={() => setPageRiwayat((p) => p - 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-left text-[10px]" /></button>
+                    <button disabled={pageRiwayat === 1} onClick={() => setPageRiwayat((p) => p - 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-[#941A0B] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-left text-[10px]" /></button>
                     <div className="px-2 text-[11px] font-bold text-slate-600">{pageRiwayat} / {totalPagesRiwayat}</div>
-                    <button disabled={pageRiwayat === totalPagesRiwayat} onClick={() => setPageRiwayat((p) => p + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-right text-[10px]" /></button>
+                    <button disabled={pageRiwayat === totalPagesRiwayat} onClick={() => setPageRiwayat((p) => p + 1)} className="w-7 h-7 flex items-center justify-center rounded bg-white border border-slate-200 text-slate-400 hover:text-[#941A0B] hover:border-red-300 disabled:opacity-50 disabled:cursor-not-allowed transition"><i className="fa-solid fa-chevron-right text-[10px]" /></button>
                   </div>
                 </div>
               )}
@@ -1040,7 +1040,7 @@ export default function StaffDashboardPage() {
       {cameraOpen && (
         <div id="cameraModal" className="fixed inset-0 bg-slate-900 z-[100] flex flex-col">
           <div className="flex justify-between items-center p-5 bg-black border-b border-slate-800">
-            <h3 className="text-white font-bold text-lg"><i className="fa-solid fa-camera text-blue-500 mr-2" /> Kamera Live</h3>
+            <h3 className="text-white font-bold text-lg"><i className="fa-solid fa-camera text-red-500 mr-2" /> Kamera Live</h3>
             <button type="button" onClick={closeCamera} className="text-slate-300 hover:text-red-500 transition"><i className="fa-solid fa-xmark text-2xl" /></button>
           </div>
           <div className="flex-1 bg-black flex items-center justify-center relative overflow-hidden px-4">
@@ -1061,7 +1061,7 @@ export default function StaffDashboardPage() {
         <div id="modalCatatanJadwal" className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalCatatan(null)}>
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2"><i className="fa-solid fa-comment-dots text-blue-600" /> Detail Catatan Jadwal</h3>
+              <h3 className="font-bold text-slate-900 flex items-center gap-2"><i className="fa-solid fa-comment-dots text-[#941A0B]" /> Detail Catatan Jadwal</h3>
               <button onClick={() => setModalCatatan(null)} className="text-slate-400 hover:text-red-500 transition"><i className="fa-solid fa-xmark text-lg" /></button>
             </div>
             <div className="p-6"><p id="isiModalCatatan" className="text-sm text-slate-600 leading-relaxed whitespace-pre-line bg-slate-50 p-4 rounded-xl border border-slate-100 font-medium">{modalCatatan}</p></div>
@@ -1073,12 +1073,12 @@ export default function StaffDashboardPage() {
         <div id="modalFileJadwal" className="fixed inset-0 z-[1000] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setModalFiles(null)}>
           <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-md overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-              <h3 className="font-bold text-slate-900 flex items-center gap-2"><i className="fa-solid fa-folder-open text-blue-600" /> Dokumen Lampiran</h3>
+              <h3 className="font-bold text-slate-900 flex items-center gap-2"><i className="fa-solid fa-folder-open text-[#941A0B]" /> Dokumen Lampiran</h3>
               <button onClick={() => setModalFiles(null)} className="text-slate-400 hover:text-red-500 transition"><i className="fa-solid fa-xmark text-lg" /></button>
             </div>
             <div id="isiModalFile" className="p-6 space-y-2.5 max-h-[300px] overflow-y-auto">
               {modalFiles.filter((f) => f.trim() !== "").map((f, i) => (
-                <a key={i} href={f.trim().startsWith("http") ? f.trim() : `https://drive.google.com/open?id=${f.trim()}`} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 hover:bg-blue-50 hover:border-blue-200 transition group text-sm font-medium text-slate-700 mb-3">
+                <a key={i} href={f.trim().startsWith("http") ? f.trim() : `https://drive.google.com/open?id=${f.trim()}`} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 hover:bg-red-50 hover:border-red-200 transition group text-sm font-medium text-slate-700 mb-3">
                   <span className="flex items-center gap-2"><i className="fa-solid fa-file-pdf text-red-500 text-sm group-hover:scale-110 transition" /> Dokumen Lampiran #{i + 1}</span>
                   <i className="fa-solid fa-arrow-up-right-from-square text-slate-400 group-hover:translate-x-0.5 transition" />
                 </a>

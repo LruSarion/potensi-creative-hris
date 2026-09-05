@@ -16,7 +16,7 @@ interface LiveCameraCheckinProps {
   onCameraStatusChange?: (hasCamera: boolean, errorMsg: string | null) => void;
   disabled?: boolean;
   disabledMessage?: string;
-  mode?: "checkin" | "checkout" | "gmv";
+  mode?: "checkin" | "checkout" | "gmv" | "lampiran";
   allowGallery?: boolean;
 }
 
@@ -42,6 +42,13 @@ const MODE_TEXT = {
     shutter: "Ambil Bukti GMV",
     note: "Bukti GMV dapat diambil langsung melalui kamera atau diunggah jika memiliki screenshot dashboard.",
   },
+  lampiran: {
+    photoAlt: "Foto Lampiran Bukti",
+    inactiveTitle: "Siap Mengambil Lampiran",
+    inactiveDesc: "Klik tombol di bawah untuk mengaktifkan kamera dan mengambil foto bukti/lampiran pendukung.",
+    shutter: "Ambil Foto Lampiran",
+    note: "Lampiran dapat diambil langsung melalui kamera atau dipilih dari galeri.",
+  },
 } as const;
 
 export default function LiveCameraCheckin({
@@ -65,10 +72,17 @@ export default function LiveCameraCheckin({
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [hasCamera, setHasCamera] = useState(true);
   const [facingMode, setFacingMode] = useState<"user" | "environment">(
-    mode === "gmv" ? "environment" : "user"
+    mode === "checkin" || mode === "checkout" ? "user" : "environment"
   );
   const [deviceCount, setDeviceCount] = useState(1);
   const [isFlashing, setIsFlashing] = useState(false);
+
+  // Label bukti per mode untuk watermark & badge (mode lampiran = generik,
+  // dipakai formulir tukar shift dkk — tanpa klaim PRESENSI/GMV).
+  const proofLabel =
+    mode === "gmv" ? "BUKTI GMV" : mode === "lampiran" ? "LAMPIRAN" : "PRESENSI";
+  // Mode lampiran: GPS best-effort (opsional, tidak memblokir seperti presensi).
+  const gpsRequired = mode === "checkin" || mode === "checkout";
 
   // Geolocation states
   const [locLoading, setLocLoading] = useState(false);
@@ -280,23 +294,26 @@ export default function LiveCameraCheckin({
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // Draw watermark
+    // Draw watermark (mode lampiran: baris GPS hanya jika lokasi tersedia)
     const nowStr = new Date().toLocaleString("id-ID", {
       dateStyle: "medium",
       timeStyle: "medium",
     });
-    const locStr = currentLoc ? currentLoc.formattedText : "GPS: Mengambil...";
+    const titleLine = `POTENSI HRIS • ${proofLabel} • ${nowStr} WIB`;
+    const barH = currentLoc ? 40 : 26;
 
     ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-    ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+    ctx.fillRect(0, canvas.height - barH, canvas.width, barH);
 
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 13px sans-serif";
-    ctx.fillText(`POTENSI HRIS • ${mode === "gmv" ? "BUKTI GMV" : "PRESENSI"} • ${nowStr} WIB`, 14, canvas.height - 21);
+    ctx.fillText(titleLine, 14, canvas.height - barH + 15);
 
-    ctx.fillStyle = "#cbd5e1";
-    ctx.font = "11px monospace";
-    ctx.fillText(locStr, 14, canvas.height - 7);
+    if (currentLoc) {
+      ctx.fillStyle = "#cbd5e1";
+      ctx.font = "11px monospace";
+      ctx.fillText(currentLoc.formattedText, 14, canvas.height - 7);
+    }
 
     const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
 
@@ -356,7 +373,7 @@ export default function LiveCameraCheckin({
         ctx.fillRect(0, height - 36, width, 36);
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 13px sans-serif";
-        ctx.fillText(`POTENSI HRIS • ${mode === "gmv" ? "BUKTI GMV" : "DOKUMEN"} • ${timeStr} WIB`, 14, height - 14);
+        ctx.fillText(`POTENSI HRIS • ${mode === "lampiran" ? "LAMPIRAN" : mode === "gmv" ? "BUKTI GMV" : "DOKUMEN"} • ${timeStr} WIB`, 14, height - 14);
 
         const compressed = canvas.toDataURL("image/jpeg", 0.85);
         onChange(compressed);
@@ -412,18 +429,23 @@ export default function LiveCameraCheckin({
           <div className="relative z-10 p-4 pt-6 sm:p-6 flex items-center justify-between pointer-events-auto">
             {/* GPS Pill Indicator & GMV Title */}
             <div className="max-w-[75%] flex flex-wrap items-center gap-2">
-              {mode === "gmv" && (
+              {mode === "gmv" ? (
                 <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-white text-xs shadow-lg">
                   <i className="fa-solid fa-receipt text-amber-400 text-xs" />
                   <span className="text-[11px] font-bold">Bukti GMV</span>
                 </div>
-              )}
+              ) : mode === "lampiran" ? (
+                <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-white text-xs shadow-lg">
+                  <i className="fa-solid fa-paperclip text-sky-400 text-xs" />
+                  <span className="text-[11px] font-bold">Lampiran Bukti</span>
+                </div>
+              ) : null}
               {locLoading ? (
                 <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 text-white text-xs shadow-lg">
                   <i className="fa-solid fa-circle-notch animate-spin text-[#FA3737] text-xs" />
                   <span className="text-[11px] font-medium truncate">Mengunci GPS...</span>
                 </div>
-              ) : locError ? (
+              ) : locError && (gpsRequired || mode === "gmv") ? (
                 <div
                   onClick={requestLocation}
                   className="bg-red-950/80 backdrop-blur-md border border-red-500/40 px-3 py-1.5 rounded-full flex items-center gap-1.5 text-xs text-red-200 shadow-lg cursor-pointer active:scale-95"
@@ -486,18 +508,7 @@ export default function LiveCameraCheckin({
                   </button>
                 </div>
               </div>
-            ) : mode === "gmv" ? (
-              <div className="relative w-72 h-52 sm:w-96 sm:h-64 border-2 border-dashed border-white/50 rounded-2xl flex items-end justify-center pb-3 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
-                {/* Corner guide reticles */}
-                <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl-lg" />
-                <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white rounded-tr-lg" />
-                <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white rounded-bl-lg" />
-                <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white rounded-br-lg" />
-                <span className="text-[11px] text-white font-bold bg-black/60 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/15 shadow-lg">
-                  Arahkan ke Layar Dashboard GMV
-                </span>
-              </div>
-            ) : (
+            ) : mode === "checkin" || mode === "checkout" ? (
               <div className="relative w-64 h-80 sm:w-72 sm:h-96 border-2 border-dashed border-white/40 rounded-[52px] flex items-end justify-center pb-4 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
                 {/* Corner guide reticles */}
                 <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl-lg" />
@@ -506,6 +517,17 @@ export default function LiveCameraCheckin({
                 <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white rounded-br-lg" />
                 <span className="text-[11px] text-white font-bold bg-black/60 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/15 shadow-lg">
                   Posisikan Wajah Anda
+                </span>
+              </div>
+            ) : (
+              <div className="relative w-72 h-52 sm:w-96 sm:h-64 border-2 border-dashed border-white/50 rounded-2xl flex items-end justify-center pb-3 shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+                {/* Corner guide reticles */}
+                <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-white rounded-tl-lg" />
+                <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-white rounded-tr-lg" />
+                <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-white rounded-bl-lg" />
+                <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-white rounded-br-lg" />
+                <span className="text-[11px] text-white font-bold bg-black/60 px-3.5 py-1 rounded-full backdrop-blur-md border border-white/15 shadow-lg">
+                  {mode === "gmv" ? "Arahkan ke Layar Dashboard GMV" : "Arahkan ke Bukti Pendukung"}
                 </span>
               </div>
             )}
@@ -571,7 +593,7 @@ export default function LiveCameraCheckin({
           />
           <div className="absolute top-3 left-3 bg-emerald-600/95 backdrop-blur-xs text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 shadow-md">
             <i className="fa-solid fa-circle-check" />
-            <span>{mode === "gmv" ? "Foto Bukti GMV Berhasil Diambil" : "Foto Presensi Berhasil Diambil"}</span>
+            <span>{mode === "lampiran" ? "Foto Lampiran Berhasil Diambil" : mode === "gmv" ? "Foto Bukti GMV Berhasil Diambil" : "Foto Presensi Berhasil Diambil"}</span>
           </div>
           <div className="absolute bottom-3 right-3">
             <button

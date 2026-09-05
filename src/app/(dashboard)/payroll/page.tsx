@@ -1,74 +1,150 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useAlert } from "@/components/ui/custom-alert";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
-import { TableLoadingState } from "@/components/ui/loading-states";
 import { toast } from "@/components/ui/toast";
 
+type TabId = "payroll" | "atur-gaji" | "history";
+
+function rupiah(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === "") return "Rp 0";
+  return "Rp " + Number(val).toLocaleString("id-ID");
+}
+
+function currentMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export default function PayrollPage() {
-  const [list, setList] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
-  const [periode, setPeriode] = useState("Agustus 2026");
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { showConfirm } = useAlert();
+
+  const role = String((session?.user as any)?.role ?? "").toUpperCase();
+  const allowed =
+    role.includes("ADMIN") || role.includes("SUPER") || role.includes("MANAGER") || role.includes("FINANCE");
+
+  const [activeTab, setActiveTab] = useState<TabId>("payroll");
+  const [periode, setPeriode] = useState(currentMonth());
+
+  const [rows, setRows] = useState<any[]>([]);
+  const [masterRows, setMasterRows] = useState<any[]>([]);
+  const [historyRows, setHistoryRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [calcModalOpen, setCalcModalOpen] = useState(false);
-  const [selectedSlip, setSelectedSlip] = useState<any>(null);
+
+  const [searchPayroll, setSearchPayroll] = useState("");
+  const [searchMaster, setSearchMaster] = useState("");
+  const [searchHistory, setSearchHistory] = useState("");
+
+  const [editMaster, setEditMaster] = useState<null | {
+    karyawanId: string; namaLengkap: string; gajiPokok: number; tunjTransport: number; tunjMakan: number;
+  }>(null);
+  const [savingMaster, setSavingMaster] = useState(false);
 
   useEffect(() => {
-    loadPayroll();
-  }, [periode]);
+    if (status === "authenticated" && !allowed) {
+      toast.error("Akses Ditolak: Halaman Payroll hanya untuk level Manajemen/HR/Finance.");
+      router.replace("/dashboard");
+    }
+  }, [status, allowed, router]);
 
-  async function loadPayroll() {
-    setError("");
+  const loadPayrollData = useCallback(async () => {
     setLoading(true);
     try {
-      const q = periode ? `?periode=${encodeURIComponent(periode)}` : "";
-      const [listRes, sumRes] = await Promise.all([
-        fetchJson<any[]>(`/api/payroll${q}`),
-        fetchJson<any>(`/api/payroll?summary=1&periode=${encodeURIComponent(periode)}`).catch(() => null),
-      ]);
-
-      setList(listRes);
-      if (sumRes) setSummary(sumRes);
+      const q = `?periode=${encodeURIComponent(periode)}`;
+      if (activeTab === "atur-gaji") {
+        const data = await fetchJson<any[]>("/api/payroll?master=1");
+        setMasterRows(Array.isArray(data) ? data : []);
+      } else if (activeTab === "history") {
+        const data = await fetchJson<any[]>("/api/payroll?history=1");
+        setHistoryRows(Array.isArray(data) ? data : []);
+      } else {
+        const data = await fetchJson<any[]>(`/api/payroll${q}`);
+        setRows(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat daftar payroll");
+      toast.error(errorMessage(err, "Gagal terhubung ke Database."));
     } finally {
       setLoading(false);
     }
+  }, [activeTab, periode]);
+
+  useEffect(() => {
+    if (status === "authenticated" && allowed) loadPayrollData();
+  }, [status, allowed, loadPayrollData]);
+
+  function switchTab(tab: TabId) {
+    setActiveTab(tab);
   }
 
-  async function handleCalculateBatch() {
-    setLoading(true);
-    setError("");
-    setSuccess("");
+  async function handleSaveMaster(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editMaster) return;
+    setSavingMaster(true);
     try {
-      const data = await sendJson<any>("/api/payroll", "POST", {
-        action: "compute-batch",
-        periode,
+      await sendJson("/api/payroll", "POST", {
+        masterGaji: {
+          karyawanId: editMaster.karyawanId,
+          gajiPokok: Number(editMaster.gajiPokok) || 0,
+          tunjTransport: Number(editMaster.tunjTransport) || 0,
+          tunjMakan: Number(editMaster.tunjMakan) || 0,
+        },
       });
-      const msg = `Perhitungan payroll untuk ${periode} selesai! (${data.totalStreamers} streamer dihitung).`;
-      toast.success(msg);
-      setSuccess(msg);
-      setCalcModalOpen(false);
-      loadPayroll();
+      toast.success("Master Gaji berhasil diupdate!");
+      setEditMaster(null);
+      loadPayrollData();
     } catch (err) {
-      const msg = errorMessage(err, "Gagal memproses perhitungan payroll");
-      toast.error(msg);
-      setError(msg);
+      toast.error(errorMessage(err, "Gagal menyimpan master gaji"));
     } finally {
-      setLoading(false);
+      setSavingMaster(false);
     }
   }
 
-  const rupiah = (val: number | string | undefined) =>
-    `Rp ${Number(val ?? 0).toLocaleString("id-ID")}`;
+  async function handleUpdateStatus(id: string, s: "DISETUJUI" | "REVISI") {
+    const ok = await showConfirm(`Ubah status slip gaji ini menjadi ${s}?`);
+    if (!ok) return;
+    try {
+      await sendJson(`/api/payroll?id=${id}`, "PATCH", { status: s });
+      toast.success(`Status slip gaji diubah menjadi ${s}.`);
+      loadPayrollData();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal memproses status"));
+    }
+  }
 
-  const [activeTab, setActiveTab] = useState<"payroll" | "atur-gaji" | "history">("payroll");
+  if (status === "authenticated" && !allowed) {
+    return (
+      <div className="p-12 text-center text-slate-500">
+        <i className="fa-solid fa-user-lock text-4xl text-red-400 mb-3 block" />
+        Akses Ditolak: Halaman Payroll hanya untuk level Manajemen/HR/Finance.
+      </div>
+    );
+  }
+
+  const qPayroll = searchPayroll.toLowerCase();
+  const qMaster = searchMaster.toLowerCase();
+  const qHistory = searchHistory.toLowerCase();
+  const filteredRows = rows.filter((r) =>
+    `${r.karyawan?.idKaryawan ?? ""} ${r.karyawan?.namaLengkap ?? ""}`.toLowerCase().includes(qPayroll)
+  );
+  const filteredMaster = masterRows.filter((r) =>
+    `${r.idKaryawan ?? ""} ${r.namaLengkap ?? ""}`.toLowerCase().includes(qMaster)
+  );
+  const filteredHistory = historyRows.filter((r) =>
+    `${r.periode ?? ""} ${r.karyawan?.idKaryawan ?? ""} ${r.karyawan?.namaLengkap ?? ""}`.toLowerCase().includes(qHistory)
+  );
+
+  const tabBtn = (active: boolean) =>
+    `flex-1 py-2 px-4 rounded-lg text-sm transition ${active ? "tab-active" : "tab-inactive"}`;
 
   return (
-    <div className="space-y-6">
-      {/* Header persis ref-website-lama/payroll.html */}
+    <div>
+      <style>{`.tab-active{background-color:#f1f5f9;border:1px solid #cbd5e1;font-weight:600;color:#1e293b;}.tab-inactive{color:#64748b;font-weight:500;border:1px solid transparent;}.tab-inactive:hover{background-color:#f8fafc;color:#334155;}`}</style>
+
       <div className="flex flex-wrap justify-between items-end mb-6 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Payroll Management</h1>
@@ -78,295 +154,287 @@ export default function PayrollPage() {
         <div className="flex items-center gap-3 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
           <label className="text-sm font-medium text-slate-600 pl-2">Periode Aktif:</label>
           <input
-            type="text"
+            type="month"
             value={periode}
             onChange={(e) => setPeriode(e.target.value)}
-            className="border border-slate-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-32"
-            placeholder="Agustus 2026"
+            onClick={(e) => (e.target as HTMLInputElement).showPicker?.()}
+            className="border border-slate-300 rounded px-3 py-1.5 text-sm focus:ring-2 focus:ring-[#941A0B]/50 outline-none cursor-pointer"
           />
-          <button
-            onClick={() => setCalcModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-sm flex items-center gap-1.5"
-          >
-            <i className="fa-solid fa-bolt" />
-            <span>Hitung Gaji</span>
-          </button>
         </div>
       </div>
 
-      {/* Tab Navigation persis ref-website-lama/payroll.html */}
       <div className="flex flex-wrap gap-2 border border-slate-200 p-1.5 rounded-xl bg-slate-50 mb-6">
-        <button
-          onClick={() => {
-            setSelectedSlip(null);
-            setActiveTab("payroll");
-          }}
-          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
-            activeTab === "payroll"
-              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
-              : "text-slate-600 hover:bg-white font-medium"
-          }`}
-        >
-          <i className="fa-solid fa-money-bill-wave" />
-          <span>Payroll Bulan Ini</span>
+        <button onClick={() => switchTab("payroll")} id="btn-payroll" className={tabBtn(activeTab === "payroll")}>
+          <i className="fa-solid fa-money-bill-wave mr-2" />Payroll Bulan Ini
         </button>
-        <button
-          onClick={() => {
-            setSelectedSlip(null);
-            setActiveTab("atur-gaji");
-          }}
-          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
-            activeTab === "atur-gaji"
-              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
-              : "text-slate-600 hover:bg-white font-medium"
-          }`}
-        >
-          <i className="fa-solid fa-sliders" />
-          <span>Atur Master Gaji</span>
+        <button onClick={() => switchTab("atur-gaji")} id="btn-atur-gaji" className={tabBtn(activeTab === "atur-gaji")}>
+          <i className="fa-solid fa-sliders mr-2" />Atur Master Gaji
         </button>
-        <button
-          onClick={() => {
-            setSelectedSlip(null);
-            setActiveTab("history");
-          }}
-          className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
-            activeTab === "history"
-              ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
-              : "text-slate-600 hover:bg-white font-medium"
-          }`}
-        >
-          <i className="fa-solid fa-box-archive" />
-          <span>History / Arsip</span>
+        <button onClick={() => switchTab("history")} id="btn-history" className={tabBtn(activeTab === "history")}>
+          <i className="fa-solid fa-box-archive mr-2" />History / Arsip
         </button>
       </div>
 
-      {/* Alerts */}
-      {success && (
-        <div className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-2">
-          <span>✅</span>
-          <span>{success}</span>
-        </div>
-      )}
-      {error && (
-        <div className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2">
-          <span>⚠️</span>
-          <span>{error}</span>
-        </div>
-      )}
-
-      {/* Summary KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Total Pengeluaran Gaji</div>
-          <div className="text-xl font-bold text-slate-900 mt-1">
-            {rupiah(summary?.totalGross ?? 0)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">Periode {periode}</div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Total Jam Live Dihitung</div>
-          <div className="text-xl font-bold text-blue-600 mt-1">
-            {summary?.totalJam ?? 0} <span className="text-sm font-normal text-slate-500">Jam</span>
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">Sesi Terjadwal & Hadir</div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Jumlah Streamer</div>
-          <div className="text-xl font-bold text-purple-600 mt-1">
-            {summary?.count ?? 0} <span className="text-sm font-normal text-slate-500">Host</span>
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">Menerima Honor Live</div>
-        </div>
-
-        <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="text-xs font-medium text-slate-500">Rata-Rata Rate / Jam</div>
-          <div className="text-xl font-bold text-emerald-600 mt-1">
-            {rupiah(summary?.avgRate ?? 0)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-1">Berdasarkan Tiering</div>
-        </div>
-      </div>
-
-      {/* Main Payroll Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <h3 className="font-bold text-slate-800 text-sm">Daftar Payroll Karyawan & Streamer</h3>
-          <span className="text-xs text-slate-500">{list.length} data tercatat</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">Nama Karyawan</th>
-                <th className="px-4 py-3">Periode</th>
-                <th className="px-4 py-3">Total Jam Live</th>
-                <th className="px-4 py-3">Tier Pencapaian</th>
-                <th className="px-4 py-3">Rate / Jam</th>
-                <th className="px-4 py-3">Total Gross Pay</th>
-                <th className="px-4 py-3 text-right">Aksi</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <TableLoadingState
-                  colSpan={7}
-                  text="Memuat data rekap payroll..."
-                  subtext="Menyelaraskan jam live, insentif tier, dan perhitungan gaji dari server..."
-                />
-              ) : (
-                list.map((p) => (
-                  <tr key={p.id} className="hover:bg-slate-50/80 transition">
-                  <td className="px-4 py-3.5">
-                    <div className="font-semibold text-slate-800">
-                      {p.karyawan?.namaLengkap ?? p.karyawanId}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-mono">
-                      {p.karyawan?.idKaryawan ?? "-"} • {p.karyawan?.jabatan ?? "Streamer"}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{p.periode}</td>
-                  <td className="px-4 py-3 font-semibold text-slate-800">
-                    {Number(p.totalJam).toFixed(1)} Jam
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                        p.tier === "High Performer"
-                          ? "bg-purple-50 text-purple-700 border-purple-200"
-                          : p.tier === "Advance"
-                          ? "bg-blue-50 text-blue-700 border-blue-200"
-                          : p.tier === "Optimal"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : p.tier === "Standard"
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-slate-50 text-slate-700 border-slate-200"
-                      }`}
-                    >
-                      {p.tier ?? "Standard"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{rupiah(p.ratePerJam)}</td>
-                  <td className="px-4 py-3 font-bold text-slate-900">{rupiah(p.grossPay)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={() => setSelectedSlip(p)}
-                      className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition"
-                    >
-                      Rincian Slip
-                    </button>
-                  </td>
-                </tr>
-              )))}
-            </tbody>
-          </table>
-          {list.length === 0 && !loading && (
-            <div className="p-8 text-center text-slate-400 text-sm">
-              Belum ada data payroll untuk periode {periode}. Klik tombol{" "}
-              <strong>"Hitung Payroll Periode"</strong> di atas untuk menjalankan kalkulasi otomatis.
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Calculate Batch Modal */}
-      {calcModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-4">
-            <h3 className="text-lg font-bold text-slate-900">Hitung Payroll Otomatis</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Sistem akan menghitung total jam live streaming semua host untuk periode{" "}
-              <strong>{periode}</strong>, mencocokkan tiering rate, mengintegrasikan lembur yang disetujui, dan menyimpan rekapitulasi gaji.
-            </p>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Periode Perhitungan</label>
+      {activeTab === "payroll" && (
+        <div id="tab-payroll" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <h3 className="font-bold text-slate-900">Daftar Payroll Menunggu Persetujuan</h3>
+            <div className="flex items-center bg-white rounded border border-slate-300 px-3 py-1.5 focus-within:ring-2 focus-within:ring-[#941A0B]/50">
+              <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-xs" />
               <input
                 type="text"
-                value={periode}
-                onChange={(e) => setPeriode(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl px-3.5 py-2 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                value={searchPayroll}
+                onChange={(e) => setSearchPayroll(e.target.value)}
+                placeholder="Cari Nama/ID..."
+                className="border-none bg-transparent focus:ring-0 outline-none text-sm w-48"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setCalcModalOpen(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100 transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleCalculateBatch}
-                disabled={loading}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition shadow-md shadow-blue-600/20 disabled:opacity-50"
-              >
-                {loading ? "Memproses..." : "Jalankan Kalkulasi"}
-              </button>
-            </div>
+          </div>
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-100 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 font-medium">ID Karyawan</th>
+                  <th className="px-4 py-3 font-medium">Nama Lengkap</th>
+                  <th className="px-4 py-3 font-medium">Jabatan</th>
+                  <th className="px-4 py-3 font-medium text-right">Gaji Pokok</th>
+                  <th className="px-4 py-3 font-medium text-right">Total Tunjangan</th>
+                  <th className="px-4 py-3 font-medium text-right">Total Potongan</th>
+                  <th className="px-4 py-3 font-medium text-right font-bold text-slate-800">Take Home Pay</th>
+                  <th className="px-4 py-3 font-medium text-center">Status</th>
+                  <th className="px-4 py-3 font-medium text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={9} className="text-center py-8 text-slate-500 italic">Menarik data periode {periode}...</td></tr>
+                ) : filteredRows.length === 0 ? (
+                  <tr><td colSpan={9} className="text-center py-8 text-slate-500 font-medium">Tidak ada data untuk periode ini.</td></tr>
+                ) : (
+                  filteredRows.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-4 font-medium text-slate-700">{p.karyawan?.idKaryawan ?? "-"}</td>
+                      <td className="px-4 py-4 font-medium text-slate-900">{p.karyawan?.namaLengkap ?? "-"}</td>
+                      <td className="px-4 py-4 text-slate-600">{p.karyawan?.jabatan ?? "-"}</td>
+                      <td className="px-4 py-4 text-right text-slate-600">{rupiah(p.gajiPokok)}</td>
+                      <td className="px-4 py-4 text-right text-emerald-600">+ {rupiah(p.totalTunjangan)}</td>
+                      <td className="px-4 py-4 text-right text-red-500">- {rupiah(p.totalPotongan)}</td>
+                      <td className="px-4 py-4 text-right font-bold text-slate-900">{rupiah(p.takeHomePay ?? p.grossPay)}</td>
+                      <td className="px-4 py-4 text-center">
+                        <span className="px-2 py-1 rounded text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300">
+                          {p.statusPersetujuan ?? "MENUNGGU"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-center">
+                        <button onClick={() => handleUpdateStatus(p.id, "DISETUJUI")} className="px-2.5 py-1 text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-600 hover:text-white transition mr-1">Approve</button>
+                        <button onClick={() => handleUpdateStatus(p.id, "REVISI")} className="px-2.5 py-1 text-xs font-medium bg-red-50 text-red-700 border border-red-200 rounded hover:bg-red-600 hover:text-white transition">Revisi</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* Slip Modal */}
-      {selectedSlip && (
-        <div
-          onClick={() => setSelectedSlip(null)}
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 cursor-pointer"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-5 cursor-default"
-          >
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="font-bold text-slate-900 text-base">Rincian Slip Honor Streamer</h3>
-                <p className="text-xs text-slate-400">Periode: {selectedSlip.periode}</p>
-              </div>
-              <button
-                onClick={() => setSelectedSlip(null)}
-                className="text-slate-400 hover:text-slate-600 text-lg"
-              >
-                ✕
+      {activeTab === "atur-gaji" && (
+        <div id="tab-atur-gaji" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <h3 className="font-bold text-slate-900">Parameter Komponen Gaji Karyawan</h3>
+            <div className="flex items-center bg-white rounded border border-slate-300 px-3 py-1.5 focus-within:ring-2 focus-within:ring-[#941A0B]/50">
+              <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-xs" />
+              <input
+                type="text"
+                value={searchMaster}
+                onChange={(e) => setSearchMaster(e.target.value)}
+                placeholder="Cari Nama/ID..."
+                className="border-none bg-transparent focus:ring-0 outline-none text-sm w-48"
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-100 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 font-medium">ID Karyawan</th>
+                  <th className="px-4 py-3 font-medium">Nama Lengkap</th>
+                  <th className="px-4 py-3 font-medium">Kategori</th>
+                  <th className="px-4 py-3 font-medium text-right">Gaji Pokok/Rate</th>
+                  <th className="px-4 py-3 font-medium text-right">Tunj. Transport</th>
+                  <th className="px-4 py-3 font-medium text-right">Tunj. Makan</th>
+                  <th className="px-4 py-3 font-medium text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={7} className="text-center py-8 text-slate-500 italic">Menarik data master gaji...</td></tr>
+                ) : filteredMaster.length === 0 ? (
+                  <tr><td colSpan={7} className="text-center py-8 text-slate-500 font-medium">Data master gaji kosong.</td></tr>
+                ) : (
+                  filteredMaster.map((r) => (
+                    <tr key={r.karyawanId} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="px-4 py-4 font-medium text-slate-700">{r.idKaryawan}</td>
+                      <td className="px-4 py-4 font-medium text-slate-900">{r.namaLengkap}</td>
+                      <td className="px-4 py-4 text-slate-600">{r.kategori}</td>
+                      <td className="px-4 py-4 text-right font-medium text-slate-800">{rupiah(r.gajiPokok)}</td>
+                      <td className="px-4 py-4 text-right text-slate-600">{rupiah(r.tunjTransport)}</td>
+                      <td className="px-4 py-4 text-right text-slate-600">{rupiah(r.tunjMakan)}</td>
+                      <td className="px-4 py-4 text-center">
+                        <button
+                          onClick={() => setEditMaster({
+                            karyawanId: r.karyawanId,
+                            namaLengkap: r.namaLengkap,
+                            gajiPokok: Number(r.gajiPokok) || 0,
+                            tunjTransport: Number(r.tunjTransport) || 0,
+                            tunjMakan: Number(r.tunjMakan) || 0,
+                          })}
+                          className="px-3 py-1 text-xs font-medium bg-red-50 text-[#941A0B] border border-red-200 rounded hover:bg-[#941A0B] hover:text-white transition"
+                        >
+                          Edit Master
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "history" && (
+        <div id="tab-history" className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col h-full">
+          <div className="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+            <h3 className="font-bold text-slate-900">Arsip Penggajian Historis</h3>
+            <div className="flex items-center bg-white rounded border border-slate-300 px-3 py-1.5 focus-within:ring-2 focus-within:ring-[#941A0B]/50">
+              <i className="fa-solid fa-magnifying-glass text-slate-400 mr-2 text-xs" />
+              <input
+                type="text"
+                value={searchHistory}
+                onChange={(e) => setSearchHistory(e.target.value)}
+                placeholder="Cari Nama/ID..."
+                className="border-none bg-transparent focus:ring-0 outline-none text-sm w-48"
+              />
+            </div>
+          </div>
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-sm text-left whitespace-nowrap">
+              <thead className="text-xs text-slate-500 uppercase bg-slate-100 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Periode</th>
+                  <th className="px-4 py-3 font-medium">ID Karyawan</th>
+                  <th className="px-4 py-3 font-medium">Nama Lengkap</th>
+                  <th className="px-4 py-3 font-medium text-right font-bold text-slate-800">Take Home Pay</th>
+                  <th className="px-4 py-3 font-medium text-center">Status</th>
+                  <th className="px-4 py-3 font-medium text-center">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-slate-500 italic">Menarik data arsip...</td></tr>
+                ) : filteredHistory.length === 0 ? (
+                  <tr><td colSpan={6} className="text-center py-8 text-slate-500 font-medium">Tidak ada data arsip.</td></tr>
+                ) : (
+                  filteredHistory.map((p) => {
+                    const st = p.statusPersetujuan ?? "MENUNGGU";
+                    const badge =
+                      st === "DISETUJUI"
+                        ? "bg-emerald-50 text-emerald-700 border-emerald-300"
+                        : st === "REVISI"
+                          ? "bg-red-50 text-red-700 border-red-300"
+                          : "bg-slate-100 text-slate-600 border-slate-300";
+                    return (
+                      <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="px-4 py-4 text-slate-600">{p.periode}</td>
+                        <td className="px-4 py-4 font-medium text-slate-700">{p.karyawan?.idKaryawan ?? "-"}</td>
+                        <td className="px-4 py-4 font-medium text-slate-900">{p.karyawan?.namaLengkap ?? "-"}</td>
+                        <td className="px-4 py-4 text-right font-bold text-slate-900">{rupiah(p.takeHomePay ?? p.grossPay)}</td>
+                        <td className="px-4 py-4 text-center">
+                          <span className={`px-2 py-1 rounded text-xs font-bold border ${badge}`}>{st}</span>
+                        </td>
+                        <td className="px-4 py-4 text-center">
+                          <button
+                            className="text-[#941A0B] hover:text-[#781408] text-sm"
+                            title="Lihat Slip Gaji"
+                            onClick={() => toast.success(`Slip ${p.karyawan?.namaLengkap ?? ""} periode ${p.periode}: ${rupiah(p.takeHomePay ?? p.grossPay)} (${st})`)}
+                          >
+                            <i className="fa-solid fa-file-invoice-dollar" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {editMaster && (
+        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="font-bold text-slate-900">Edit Parameter Gaji</h3>
+              <button onClick={() => setEditMaster(null)} className="text-slate-400 hover:text-slate-600">
+                <i className="fa-solid fa-xmark text-lg" />
               </button>
             </div>
+            <div className="p-6">
+              <form onSubmit={handleSaveMaster} className="space-y-4">
+                <div className="flex gap-4 mb-2">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">ID Karyawan</label>
+                    <input type="text" value={editMaster.karyawanId} readOnly className="w-full bg-slate-100 border border-slate-200 rounded px-3 py-2 text-sm font-medium text-slate-700 outline-none" />
+                  </div>
+                  <div className="flex-[2]">
+                    <label className="block text-xs font-medium text-slate-500 mb-1">Nama Lengkap</label>
+                    <input type="text" value={editMaster.namaLengkap} readOnly className="w-full bg-slate-100 border border-slate-200 rounded px-3 py-2 text-sm font-medium text-slate-700 outline-none" />
+                  </div>
+                </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-500">Nama Streamer:</span>
-                <span className="font-bold text-slate-800">{selectedSlip.karyawan?.namaLengkap}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-500">ID Karyawan:</span>
-                <span className="font-mono text-slate-700">{selectedSlip.karyawan?.idKaryawan}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-500">Tier Pencapaian:</span>
-                <span className="font-semibold text-blue-600">{selectedSlip.tier ?? "Standard"}</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-500">Total Jam Terhitung:</span>
-                <span className="font-semibold text-slate-800">{Number(selectedSlip.totalJam).toFixed(1)} Jam</span>
-              </div>
-              <div className="flex justify-between py-1 border-b border-slate-50">
-                <span className="text-slate-500">Tarif / Jam:</span>
-                <span className="text-slate-800">{rupiah(selectedSlip.ratePerJam)}</span>
-              </div>
-              <div className="flex justify-between py-2.5 bg-blue-50/70 px-3 rounded-xl">
-                <span className="font-bold text-blue-900">Total Take-Home Pay:</span>
-                <span className="font-extrabold text-blue-700 text-sm">{rupiah(selectedSlip.grossPay)}</span>
-              </div>
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Gaji Pokok / Rate Dasar (Rp)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={editMaster.gajiPokok}
+                    onChange={(e) => setEditMaster({ ...editMaster, gajiPokok: Number(e.target.value) })}
+                    className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#941A0B]/50 outline-none"
+                    required
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tunj. Transport (Rp)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editMaster.tunjTransport}
+                      onChange={(e) => setEditMaster({ ...editMaster, tunjTransport: Number(e.target.value) })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#941A0B]/50 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Tunj. Makan (Rp)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editMaster.tunjMakan}
+                      onChange={(e) => setEditMaster({ ...editMaster, tunjMakan: Number(e.target.value) })}
+                      className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#941A0B]/50 outline-none"
+                    />
+                  </div>
+                </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                onClick={() => setSelectedSlip(null)}
-                className="w-full bg-slate-900 hover:bg-black text-white font-semibold py-2 rounded-xl text-xs transition"
-              >
-                Tutup
-              </button>
+                <div className="pt-4 flex justify-end gap-3">
+                  <button type="button" onClick={() => setEditMaster(null)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition">Batal</button>
+                  <button type="submit" disabled={savingMaster} className="px-4 py-2 text-sm font-medium bg-[#941A0B] text-white hover:bg-[#781408] rounded-lg transition shadow-sm disabled:opacity-60">
+                    {savingMaster ? "Menyimpan..." : "Simpan Perubahan"}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

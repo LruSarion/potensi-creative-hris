@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useAlert } from "@/components/ui/custom-alert";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
+import LiveCameraCheckin from "@/components/streamer-dashboard/live-camera-checkin";
 
 type MainTab = "streamer" | "ots" | "khusus";
 type SubTab = "formulir" | "approval";
@@ -82,10 +83,6 @@ export function TukarShiftView() {
 
   // Modals state
   const [previewModalImg, setPreviewModalImg] = useState<string | null>(null);
-  const [cameraActiveFor, setCameraActiveFor] = useState<"str" | "ots" | "khs" | null>(null);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   // Set default tabs based on role
   useEffect(() => {
@@ -144,91 +141,6 @@ export function TukarShiftView() {
     } finally {
       setLoadingSwaps(false);
     }
-  }
-
-  // File handling helpers
-  function compressImage(file: File, callback: (b64: string) => void) {
-    if (file.size > 8 * 1024 * 1024) {
-      showAlert("⚠️ Ukuran file melebihi 8 MB. Silakan pilih gambar yang lebih kecil.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.src = e.target?.result as string;
-      img.onload = () => {
-        const MAX = 1200;
-        let w = img.width;
-        let h = img.height;
-        if (w >= h && w > MAX) {
-          h = Math.round((h * MAX) / w);
-          w = MAX;
-        } else if (h > w && h > MAX) {
-          w = Math.round((w * MAX) / h);
-          h = MAX;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, w, h);
-          callback(canvas.toDataURL("image/jpeg", 0.75));
-        }
-      };
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>, target: "str" | "ots" | "khs") {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    compressImage(file, (b64) => {
-      if (target === "str") setStrLampiranB64(b64);
-      if (target === "ots") setOtsLampiranB64(b64);
-      if (target === "khs") setKhsLampiranB64(b64);
-    });
-  }
-
-  // Camera handling
-  async function openCamera(target: "str" | "ots" | "khs") {
-    setCameraActiveFor(target);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
-    } catch {
-      showAlert("⚠️ Tidak dapat mengakses kamera pada perangkat ini.");
-      setCameraActiveFor(null);
-    }
-  }
-
-  function captureCamera() {
-    if (!videoRef.current || !cameraActiveFor) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = videoRef.current.videoWidth || 640;
-    canvas.height = videoRef.current.videoHeight || 480;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const b64 = canvas.toDataURL("image/jpeg", 0.8);
-      if (cameraActiveFor === "str") setStrLampiranB64(b64);
-      if (cameraActiveFor === "ots") setOtsLampiranB64(b64);
-      if (cameraActiveFor === "khs") setKhsLampiranB64(b64);
-    }
-    closeCamera();
-  }
-
-  function closeCamera() {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setCameraActiveFor(null);
   }
 
   // Conflict Check (Cek Bentrok)
@@ -613,47 +525,12 @@ export function TukarShiftView() {
                   <span className="ml-2 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200">WAJIB</span>
                 </label>
 
-                <div className="flex flex-col sm:flex-row gap-2.5 mb-3">
-                  <label className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl border border-slate-300 transition cursor-pointer shadow-2xs">
-                    <i className="fa-solid fa-folder-open text-slate-500" />
-                    <span>File Galeri</span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(e) => handleFileInput(e, "str")}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => openCamera("str")}
-                    className="flex-1 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs py-2.5 rounded-xl border border-blue-200 transition shadow-2xs"
-                  >
-                    <i className="fa-solid fa-camera text-blue-600" />
-                    <span>Buka Kamera</span>
-                  </button>
-                </div>
-
-                {/* Preview Lampiran */}
-                {strLampiranB64 && (
-                  <div className="relative border border-slate-200 rounded-xl p-2 bg-slate-50 w-full sm:w-64 shadow-2xs">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={strLampiranB64}
-                      alt="Preview Lampiran"
-                      className="rounded-lg object-cover max-h-40 w-full cursor-pointer hover:opacity-90"
-                      onClick={() => setPreviewModalImg(strLampiranB64)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setStrLampiranB64("")}
-                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md border-2 border-white"
-                      title="Hapus Lampiran"
-                    >
-                      <i className="fa-solid fa-xmark" />
-                    </button>
-                  </div>
-                )}
+                <LiveCameraCheckin
+                  value={strLampiranB64}
+                  onChange={setStrLampiranB64}
+                  mode="lampiran"
+                  allowGallery
+                />
 
                 <p className="text-[11px] text-slate-400 mt-2 flex items-center gap-1">
                   <i className="fa-solid fa-triangle-exclamation text-amber-500" />
@@ -983,46 +860,12 @@ export function TukarShiftView() {
                   <span className="ml-2 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200">WAJIB</span>
                 </label>
 
-                <div className="flex flex-col sm:flex-row gap-2.5 mb-3">
-                  <label className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl border border-slate-300 transition cursor-pointer shadow-2xs">
-                    <i className="fa-solid fa-folder-open text-slate-500" />
-                    <span>File Galeri</span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(e) => handleFileInput(e, "ots")}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => openCamera("ots")}
-                    className="flex-1 flex items-center justify-center gap-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs py-2.5 rounded-xl border border-indigo-200 transition shadow-2xs"
-                  >
-                    <i className="fa-solid fa-camera text-indigo-600" />
-                    <span>Buka Kamera</span>
-                  </button>
-                </div>
-
-                {otsLampiranB64 && (
-                  <div className="relative border border-slate-200 rounded-xl p-2 bg-slate-50 w-full sm:w-64 shadow-2xs">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={otsLampiranB64}
-                      alt="Preview Lampiran"
-                      className="rounded-lg object-cover max-h-40 w-full cursor-pointer hover:opacity-90"
-                      onClick={() => setPreviewModalImg(otsLampiranB64)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setOtsLampiranB64("")}
-                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md border-2 border-white"
-                      title="Hapus Lampiran"
-                    >
-                      <i className="fa-solid fa-xmark" />
-                    </button>
-                  </div>
-                )}
+                <LiveCameraCheckin
+                  value={otsLampiranB64}
+                  onChange={setOtsLampiranB64}
+                  mode="lampiran"
+                  allowGallery
+                />
               </div>
             </div>
 
@@ -1280,46 +1123,12 @@ export function TukarShiftView() {
                   <span className="ml-2 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full border border-red-200">WAJIB</span>
                 </label>
 
-                <div className="flex flex-col sm:flex-row gap-2.5 mb-3">
-                  <label className="flex-1 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-2.5 rounded-xl border border-slate-300 transition cursor-pointer shadow-2xs">
-                    <i className="fa-solid fa-folder-open text-slate-500" />
-                    <span>File Galeri</span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(e) => handleFileInput(e, "khs")}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => openCamera("khs")}
-                    className="flex-1 flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs py-2.5 rounded-xl border border-amber-200 transition shadow-2xs"
-                  >
-                    <i className="fa-solid fa-camera text-amber-600" />
-                    <span>Buka Kamera</span>
-                  </button>
-                </div>
-
-                {khsLampiranB64 && (
-                  <div className="relative border border-slate-200 rounded-xl p-2 bg-slate-50 w-full sm:w-64 shadow-2xs">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={khsLampiranB64}
-                      alt="Preview Lampiran"
-                      className="rounded-lg object-cover max-h-40 w-full cursor-pointer hover:opacity-90"
-                      onClick={() => setPreviewModalImg(khsLampiranB64)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setKhsLampiranB64("")}
-                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs shadow-md border-2 border-white"
-                      title="Hapus Lampiran"
-                    >
-                      <i className="fa-solid fa-xmark" />
-                    </button>
-                  </div>
-                )}
+                <LiveCameraCheckin
+                  value={khsLampiranB64}
+                  onChange={setKhsLampiranB64}
+                  mode="lampiran"
+                  allowGallery
+                />
               </div>
             </div>
 
@@ -1378,47 +1187,6 @@ export function TukarShiftView() {
         </div>
       )}
 
-      {/* ======================================================= */}
-      {/* MODAL: KAMERA CAPTURE                                   */}
-      {/* ======================================================= */}
-      {cameraActiveFor && (
-        <div className="fixed inset-0 bg-slate-900/80 z-50 flex items-center justify-center p-4 backdrop-blur-xs animate-fade-in">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
-            <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
-              <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <i className="fa-solid fa-camera text-blue-500" />
-                <span>Ambil Foto Lampiran</span>
-              </h3>
-              <button type="button" onClick={closeCamera} className="text-slate-400 hover:text-slate-600 text-base">✕</button>
-            </div>
-            <div className="p-4 bg-black flex justify-center">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                className="w-full max-h-72 object-cover rounded-xl"
-              />
-            </div>
-            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-              <button
-                type="button"
-                onClick={closeCamera}
-                className="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold py-2 px-4 rounded-xl text-xs transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={captureCamera}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-xl text-xs transition flex items-center gap-2 shadow-md"
-              >
-                <i className="fa-solid fa-camera" />
-                <span>Ambil Foto</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

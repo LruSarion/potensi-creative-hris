@@ -1,20 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
+import LiveCameraCheckin from "@/components/streamer-dashboard/live-camera-checkin";
 import "flatpickr/dist/flatpickr.min.css";
 
 type LemburRow = any;
-
-function getBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(String(reader.result).split(",")[1]);
-    reader.onerror = (error) => reject(error);
-  });
-}
 
 function nowHM(): string {
   const now = new Date();
@@ -32,18 +24,16 @@ export default function PengajuanLemburPage() {
   const [alKegiatan, setAlKegiatan] = useState("");
   const [submittingAjukan, setSubmittingAjukan] = useState(false);
 
-  // Form Mulai (persis ref: native capture)
+  // Form Mulai (kamera live ala checkin streamer dashboard)
   const [mlIdLembur, setMlIdLembur] = useState("");
   const [mlFotoPreview, setMlFotoPreview] = useState("");
   const [submittingMulai, setSubmittingMulai] = useState(false);
-  const mlFotoInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Form Selesai (persis ref: ID readonly dari activeLembur)
+  // Form Selesai (kamera live ala checkout streamer dashboard)
   const [slIdLembur, setSlIdLembur] = useState("");
   const [slCatatan, setSlCatatan] = useState("");
   const [slFotoPreview, setSlFotoPreview] = useState("");
   const [submittingSelesai, setSubmittingSelesai] = useState(false);
-  const slFotoInputRef = useRef<HTMLInputElement | null>(null);
 
   // Riwayat
   const [history, setHistory] = useState<LemburRow[]>([]);
@@ -106,28 +96,58 @@ export default function PengajuanLemburPage() {
     setActiveTab(tabId);
   }
 
-  // previewPhoto / removePhoto persis ref
-  function previewPhoto(file: File | undefined, target: "mulai" | "selesai") {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const url = String(e.target?.result ?? "");
-      if (target === "mulai") setMlFotoPreview(url);
-      else setSlFotoPreview(url);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function removePhoto(target: "mulai" | "selesai") {
-    if (target === "mulai") {
-      if (mlFotoInputRef.current) mlFotoInputRef.current.value = "";
+  async function handleMulai(e: React.FormEvent) {
+    e.preventDefault();
+    if (!mlIdLembur.trim() || !mlFotoPreview) {
+      toast.warning("ID Lembur dan Foto Masuk wajib diisi.");
+      return;
+    }
+    setSubmittingMulai(true);
+    try {
+      const jamSekarang = nowHM();
+      await sendJson(`/api/lembur?id=${mlIdLembur.trim()}`, "PATCH", {
+        buktiDriveId: mlFotoPreview,
+        alasan: `Mulai lembur pukul ${jamSekarang}`,
+      });
+      toast.success("Mulai Lembur Terekam!");
+      try { localStorage.setItem("activeLembur", mlIdLembur.trim()); } catch { /* ignore */ }
+      setMlIdLembur("");
       setMlFotoPreview("");
-    } else {
-      if (slFotoInputRef.current) slFotoInputRef.current.value = "";
-      setSlFotoPreview("");
+      loadHistory();
+      checkActiveSession();
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat mencatat mulai lembur."));
+    } finally {
+      setSubmittingMulai(false);
     }
   }
 
+  async function handleSelesai(e: React.FormEvent) {
+    e.preventDefault();
+    if (!slIdLembur.trim() || !slFotoPreview || !slCatatan.trim()) {
+      toast.warning("ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
+      return;
+    }
+    setSubmittingSelesai(true);
+    try {
+      const jamSekarang = nowHM();
+      await sendJson(`/api/lembur?id=${slIdLembur.trim()}`, "PATCH", {
+        buktiDriveId: slFotoPreview,
+        alasan: `${slCatatan} (Selesai pukul ${jamSekarang})`,
+      });
+      toast.success("Selesai Lembur Terekam!");
+      try { localStorage.removeItem("activeLembur"); } catch { /* ignore */ }
+      setActiveLembur(null);
+      setSlIdLembur(""); setSlCatatan("");
+      setSlFotoPreview("");
+      loadHistory();
+      switchTab("riwayat");
+    } catch (err) {
+      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat menyelesaikan lembur."));
+    } finally {
+      setSubmittingSelesai(false);
+    }
+  }
   async function handleAjukan(e: React.FormEvent) {
     e.preventDefault();
     if (!alKegiatan.trim()) {
@@ -155,63 +175,6 @@ export default function PengajuanLemburPage() {
     }
   }
 
-  async function handleMulai(e: React.FormEvent) {
-    e.preventDefault();
-    const file = mlFotoInputRef.current?.files?.[0];
-    if (!mlIdLembur.trim() || !file) {
-      toast.warning("ID Lembur dan Foto Masuk wajib diisi.");
-      return;
-    }
-    setSubmittingMulai(true);
-    try {
-      const base64FotoMasuk = await getBase64(file);
-      const jamSekarang = nowHM();
-      await sendJson(`/api/lembur?id=${mlIdLembur.trim()}`, "PATCH", {
-        buktiDriveId: `data:image/jpeg;base64,${base64FotoMasuk}`,
-        alasan: `Mulai lembur pukul ${jamSekarang}`,
-      });
-      toast.success("Mulai Lembur Terekam!");
-      try { localStorage.setItem("activeLembur", mlIdLembur.trim()); } catch { /* ignore */ }
-      setMlIdLembur("");
-      removePhoto("mulai");
-      loadHistory();
-      checkActiveSession();
-    } catch (err) {
-      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat mencatat mulai lembur."));
-    } finally {
-      setSubmittingMulai(false);
-    }
-  }
-
-  async function handleSelesai(e: React.FormEvent) {
-    e.preventDefault();
-    const file = slFotoInputRef.current?.files?.[0];
-    if (!slIdLembur.trim() || !file || !slCatatan.trim()) {
-      toast.warning("ID Lembur, Foto Keluar, dan Laporan Pekerjaan Akhir wajib diisi.");
-      return;
-    }
-    setSubmittingSelesai(true);
-    try {
-      const base64FotoKeluar = await getBase64(file);
-      const jamSekarang = nowHM();
-      await sendJson(`/api/lembur?id=${slIdLembur.trim()}`, "PATCH", {
-        buktiDriveId: `data:image/jpeg;base64,${base64FotoKeluar}`,
-        alasan: `${slCatatan} (Selesai pukul ${jamSekarang})`,
-      });
-      toast.success("Selesai Lembur Terekam!");
-      try { localStorage.removeItem("activeLembur"); } catch { /* ignore */ }
-      setActiveLembur(null);
-      setSlIdLembur(""); setSlCatatan("");
-      removePhoto("selesai");
-      loadHistory();
-      switchTab("riwayat");
-    } catch (err) {
-      toast.error(errorMessage(err, "Terjadi kesalahan koneksi saat menyelesaikan lembur."));
-    } finally {
-      setSubmittingSelesai(false);
-    }
-  }
-
   const tabBtn = (id: string, isActive: boolean) =>
     `py-2 px-4 rounded-lg text-sm transition ${isActive ? "tab-active" : "tab-inactive"}`;
 
@@ -220,7 +183,7 @@ export default function PengajuanLemburPage() {
       <style>{`.tab-active{background-color:#f1f5f9;border:1px solid #cbd5e1;font-weight:600;color:#1e293b;}.tab-inactive{color:#64748b;font-weight:500;border:1px solid transparent;}.tab-inactive:hover{background-color:#f8fafc;color:#334155;}`}</style>
 
       <div className="flex items-center gap-3 mb-6">
-        <i className="fa-solid fa-clock text-blue-600 text-3xl" />
+        <i className="fa-solid fa-clock text-[#941A0B] text-3xl" />
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Pengajuan Lembur</h1>
           <p className="text-slate-500 text-sm mt-1">Ajukan jadwal dan laporkan jam aktual lembur Anda.</p>
@@ -248,26 +211,26 @@ export default function PengajuanLemburPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Tanggal</label>
-                <input type="date" id="alTanggal" value={alTanggal} onChange={(e) => setAlTanggal(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer" placeholder="Pilih Tanggal" required />
+                <input type="date" id="alTanggal" value={alTanggal} onChange={(e) => setAlTanggal(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white cursor-pointer" placeholder="Pilih Tanggal" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Penanggung Jawab (SPV)</label>
-                <input type="text" id="alSpv" value={alSpv} onChange={(e) => setAlSpv(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" required />
+                <input type="text" id="alSpv" value={alSpv} onChange={(e) => setAlSpv(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Waktu Mulai (Rencana)</label>
-                <input type="time" id="alMulai" value={alMulai} onChange={(e) => setAlMulai(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer" placeholder="Pilih Jam" required />
+                <input type="time" id="alMulai" value={alMulai} onChange={(e) => setAlMulai(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white cursor-pointer" placeholder="Pilih Jam" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Waktu Berakhir (Rencana)</label>
-                <input type="time" id="alSelesai" value={alSelesai} onChange={(e) => setAlSelesai(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white cursor-pointer" placeholder="Pilih Jam" required />
+                <input type="time" id="alSelesai" value={alSelesai} onChange={(e) => setAlSelesai(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none bg-white cursor-pointer" placeholder="Pilih Jam" required />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Kegiatan / Alasan Lembur</label>
-                <textarea id="alKegiatan" value={alKegiatan} onChange={(e) => setAlKegiatan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={3} placeholder="Jelaskan secara detail pekerjaan yang akan dilakukan..." required />
+                <textarea id="alKegiatan" value={alKegiatan} onChange={(e) => setAlKegiatan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none" rows={3} placeholder="Jelaskan secara detail pekerjaan yang akan dilakukan..." required />
               </div>
             </div>
-            <button type="submit" disabled={submittingAjukan} className="bg-blue-600 text-white font-medium py-2 px-6 rounded-lg hover:bg-blue-700 transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingAjukan ? "Mengirim..." : "Kirim Pengajuan"}</button>
+            <button type="submit" disabled={submittingAjukan} className="bg-[#941A0B] text-white font-medium py-2 px-6 rounded-lg hover:bg-[#781408] transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingAjukan ? "Mengirim..." : "Kirim Pengajuan"}</button>
           </form>
         </div>
       )}
@@ -280,7 +243,7 @@ export default function PengajuanLemburPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">ID Lembur (Disetujui)</label>
-                <input type="text" id="mlIdLembur" value={mlIdLembur} onChange={(e) => setMlIdLembur(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Contoh: LMB-XXX" required />
+                <input type="text" id="mlIdLembur" value={mlIdLembur} onChange={(e) => setMlIdLembur(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none" placeholder="Contoh: LMB-XXX" required />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Waktu Absen Masuk</label>
@@ -289,17 +252,15 @@ export default function PengajuanLemburPage() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Foto Masuk (Bukti Mulai) *Kamera</label>
-                {mlFotoPreview && (
-                  <div id="mlFotoContainer" className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50 mb-2 w-fit">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img id="mlFotoPreview" src={mlFotoPreview} alt="Foto masuk" className="max-h-32 rounded object-cover" />
-                    <button type="button" onClick={() => removePhoto("mulai")} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center"><i className="fa-solid fa-xmark text-sm" /></button>
-                  </div>
-                )}
-                <input ref={mlFotoInputRef} type="file" id="mlFotoInput" accept="image/*" capture="user" onChange={(e) => previewPhoto(e.target.files?.[0], "mulai")} className="w-full border border-slate-300 rounded-lg text-sm file:mr-2 file:py-1 file:px-2 file:border-0 file:bg-blue-50 text-blue-700 cursor-pointer" required />
+                <LiveCameraCheckin
+                  value={mlFotoPreview}
+                  onChange={setMlFotoPreview}
+                  mode="checkin"
+                  allowGallery
+                />
               </div>
             </div>
-            <button type="submit" disabled={submittingMulai} className="bg-blue-600 text-white font-medium py-2 px-6 rounded-lg hover:bg-blue-700 transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingMulai ? "Mengirim..." : "Submit Mulai Lembur"}</button>
+            <button type="submit" disabled={submittingMulai} className="bg-[#941A0B] text-white font-medium py-2 px-6 rounded-lg hover:bg-[#781408] transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingMulai ? "Mengirim..." : "Submit Mulai Lembur"}</button>
           </form>
         </div>
       )}
@@ -320,21 +281,19 @@ export default function PengajuanLemburPage() {
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-2">Foto Keluar (Bukti Selesai) *Kamera</label>
-                {slFotoPreview && (
-                  <div id="slFotoContainer" className="relative inline-block border border-slate-200 rounded-lg p-1 bg-slate-50 mb-2 w-fit">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img id="slFotoPreview" src={slFotoPreview} alt="Foto keluar" className="max-h-32 rounded object-cover" />
-                    <button type="button" onClick={() => removePhoto("selesai")} className="absolute -top-3 -right-3 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center"><i className="fa-solid fa-xmark text-sm" /></button>
-                  </div>
-                )}
-                <input ref={slFotoInputRef} type="file" id="slFotoInput" accept="image/*" capture="user" onChange={(e) => previewPhoto(e.target.files?.[0], "selesai")} className="w-full border border-slate-300 rounded-lg text-sm file:mr-2 file:py-1 file:px-2 file:border-0 file:bg-blue-50 text-blue-700 cursor-pointer" required />
+                <LiveCameraCheckin
+                  value={slFotoPreview}
+                  onChange={setSlFotoPreview}
+                  mode="checkout"
+                  allowGallery
+                />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-1">Laporan Pekerjaan Akhir</label>
-                <textarea id="slCatatan" value={slCatatan} onChange={(e) => setSlCatatan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows={3} required />
+                <textarea id="slCatatan" value={slCatatan} onChange={(e) => setSlCatatan(e.target.value)} className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none" rows={3} required />
               </div>
             </div>
-            <button type="submit" disabled={submittingSelesai} className="bg-blue-600 text-white font-medium py-2 px-6 rounded-lg hover:bg-blue-700 transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingSelesai ? "Mengirim..." : "Submit Selesai Lembur"}</button>
+            <button type="submit" disabled={submittingSelesai} className="bg-[#941A0B] text-white font-medium py-2 px-6 rounded-lg hover:bg-[#781408] transition mt-2 w-full md:w-auto disabled:opacity-60">{submittingSelesai ? "Mengirim..." : "Submit Selesai Lembur"}</button>
           </form>
         </div>
       )}

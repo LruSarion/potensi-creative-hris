@@ -180,7 +180,7 @@ export function TabRequest({
         <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-3 gap-4">
           <div>
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-              <i className="fa-solid fa-code-pull-request text-blue-500" />
+              <i className="fa-solid fa-code-pull-request text-red-500" />
               Pengajuan Streamer
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
@@ -194,7 +194,7 @@ export function TabRequest({
               onClick={() => onReqCategoryChange("libur")}
               className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                 reqCategory === "libur"
-                  ? "text-white bg-blue-600 shadow"
+                  ? "text-white bg-[#941A0B] shadow"
                   : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
               }`}
             >
@@ -205,7 +205,7 @@ export function TabRequest({
               onClick={() => onReqCategoryChange("sesilive")}
               className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                 reqCategory === "sesilive"
-                  ? "text-white bg-blue-600 shadow"
+                  ? "text-white bg-[#941A0B] shadow"
                   : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
               }`}
             >
@@ -218,14 +218,14 @@ export function TabRequest({
         {requestStatus && (!requestStatus.allowLiburRequest || !requestStatus.allowShiftRequest) && (
           <div className="mt-4 space-y-2">
             {!requestStatus.allowLiburRequest && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
-                <i className="fa-solid fa-lock text-amber-600" />
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center gap-2">
+                <i className="fa-solid fa-lock text-red-600" />
                 <span><strong>Form Pengajuan Libur Ditutup:</strong> Tim Manajemen sedang menutup akses pengajuan libur sementara.</span>
               </div>
             )}
             {!requestStatus.allowShiftRequest && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
-                <i className="fa-solid fa-lock text-amber-600" />
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 flex items-center gap-2">
+                <i className="fa-solid fa-lock text-red-600" />
                 <span><strong>Form Request Sesi Live Ditutup:</strong> Tim Manajemen sedang menutup akses request sesi live sementara.</span>
               </div>
             )}
@@ -242,7 +242,7 @@ export function TabRequest({
                 onClick={() => onReqSubLiburChange("jadwal")}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                   reqSubLibur === "jadwal"
-                    ? "text-white bg-blue-600 shadow"
+                    ? "text-white bg-[#941A0B] shadow"
                     : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
                 }`}
               >
@@ -253,7 +253,7 @@ export function TabRequest({
                 onClick={() => onReqSubLiburChange("pengajuan")}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                   reqSubLibur === "pengajuan"
-                    ? "text-white bg-blue-600 shadow"
+                    ? "text-white bg-[#941A0B] shadow"
                     : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
                 }`}
               >
@@ -305,7 +305,7 @@ export function TabRequest({
                           isLibur
                             ? "bg-red-100 text-red-700 border-red-300 hover:bg-red-200"
                             : isToday
-                            ? "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                            ? "bg-red-50 text-[#781408] border-red-300 hover:bg-red-100"
                             : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                         }`}
                       >
@@ -320,7 +320,7 @@ export function TabRequest({
                             {q.blackout ? (
                               <span className="bg-slate-200 text-slate-600 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full">Blackout</span>
                             ) : q.sisa > 0 ? (
-                              <span className="bg-emerald-100 text-emerald-700 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full">Sisa {q.sisa}</span>
+                              <span className="bg-red-100 text-red-700 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full">Sisa {q.sisa}</span>
                             ) : (
                               <span className="bg-red-100 text-red-600 text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full">Penuh</span>
                             )}
@@ -351,7 +351,7 @@ export function TabRequest({
                       </div>
                       <div className="bg-white rounded-lg border border-slate-200 p-2">
                         <div className="text-[10px] text-slate-500 font-bold">SISA</div>
-                        <div className={`font-black ${liburDetail.sisa > 0 ? "text-emerald-600" : "text-red-600"}`}>{liburDetail.sisa}</div>
+                        <div className={`font-black ${liburDetail.sisa > 0 ? "text-red-600" : "text-red-600"}`}>{liburDetail.sisa}</div>
                       </div>
                     </div>
                     {liburDetail.blackout && (
@@ -409,7 +409,7 @@ export function TabRequest({
                         className={`w-full font-bold py-3 rounded-lg transition shadow-md mb-3 disabled:cursor-not-allowed text-sm ${
                           !isStreamer
                             ? "bg-slate-200 text-slate-400"
-                            : "bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50"
+                            : "bg-red-500 hover:bg-red-600 text-white disabled:opacity-50"
                         }`}
                       >
                         <i className={`fa-solid ${isStreamer ? "fa-magnifying-glass" : "fa-lock"} mr-2`} />
@@ -420,7 +420,7 @@ export function TabRequest({
                       {cekLiburMsg && (
                         <div className={`p-3 rounded-lg border mb-4 text-center text-sm font-bold ${
                           cekLiburOk
-                            ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                            ? "bg-red-50 border-red-300 text-red-700"
                             : "bg-red-50 border-red-300 text-red-700"
                         }`}>
                           <i className={`fa-solid ${cekLiburOk ? "fa-circle-check" : "fa-circle-xmark"} mr-2`} />
@@ -477,7 +477,7 @@ export function TabRequest({
                 onClick={() => onReqSubSesiChange("history")}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                   reqSubSesi === "history"
-                    ? "text-white bg-blue-600 shadow"
+                    ? "text-white bg-[#941A0B] shadow"
                     : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
                 }`}
               >
@@ -488,7 +488,7 @@ export function TabRequest({
                 onClick={() => onReqSubSesiChange("pengajuan")}
                 className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
                   reqSubSesi === "pengajuan"
-                    ? "text-white bg-blue-600 shadow"
+                    ? "text-white bg-[#941A0B] shadow"
                     : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
                 }`}
               >
@@ -616,7 +616,7 @@ export function TabRequest({
                           type="button"
                           onClick={onCekKuotaMingguan}
                           disabled={shiftLoading}
-                          className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-lg transition shadow-md mt-4 mb-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                          className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 rounded-lg transition shadow-md mt-4 mb-2 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                         >
                           <i className="fa-solid fa-magnifying-glass mr-2" />
                           Cek Kuota Mingguan
@@ -627,7 +627,7 @@ export function TabRequest({
                       {kuotaCheckResult && (
                         <div className={`p-3 rounded-lg border mb-3 text-center text-sm font-bold ${
                           kuotaCheckResult.ok
-                            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+                            ? "bg-red-50 border-red-200 text-red-700"
                             : "bg-red-50 border-red-200 text-red-700"
                         }`}>
                           <i className={`fa-solid ${kuotaCheckResult.ok ? "fa-circle-check" : "fa-circle-xmark"} mr-2`} />
@@ -749,11 +749,11 @@ export function TabRequest({
                             hasRequest
                               ? "bg-[#941A0B]/5 text-[#941A0B] border-[#941A0B]/30"
                               : isToday
-                              ? "bg-blue-50 text-blue-700 border-blue-300"
+                              ? "bg-red-50 text-[#781408] border-red-300"
                               : "bg-white text-slate-700 border-slate-200"
                           }`}
                         >
-                          <span className={`text-right font-black text-xs sm:text-sm ${isToday ? "text-blue-700" : ""}`}>
+                          <span className={`text-right font-black text-xs sm:text-sm ${isToday ? "text-[#781408]" : ""}`}>
                             {d.getDate()}
                           </span>
                           {entries?.map((e, ei) => (
@@ -761,10 +761,10 @@ export function TabRequest({
                               key={ei}
                               className={`mt-auto text-[8px] sm:text-[10px] font-bold px-1 py-0.5 rounded-full text-center leading-tight ${
                                 e.status === "APPROVED"
-                                  ? "bg-emerald-100 text-emerald-700"
+                                  ? "bg-red-100 text-red-700"
                                   : e.status === "REJECTED"
                                   ? "bg-red-100 text-red-700"
-                                  : "bg-amber-100 text-amber-700"
+                                  : "bg-red-100 text-red-700"
                               }`}
                             >
                               {e.shift}
