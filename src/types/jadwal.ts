@@ -25,6 +25,7 @@ export interface ScheduleFormItem {
   otsKaryawanId?: string;
   otsId?: string;
   otsNama?: string;
+  otsSearch?: string; // ketik-cari OTS (ref: O_CARI_OTS)
   shiftOts?: string;
   filesOts?: string[];
   judulLive?: string;

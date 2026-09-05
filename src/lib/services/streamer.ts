@@ -3,6 +3,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 import { computeDurationMinutes, TOKEN_JEDA_MINUTES } from "@/lib/schedule-rules";
 import { STUDIOS } from "@/types/jadwal";
+import { checkLiburEligibility, checkShiftEligibility, toYMD, weekRange } from "@/lib/services/kuota-libur";
 
 /**
  * Streamer dashboard: all queries scoped to the authenticated streamer's own data.
@@ -715,32 +716,12 @@ export async function submitLeaveRequest(input: { tanggal: string; alasan?: stri
   const startOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 0, 0, 0);
   const endOfDay = new Date(tgl.getFullYear(), tgl.getMonth(), tgl.getDate(), 23, 59, 59);
 
-  // Check quota libur harian (kebijakan operasional: maksimal kuota per hari adalah 20 streamer)
-  const maxQuota = typeof cfg.defaultKuotaLibur === "number" && cfg.defaultKuotaLibur > 0 ? cfg.defaultKuotaLibur : 20;
-  const existingLeavesCount = await db.izin.count({
-    where: {
-      jenis: "LIBUR_STREAMER",
-      status: { in: ["PENDING", "APPROVED"] },
-      tanggalMulai: { gte: startOfDay, lte: endOfDay },
-    },
-  });
-
-  if (existingLeavesCount >= maxQuota) {
-    throw AppError.conflict(`Kuota libur host untuk tanggal ${input.tanggal} sudah penuh (Maksimal ${maxQuota} streamer).`);
+  // Gate kuota terpusat (BLACKOUT / ALREADY_BOOKED / K3_VIOLATION / WEEKLY_LIMIT / QUOTA_FULL)
+  const eligibility = await checkLiburEligibility(toYMD(tgl), karyawanId, user.tenantId);
+  if (eligibility.code !== "OK") {
+    const status = eligibility.code === "BLACKOUT" || eligibility.code === "WEEKLY_LIMIT" ? 400 : 409;
+    throw new AppError(eligibility.message, status, eligibility.code);
   }
-
-  // Check if streamer has an active live schedule on this day
-  const existingJadwal = await db.jadwal.findFirst({
-    where: {
-      streamerKaryawanId: karyawanId,
-      tanggal: { gte: startOfDay, lte: endOfDay },
-      status: { notIn: ["DIBATALKAN", "REJECTED"] },
-    },
-  });
-
-  const conflictNote = existingJadwal
-    ? ` [Peringatan: Jadwal Live ${existingJadwal.idJadwal} aktif]`
-    : "";
 
   const izin = await db.izin.create({
     data: {
@@ -748,7 +729,7 @@ export async function submitLeaveRequest(input: { tanggal: string; alasan?: stri
       tanggalMulai: startOfDay,
       tanggalSelesai: endOfDay,
       jenis: "LIBUR_STREAMER",
-      alasan: `${input.alasan ?? "Pengajuan Libur Streamer"}${conflictNote}`,
+      alasan: input.alasan ?? "Pengajuan Libur Streamer",
       status: "PENDING",
     },
   });
@@ -799,6 +780,42 @@ export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1
   const defaultQuota = typeof cfg.defaultKuotaShift === "number" && cfg.defaultKuotaShift > 0 ? cfg.defaultKuotaShift : 4;
   const dailyShiftQuota = (cfg.dailyShiftQuota ?? {}) as Record<string, any>;
   const dateKey = input.tanggal.split("T")[0];
+  const ymdShift = toYMD(tgl);
+
+  // Gate: tidak boleh request sesi di tanggal yang sudah ada pengajuan libur
+  const liburThatDay = await db.izin.findFirst({
+    where: {
+      karyawanId,
+      jenis: "LIBUR_STREAMER",
+      status: { in: ["PENDING", "APPROVED"] },
+      tanggalMulai: { gte: startOfDay, lte: endOfDay },
+    },
+  });
+  if (liburThatDay) {
+    throw new AppError(
+      `Tanggal ${ymdShift} sudah ada pengajuan libur (status ${liburThatDay.status}). Batalkan libur dulu untuk request sesi.`,
+      409,
+      "ALREADY_BOOKED"
+    );
+  }
+
+  // Gate mingguan: maksimal 3 request sesi live per periode Senin–Minggu
+  const { start: weekStart, end: weekEnd } = weekRange(tgl);
+  const weeklyShifts = await db.izin.count({
+    where: {
+      karyawanId,
+      jenis: { in: ["REQUEST_SESI_1", "REQUEST_SESI_2", "REQUEST_SESI_3"] },
+      status: { in: ["PENDING", "APPROVED"] },
+      tanggalMulai: { gte: weekStart, lte: weekEnd },
+    },
+  });
+  if (weeklyShifts >= 3) {
+    throw new AppError(
+      "Jatah request sesi live minggu ini sudah habis (maksimal 3 kali per periode Senin–Minggu).",
+      400,
+      "WEEKLY_LIMIT"
+    );
+  }
   const customQuotaForDay = dailyShiftQuota[dateKey];
   let maxShiftQuota = defaultQuota;
   if (customQuotaForDay) {
@@ -820,7 +837,7 @@ export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1
   });
 
   if (existingShiftCount >= maxShiftQuota) {
-    throw AppError.conflict(`Kuota request untuk sesi ini pada tanggal ${dateKey} sudah penuh.`);
+    throw new AppError(`Kuota request untuk sesi ini pada tanggal ${dateKey} sudah penuh.`, 409, "QUOTA_FULL");
   }
 
   const sesiLabel = {
@@ -839,4 +856,63 @@ export async function submitShiftRequest(input: { tanggal: string; sesi: "SESI_1
       status: "PENDING",
     },
   });
+}
+
+/**
+ * Submit batch request sesi live (maks 3 form).
+ * Validasi SEMUA item dulu (checkShiftEligibility + akumulasi mingguan batch),
+ * baru buat — agar tidak ada batch setengah jalan.
+ */
+export async function submitShiftBatch(requests: { tanggal: string; sesi: "SESI_1" | "SESI_2" | "SESI_3"; catatan?: string }[]) {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const karyawanId = user.karyawanId;
+  if (!karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+
+  const tenant = user.tenantId ? await db.tenant.findUnique({ where: { id: user.tenantId } }) : null;
+  const cfg = (tenant?.config ?? {}) as Record<string, any>;
+  if (cfg.allowShiftRequest === false) {
+    throw AppError.forbidden("Pengajuan request sesi live saat ini sedang ditutup oleh Manajemen.");
+  }
+  if (!Array.isArray(requests) || requests.length === 0 || requests.length > 3) {
+    throw AppError.badRequest("Batch request harus berisi 1–3 pengajuan.", "VALIDATION_ERROR");
+  }
+
+  // 1. Validasi semua (dengan akumulasi mingguan antar item batch)
+  const weekCounts = new Map<string, number>();
+  for (const r of requests) {
+    const d = new Date(r.tanggal);
+    const { start } = weekRange(d);
+    const weekKey = toYMD(start);
+    const extra = weekCounts.get(weekKey) ?? 0;
+    const res = await checkShiftEligibility(toYMD(d), r.sesi, karyawanId, user.tenantId, extra);
+    if (res.code !== "OK") {
+      const status = res.code === "WEEKLY_LIMIT" ? 400 : 409;
+      throw new AppError(`${r.tanggal} (${r.sesi}): ${res.message}`, status, res.code);
+    }
+    weekCounts.set(weekKey, extra + 1);
+  }
+
+  // 2. Buat semua
+  const sesiLabel: Record<string, string> = {
+    SESI_1: "Sesi 1 (00:00 - 08:00)",
+    SESI_2: "Sesi 2 (08:00 - 16:00)",
+    SESI_3: "Sesi 3 (16:00 - 00:00)",
+  };
+  const created = [];
+  for (const r of requests) {
+    const d = new Date(r.tanggal);
+    const startOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
+    const endOfDay = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+    created.push(await db.izin.create({
+      data: {
+        karyawanId,
+        tanggalMulai: startOfDay,
+        tanggalSelesai: endOfDay,
+        jenis: `REQUEST_${r.sesi}`,
+        alasan: `${sesiLabel[r.sesi] ?? "Sesi Live"} - ${r.catatan ?? "Permintaan Sesi Live"}`,
+        status: "PENDING",
+      },
+    }));
+  }
+  return created;
 }

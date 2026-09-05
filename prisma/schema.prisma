@@ -122,6 +122,7 @@ model Tenant {
   tiering          Tiering[]
   kuotaHost        KuotaHost[]
   liburStreamer    LiburStreamer[]
+  masterLiburPeriodes MasterLiburPeriode[]
   clientKetentuan  ClientKetentuan[]
   logAktivitas     LogAktivitas[]
   sessionStateLogs SessionStateLog[]
@@ -510,6 +511,7 @@ model PenilaianSDM {
 
   karyawan Karyawan @relation(fields: [karyawanId], references: [id], onDelete: Cascade)
 
+  @@index([periode])
   @@map("penilaian_sdm")
 }
 
@@ -579,6 +581,30 @@ model LiburStreamer {
 
   @@unique([karyawanId, tanggal])
   @@map("libur_streamer")
+}
+
+// ============================================================
+// MASTER LIBUR PERIODE — konfigurasi kuota libur harian per bulan
+// (blackout double-date/payday, override kuota, kebutuhan jam live)
+// ============================================================
+
+model MasterLiburPeriode {
+  id            String   @id @default(cuid())
+  tenantId      String?
+  periode       String // "Januari 2026"
+  kebutuhanJam  Int      @default(0) // total jam live yang dibutuhkan periode ini
+  kuotaHarian   Int      @default(4) // kuota libur harian default periode ini
+  floorKuota    Int      @default(1) // batas bawah kuota harian (floor formula)
+  blackoutDates String[] @default([]) // ["2026-01-01", ...] double date / payday
+  kuotaOverrides Json? // { "2026-01-15": 6 } override manual per tanggal
+  catatan       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, periode])
+  @@map("master_libur_periode")
 }
 
 // ============================================================
@@ -946,6 +972,33 @@ model Certificate {
 
   @@index([streamerKaryawanId, clientId])
   @@map("certificate")
+}
+
+model CertificateTemplate {
+  id               String   @id @default(cuid())
+  key              String   @unique @default("default") // global tunggal
+  name             String   @default("Default Potensi Creative")
+  primaryColor     String   @default("#065f46") // emerald-800
+  accentColor      String   @default("#0d9488") // teal-600
+  backgroundColor  String   @default("#ffffff")
+  borderStyle      String   @default("double") // solid | double | none
+  borderWidth      Int      @default(12)
+  borderColor      String   @default("#065f46")
+  logoDriveId      String?
+  backgroundDriveId String?
+  headerTitle      String   @default("Sertifikat Kompetensi")
+  headerSubtitle   String   @default("Potensi Creative • Akademi Streamer")
+  bodyText         String?  @db.Text @default("atas keberhasilan menyelesaikan seluruh modul pembelajaran dan ujian pada program")
+  showWatermark    Boolean  @default(true)
+  signatureName    String   @default("Trainer")
+  signatureTitle   String   @default("Trainer Akademi")
+  fontFamily       String   @default("DM Sans") // DM Sans | serif | mono
+  footerNote       String?  @default("Verifikasi keaslian sertifikat melalui kode pada halaman ini.")
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("certificate_template")
 }
 
 // ============================================================

@@ -7,3 +7,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+<!-- BEGIN:ralph-wiggum -->
+# Ralph Wiggum
+
+**Read:** `.specify/memory/constitution.md`
+
+That file is the source of truth for autonomous loop sessions (`scripts/ralph-loop.*`).
+Specs live in `specs/`. Autonomy is DISABLED: ask before significant commands, commits, or pushes.
+<!-- END:ralph-wiggum -->

@@ -866,6 +866,29 @@ async function main() {
   }
   console.log("  SOP checklist templates seeded!");
 
+  // --- Master Libur Periode 2026 (12 periode bulanan) ---
+  // Blackout: double-date (tgl = nomor bulan) + payday (tgl 25) setiap bulan.
+  const bulanIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  for (let m = 1; m <= 12; m++) {
+    const mm = String(m).padStart(2, "0");
+    const dd = String(m).padStart(2, "0");
+    const periode = `${bulanIndo[m - 1]} 2026`;
+    await prisma.masterLiburPeriode.upsert({
+      where: { tenantId_periode: { tenantId: agency.id, periode } },
+      update: {},
+      create: {
+        tenantId: agency.id,
+        periode,
+        kebutuhanJam: 192, // 24 hari x 8 jam
+        kuotaHarian: 4,
+        floorKuota: 1,
+        blackoutDates: [`2026-${mm}-${dd}`, `2026-${mm}-25`],
+        catatan: "Seed otomatis: blackout double-date & payday.",
+      },
+    });
+  }
+  console.log("  master libur periode 2026: 12 periode");
+
   console.log("  LMS, QC Rubrics, and Live Schedule seeded successfully!");
   console.log("Seed complete.");
 }

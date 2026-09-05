@@ -425,6 +425,81 @@ export async function revokeCertificate(id: string) {
   return db.certificate.update({ where: { id }, data: { revokedAt: new Date() } });
 }
 
+export async function extendCertificate(id: string, validTo: string) {
+  await requireRole(...TRAINER_ROLES);
+  const cert = await db.certificate.findUnique({ where: { id } });
+  if (!cert) throw AppError.notFound("Sertifikat tidak ditemukan");
+  if (cert.revokedAt) throw AppError.conflict("Sertifikat telah dicabut, tidak bisa diperpanjang");
+  return db.certificate.update({ where: { id }, data: { validTo: new Date(validTo) } });
+}
+
+// ---------- Certificate Template (global single) ----------
+
+export async function getCertificateTemplate() {
+  const tpl = await (db as any).certificateTemplate.findFirst({ where: { key: "default", isActive: true } });
+  if (tpl) return tpl;
+  // fallback default if table empty (should not happen after seed)
+  return {
+    key: "default",
+    name: "Default Potensi Creative",
+    primaryColor: "#065f46",
+    accentColor: "#0d9488",
+    backgroundColor: "#ffffff",
+    borderStyle: "double",
+    borderWidth: 12,
+    borderColor: "#065f46",
+    logoDriveId: null,
+    backgroundDriveId: null,
+    headerTitle: "Sertifikat Kompetensi",
+    headerSubtitle: "Potensi Creative - Akademi Streamer",
+    bodyText: "atas keberhasilan menyelesaikan seluruh modul pembelajaran dan ujian pada program",
+    showWatermark: true,
+    signatureName: "Trainer",
+    signatureTitle: "Trainer Akademi",
+    fontFamily: "DM Sans",
+    footerNote: "Verifikasi keaslian sertifikat melalui kode pada halaman ini.",
+    isActive: true,
+  };
+}
+
+const templateSchema = z.object({
+    name: z.string().min(1).optional(),
+    primaryColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
+    accentColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
+    backgroundColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
+    borderStyle: z.enum(["solid", "double", "none"]).optional(),
+    borderWidth: z.coerce.number().int().min(0).max(32).optional(),
+    borderColor: z.string().regex(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/).optional(),
+    logoDriveId: z.string().nullable().optional(),
+    backgroundDriveId: z.string().nullable().optional(),
+    headerTitle: z.string().min(1).optional(),
+    headerSubtitle: z.string().min(1).optional(),
+    bodyText: z.string().nullable().optional(),
+    showWatermark: z.boolean().optional(),
+    signatureName: z.string().min(1).optional(),
+    signatureTitle: z.string().min(1).optional(),
+    fontFamily: z.enum(["DM Sans", "serif", "mono"]).optional(),
+    footerNote: z.string().nullable().optional(),
+  });
+
+export async function upsertCertificateTemplate(input: Record<string, unknown>) {
+  await requireRole(...TRAINER_ROLES);
+  const parsed = (templateSchema as any).parse(input);
+  const existing = await (db as any).certificateTemplate.findUnique({ where: { key: "default" } });
+  if (existing) {
+    return (db as any).certificateTemplate.update({ where: { key: "default" }, data: { ...parsed, updatedAt: new Date() } });
+  }
+  return (db as any).certificateTemplate.create({ data: { key: "default", ...parsed } });
+}
+
+// Override getCertificateByCode to also return template
+const _origGetCertificateByCode = getCertificateByCode;
+export async function getCertificateByCodeWithTemplate(code: string) {
+  const cert: any = await _origGetCertificateByCode(code);
+  const template = await getCertificateTemplate();
+  return { ...cert, template };
+}
+
 // ---------- T22: Interactive video lessons (port from fork, DB-backed) ----------
 
 /** Streamer reports watch progress on a video lesson. Idempotent upsert. */

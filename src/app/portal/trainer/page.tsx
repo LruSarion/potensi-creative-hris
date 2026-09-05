@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
 import { TableLoadingState, SectionLoader, CardSkeleton } from "@/components/ui/loading-states";
 import { toast } from "@/components/ui/toast";
@@ -16,7 +16,13 @@ export default function TrainerPortalPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [activeTab, setActiveTab] = useState<"courses" | "enrollments" | "grading">("courses");
+  const [activeTab, setActiveTab] = useState<"courses" | "enrollments" | "grading" | "certificates">("courses");
+
+  // Certificate template (global single)
+  const [certTemplate, setCertTemplate] = useState<any>(null);
+  const [certTemplateLoading, setCertTemplateLoading] = useState(false);
+  const [certTemplateSaving, setCertTemplateSaving] = useState(false);
+  const [certActionsBusy, setCertActionsBusy] = useState<string | null>(null);
 
   // Create course modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -65,6 +71,14 @@ export default function TrainerPortalPage() {
   // Expanded module inspection
   const [expandedModuleId, setExpandedModuleId] = useState<string | null>(null);
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "certificates" || tab === "cert-template" || tab === "template") {
+      setActiveTab("certificates");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadData();
@@ -74,7 +88,87 @@ export default function TrainerPortalPage() {
     if (activeTab === "grading") {
       loadSubmissions();
     }
+    if (activeTab === "certificates" && !certTemplate && !certTemplateLoading) {
+      loadCertTemplate();
+    }
   }, [activeTab]);
+
+  async function loadCertTemplate() {
+    setCertTemplateLoading(true);
+    try {
+      const data = await fetchJson<any>("/api/lms?view=cert-template", { cache: "no-store" });
+      setCertTemplate(data ?? null);
+    } catch {
+      // ignore
+    } finally {
+      setCertTemplateLoading(false);
+    }
+  }
+
+  async function handleSaveCertTemplate() {
+    if (!certTemplate) return;
+    setCertTemplateSaving(true);
+    setError(""); setSuccess("");
+    try {
+      const saved = await sendJson("/api/lms", "POST", { action: "save-cert-template", template: certTemplate });
+      setCertTemplate(saved);
+      toast.success("Template sertifikat diperbarui");
+      setSuccess("Template sertifikat diperbarui");
+    } catch (err) {
+      const msg = errorMessage(err, "Gagal menyimpan template");
+      toast.error(msg); setError(msg);
+    } finally {
+      setCertTemplateSaving(false);
+    }
+  }
+
+  async function handleIssueCert(enrollmentId: string) {
+    const validTo = prompt("Tanggal berlaku hingga (YYYY-MM-DD, kosongkan untuk tanpa batas):", "");
+    if (validTo !== null && validTo.trim() !== "" && !/^\d{4}-\d{2}-\d{2}$/.test(validTo.trim())) {
+      toast.error("Format tanggal harus YYYY-MM-DD");
+      return;
+    }
+    setCertActionsBusy(enrollmentId);
+    try {
+      await sendJson("/api/lms", "POST", { action: "certificate", enrollmentId, validTo: validTo?.trim() || undefined });
+      toast.success("Sertifikat diterbitkan");
+      loadData();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal menerbitkan sertifikat"));
+    } finally {
+      setCertActionsBusy(null);
+    }
+  }
+  async function handleRevokeCert(certId: string, code: string) {
+    if (!confirm(`Cabut sertifikat ${code}? Tindakan ini menandai sertifikat tidak valid.`)) return;
+    setCertActionsBusy(certId);
+    try {
+      await sendJson("/api/lms", "POST", { action: "revoke-cert", id: certId });
+      toast.success("Sertifikat dicabut");
+      loadData();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal mencabut sertifikat"));
+    } finally {
+      setCertActionsBusy(null);
+    }
+  }
+  async function handleExtendCert(certId: string) {
+    const validTo = prompt("Perpanjang berlaku hingga (YYYY-MM-DD):", "");
+    if (!validTo || !/^\d{4}-\d{2}-\d{2}$/.test(validTo.trim())) {
+      if (validTo !== null) toast.error("Format tanggal harus YYYY-MM-DD");
+      return;
+    }
+    setCertActionsBusy(certId);
+    try {
+      await sendJson("/api/lms", "POST", { action: "extend-cert", id: certId, validTo: validTo.trim() });
+      toast.success("Masa berlaku diperpanjang");
+      loadData();
+    } catch (err) {
+      toast.error(errorMessage(err, "Gagal perpanjang"));
+    } finally {
+      setCertActionsBusy(null);
+    }
+  }
 
   async function loadSubmissions() {
     setLoadingSubmissions(true);
@@ -409,11 +503,12 @@ export default function TrainerPortalPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto no-scrollbar">
         {[
           { key: "courses", label: `Daftar Kursus & Modul (${courses.length})`, icon: "fa-book-open" },
           { key: "enrollments", label: `Progres Streamer (${enrollments.length})`, icon: "fa-user-graduate" },
           { key: "grading", label: `Evaluasi & Nilai Jawaban (${submissions.length})`, icon: "fa-marker" },
+          { key: "certificates", label: `Template Sertifikat`, icon: "fa-certificate" },
         ].map((t) => (
           <button
             key={t.key}
@@ -690,9 +785,23 @@ export default function TrainerPortalPage() {
                       </td>
                       <td className="px-4 py-3">
                         {e.certificates && e.certificates.length > 0 ? (
-                          <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
-                            <i className="fa-solid fa-certificate" /> {e.certificates[0].code}
-                          </span>
+                          <div className="flex flex-col gap-1.5">
+                            <a href={`/portal/streamer/sertifikat/${e.certificates[0].code}`} target="_blank" className="text-[10px] font-bold text-emerald-600 flex items-center gap-1 hover:underline">
+                              <i className="fa-solid fa-certificate" /> {e.certificates[0].code}
+                            </a>
+                            <div className="flex gap-1.5">
+                              <button type="button" onClick={() => handleRevokeCert(e.certificates[0].id, e.certificates[0].code)} disabled={certActionsBusy === e.certificates[0].id} className="text-[10px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded hover:bg-red-100 disabled:opacity-50">
+                                Cabut
+                              </button>
+                              <button type="button" onClick={() => handleExtendCert(e.certificates[0].id)} disabled={certActionsBusy === e.certificates[0].id} className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded hover:bg-blue-100 disabled:opacity-50">
+                                Perpanjang
+                              </button>
+                            </div>
+                          </div>
+                        ) : e.status === "COMPLETED" ? (
+                          <button type="button" onClick={() => handleIssueCert(e.id)} disabled={certActionsBusy === e.id} className="text-[10px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1 rounded-lg disabled:opacity-50 flex items-center gap-1">
+                            <i className="fa-solid fa-award" /> Terbitkan
+                          </button>
                         ) : (
                           <span className="text-slate-400 text-[10px]">—</span>
                         )}
@@ -790,6 +899,198 @@ export default function TrainerPortalPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Template Sertifikat (global, full-custom) */}
+      {activeTab === "certificates" && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <i className="fa-solid fa-palette text-purple-600" />
+                  Template Sertifikat Global
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">Full custom — satu template untuk semua sertifikat (fallback desain lama bila kosong).</p>
+              </div>
+              <button type="button" onClick={handleSaveCertTemplate} disabled={certTemplateSaving || certTemplateLoading} className="bg-[#941A0B] hover:bg-[#7a160a] text-white font-bold px-5 py-2.5 rounded-xl text-xs shadow-md disabled:opacity-50 flex items-center gap-2">
+                {certTemplateSaving ? <><i className="fa-solid fa-circle-notch fa-spin" /> Menyimpan...</> : <><i className="fa-solid fa-floppy-disk" /> Simpan Template</>}
+              </button>
+            </div>
+
+            {certTemplateLoading ? (
+              <SectionLoader text="Memuat template..." />
+            ) : certTemplate ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Form */}
+                <div className="space-y-4 text-xs">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Warna Primer (border/judul)</label>
+                      <div className="flex gap-2">
+                        <input type="color" value={certTemplate.primaryColor || "#065f46"} onChange={(e) => setCertTemplate({ ...certTemplate, primaryColor: e.target.value })} className="w-10 h-9 rounded-lg border border-slate-200 p-1" />
+                        <input type="text" value={certTemplate.primaryColor || ""} onChange={(e) => setCertTemplate({ ...certTemplate, primaryColor: e.target.value })} className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono" placeholder="#065f46" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Warna Aksen</label>
+                      <div className="flex gap-2">
+                        <input type="color" value={certTemplate.accentColor || "#0d9488"} onChange={(e) => setCertTemplate({ ...certTemplate, accentColor: e.target.value })} className="w-10 h-9 rounded-lg border border-slate-200 p-1" />
+                        <input type="text" value={certTemplate.accentColor || ""} onChange={(e) => setCertTemplate({ ...certTemplate, accentColor: e.target.value })} className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono" placeholder="#0d9488" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Warna Background</label>
+                      <div className="flex gap-2">
+                        <input type="color" value={certTemplate.backgroundColor || "#ffffff"} onChange={(e) => setCertTemplate({ ...certTemplate, backgroundColor: e.target.value })} className="w-10 h-9 rounded-lg border border-slate-200 p-1" />
+                        <input type="text" value={certTemplate.backgroundColor || ""} onChange={(e) => setCertTemplate({ ...certTemplate, backgroundColor: e.target.value })} className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono" placeholder="#ffffff" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Warna Border</label>
+                      <div className="flex gap-2">
+                        <input type="color" value={certTemplate.borderColor || "#065f46"} onChange={(e) => setCertTemplate({ ...certTemplate, borderColor: e.target.value })} className="w-10 h-9 rounded-lg border border-slate-200 p-1" />
+                        <input type="text" value={certTemplate.borderColor || ""} onChange={(e) => setCertTemplate({ ...certTemplate, borderColor: e.target.value })} className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono" placeholder="#065f46" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Gaya Border</label>
+                      <select value={certTemplate.borderStyle || "double"} onChange={(e) => setCertTemplate({ ...certTemplate, borderStyle: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white">
+                        <option value="double">Double</option>
+                        <option value="solid">Solid</option>
+                        <option value="none">Tanpa Border</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Tebal Border (px)</label>
+                      <input type="number" min={0} max={32} value={certTemplate.borderWidth ?? 12} onChange={(e) => setCertTemplate({ ...certTemplate, borderWidth: parseInt(e.target.value || "0", 10) })} className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Logo (Drive ID / URL)</label>
+                      <input type="text" value={certTemplate.logoDriveId || ""} onChange={(e) => setCertTemplate({ ...certTemplate, logoDriveId: e.target.value })} placeholder="https://drive.google.com/... atau ID" className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Background (Drive ID / URL)</label>
+                      <input type="text" value={certTemplate.backgroundDriveId || ""} onChange={(e) => setCertTemplate({ ...certTemplate, backgroundDriveId: e.target.value })} placeholder="URL gambar background" className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Judul Header</label>
+                    <input type="text" value={certTemplate.headerTitle || ""} onChange={(e) => setCertTemplate({ ...certTemplate, headerTitle: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 font-bold" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Subjudul Header</label>
+                    <input type="text" value={certTemplate.headerSubtitle || ""} onChange={(e) => setCertTemplate({ ...certTemplate, headerSubtitle: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Teks Body (atas nama)</label>
+                    <textarea rows={2} value={certTemplate.bodyText || ""} onChange={(e) => setCertTemplate({ ...certTemplate, bodyText: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Nama Penandatangan</label>
+                      <input type="text" value={certTemplate.signatureName || ""} onChange={(e) => setCertTemplate({ ...certTemplate, signatureName: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 font-bold" />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Jabatan Penandatangan</label>
+                      <input type="text" value={certTemplate.signatureTitle || ""} onChange={(e) => setCertTemplate({ ...certTemplate, signatureTitle: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Font</label>
+                      <select value={certTemplate.fontFamily || "DM Sans"} onChange={(e) => setCertTemplate({ ...certTemplate, fontFamily: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2 bg-white">
+                        <option value="DM Sans">DM Sans</option>
+                        <option value="serif">Serif</option>
+                        <option value="mono">Mono</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 font-bold text-slate-700 mt-6">
+                      <input type="checkbox" checked={!!certTemplate.showWatermark} onChange={(e) => setCertTemplate({ ...certTemplate, showWatermark: e.target.checked })} className="accent-purple-600" />
+                      Tampilkan Watermark
+                    </label>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Catatan Footer</label>
+                    <input type="text" value={certTemplate.footerNote || ""} onChange={(e) => setCertTemplate({ ...certTemplate, footerNote: e.target.value })} className="w-full border border-slate-200 rounded-xl px-3 py-2" />
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Preview (contoh)</p>
+                  <div
+                    className="rounded-3xl shadow-xl overflow-hidden print:shadow-none"
+                    style={{ backgroundColor: certTemplate.backgroundColor || "#ffffff" }}
+                  >
+                    <div
+                      className="p-8 sm:p-10 border relative min-h-[420px] flex flex-col items-center justify-center text-center space-y-6"
+                      style={{
+                        borderWidth: certTemplate.borderStyle === "none" ? 0 : (certTemplate.borderWidth ?? 12),
+                        borderStyle: certTemplate.borderStyle === "none" ? "solid" : (certTemplate.borderStyle as any),
+                        borderColor: certTemplate.borderColor || certTemplate.primaryColor || "#065f46",
+                        fontFamily: certTemplate.fontFamily === "mono" ? "monospace" : certTemplate.fontFamily === "serif" ? "serif" : "DM Sans, sans-serif",
+                        backgroundImage: certTemplate.backgroundDriveId ? `url(${certTemplate.backgroundDriveId})` : undefined,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      }}
+                    >
+                      {certTemplate.showWatermark && <i className="fa-solid fa-award absolute text-[160px] pointer-events-none select-none opacity-[0.04]" style={{ color: certTemplate.primaryColor }} />}
+                      <div className="space-y-2">
+                        {certTemplate.logoDriveId ? (
+                          <img src={certTemplate.logoDriveId} alt="logo" className="w-16 h-16 rounded-2xl mx-auto object-contain bg-white shadow-md p-1" />
+                        ) : (
+                          <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-md text-white" style={{ background: `linear-gradient(to bottom right, ${certTemplate.primaryColor}, ${certTemplate.accentColor})` }}>
+                            <i className="fa-solid fa-certificate" />
+                          </div>
+                        )}
+                        <p className="text-[10px] font-extrabold uppercase tracking-[0.3em]" style={{ color: certTemplate.primaryColor }}>{certTemplate.headerSubtitle}</p>
+                        <h2 className="text-2xl font-black uppercase tracking-tight" style={{ color: certTemplate.primaryColor }}>{certTemplate.headerTitle}</h2>
+                        <p className="text-xs text-slate-500">Diberikan kepada</p>
+                      </div>
+                      <div className="space-y-1">
+                        <h3 className="text-2xl font-black tracking-tight" style={{ color: certTemplate.primaryColor }}>Nama Streamer Contoh</h3>
+                        <p className="text-[11px] text-slate-500 font-mono">ID Karyawan: PCS999</p>
+                      </div>
+                      <div className="max-w-md space-y-2">
+                        <p className="text-xs text-slate-700 leading-relaxed">{certTemplate.bodyText}</p>
+                        <h4 className="text-lg font-extrabold text-slate-900">Judul Kursus Contoh</h4>
+                        <p className="text-[11px] text-slate-500">Sertifikasi resmi untuk brand <strong className="text-slate-700">Brand Contoh</strong></p>
+                      </div>
+                      <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t" style={{ borderColor: "#e2e8f0" }}>
+                        <div className="text-center sm:text-left">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Diterbitkan</p>
+                          <p className="text-sm font-bold text-slate-800">{new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Kode Verifikasi</p>
+                          <p className="text-sm font-black font-mono tracking-wider" style={{ color: certTemplate.primaryColor }}>CERT-CONTOH</p>
+                        </div>
+                        <div className="text-center sm:text-right">
+                          <p className="font-[cursive] text-xl italic leading-none">{certTemplate.signatureName}</p>
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold border-t pt-1 mt-1" style={{ borderColor: "#cbd5e1" }}>{certTemplate.signatureTitle}</p>
+                        </div>
+                      </div>
+                      {certTemplate.footerNote && <p className="text-[10px] text-slate-400">{certTemplate.footerNote}</p>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-10 text-slate-400 text-xs">Gagal memuat template</div>
+            )}
+          </div>
         </div>
       )}
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { Suspense } from "react";
 import type { Role } from "@/generated/prisma/enums";
@@ -157,6 +157,7 @@ function SidebarNavContent({
   isCollapsed?: boolean;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = (session?.user?.role ?? "SUPER_ADMIN") as Role;
 
@@ -165,7 +166,15 @@ function SidebarNavContent({
   return (
     <div className={`flex-1 overflow-y-auto py-3 space-y-1 custom-scrollbar ${isCollapsed ? "px-2" : "px-3"}`}>
       {visibleItems.map((item) => {
-        const active = isItemActive(item.href, pathname);
+        const active = (() => {
+          if (item.href.includes("?")) {
+            const [base, qs] = item.href.split("?");
+            const params = new URLSearchParams(qs);
+            const tab = params.get("tab");
+            return pathname === base && searchParams.get("tab") === tab;
+          }
+          return isItemActive(item.href, pathname);
+        })();
         return (
           <Link
             key={item.href}

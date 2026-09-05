@@ -24,6 +24,7 @@ import { TabTerbatas } from "@/components/streamer-dashboard/tab-terbatas";
 import { getLateCheckInStatus } from "@/components/streamer-dashboard/late-check";
 import { TabRiwayat } from "@/components/streamer-dashboard/tab-riwayat";
 import { TabRequest } from "@/components/streamer-dashboard/tab-request";
+import type { ShiftFormEntry, KuotaCheckResult } from "@/components/streamer-dashboard/tab-request";
 import { BuktiFotoModal, ImageLightbox } from "@/components/streamer-dashboard/history-modals";
 import {
   STREAMER_TABS,
@@ -42,6 +43,8 @@ export default function StreamerDashboardPage() {
   const { data: session } = useSession();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role ?? "");
   const isReportAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(session?.user?.role ?? "");
+  // Pengajuan Libur hanya untuk role Streamer (ala ref-deploy isStreamer)
+  const isStreamer = String(session?.user?.role ?? "").toUpperCase().includes("STREAMER");
 
   const [activeTab, setActiveTab] = useState("checkin");
   const [jadwal, setJadwal] = useState<Jadwal[]>([]);
@@ -104,11 +107,21 @@ export default function StreamerDashboardPage() {
   const [reqSubSesi, setReqSubSesi] = useState<"history" | "pengajuan">("pengajuan");
   const [liburCalendar, setLiburCalendar] = useState<{ id: string; tanggal: string; alasan?: string | null }[]>([]);
   const [cekLiburMsg, setCekLiburMsg] = useState<string | null>(null);
+  const [verifiedLiburDate, setVerifiedLiburDate] = useState<string | null>(null);
   const [leaveDate, setLeaveDate] = useState("");
-  const [leaveReason, setLeaveReason] = useState("");
-  const [shiftDate, setShiftDate] = useState("");
-  const [selectedSesi, setSelectedSesi] = useState<"SESI_1" | "SESI_2" | "SESI_3">("SESI_2");
-  const [shiftNote, setShiftNote] = useState("");
+  // Kuota libur: peta sebulan + detail tanggal + ketersediaan shift per form
+  const [kuotaMap, setKuotaMap] = useState<Record<string, { kuota: number; sisa: number; blackout: boolean }>>({});
+  const [liburDetail, setLiburDetail] = useState<null | {
+    tanggal: string; kuota: number; terpakai: number; sisa: number;
+    blackout: boolean; blackoutKind: string | null; kebutuhanJam: number;
+  }>(null);
+  const [shiftAvailByForm, setShiftAvailByForm] = useState<Record<number, { sesi: string; label: string; sisa: number }[]>>({});
+  // Shift multi-form accordion state
+  const [shiftForms, setShiftForms] = useState<ShiftFormEntry[]>([
+    { id: 1, tanggal: "", shift: "", expanded: true },
+  ]);
+  const [shiftLoading, setShiftLoading] = useState(false);
+  const [kuotaCheckResult, setKuotaCheckResult] = useState<KuotaCheckResult | null>(null);
   const [submittingRequest, setSubmittingRequest] = useState(false);
 
   // History tab filters & pagination (matching ref-deploy)
@@ -242,6 +255,8 @@ export default function StreamerDashboardPage() {
       loadTerbatasData();
     } else if (activeTab === "request") {
       loadRequestStatus();
+      const now = new Date();
+      loadKuotaBulan(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`);
     }
   }, [activeTab]);
 
@@ -298,19 +313,83 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  // Cek Libur Terakhir (ref-deploy cekLiburMingguan): tanggal libur APPROVED terakhir streamer.
-  function handleCekLibur() {
-    const approved = (requestStatus?.leaveRequests ?? [])
-      .filter((l) => l.status === "APPROVED")
-      .sort((a, b) => new Date(b.tanggalMulai).getTime() - new Date(a.tanggalMulai).getTime());
-    if (approved.length === 0) {
-      setCekLiburMsg("Belum ada riwayat libur yang disetujui bulan ini.");
+  // Cek Libur Terakhir (ref-deploy cekLiburMingguan) — re-fetch fresh ke API
+  // kuota-libur agar validasi server (BLACKOUT/ALREADY_BOOKED/K3/WEEKLY/QUOTA).
+  // Berhasil (code OK) -> verifiedLiburDate dikunci ke tanggal tsb;
+  // ganti tanggal me-reset gate (handleLeaveDateChange).
+  async function handleCekLibur() {
+    if (!isStreamer) {
+      const msg = "Akses Ditolak: fitur cek kuota libur hanya untuk role Streamer.";
+      toast.warning(msg);
+      setCekLiburMsg(msg);
+      setVerifiedLiburDate(null);
       return;
     }
-    const last = approved[0];
-    setCekLiburMsg(
-      `Libur terakhir yang disetujui: ${formatDateSafe(last.tanggalMulai, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`
-    );
+    if (!leaveDate) {
+      setCekLiburMsg("Silakan pilih tanggal di kalender terlebih dahulu.");
+      setVerifiedLiburDate(null);
+      return;
+    }
+    try {
+      const res = await fetchJson<{ code: string; message: string }>(
+        `/api/streamer?view=kuota-libur&tanggal=${encodeURIComponent(leaveDate)}`,
+        { cache: "no-store" }
+      );
+      setCekLiburMsg(res.message);
+      setVerifiedLiburDate(res.code === "OK" ? leaveDate : null);
+    } catch (err) {
+      // Server melempar 4xx dengan pesan kode validasi (QUOTA_FULL, WEEKLY_LIMIT, ...)
+      setCekLiburMsg(errorMessage(err, "Gagal mengecek kuota libur"));
+      setVerifiedLiburDate(null);
+    }
+  }
+
+  // Peta kuota sebulan untuk calendar history (kuota/sisa per tanggal)
+  const loadKuotaBulan = useCallback(async (yyyyMM: string) => {
+    try {
+      const res = await fetchJson<{ map: Record<string, { kuota: number; sisa: number; blackout: boolean }> }>(
+        `/api/streamer?view=kuota-bulan&bulan=${encodeURIComponent(yyyyMM)}`,
+        { cache: "no-store" }
+      );
+      setKuotaMap(res.map ?? {});
+    } catch { /* ignore — kalender tetap tampil tanpa badge kuota */ }
+  }, []);
+
+  // Klik tanggal di kalender -> tampilkan detail kuota (tanpa pindah tab)
+  async function handleLiburDateSelect(ymd: string) {
+    const m = kuotaMap[ymd];
+    setLiburDetail({
+      tanggal: ymd,
+      kuota: m?.kuota ?? 0,
+      terpakai: Math.max(0, (m?.kuota ?? 0) - (m?.sisa ?? 0)),
+      sisa: m?.sisa ?? 0,
+      blackout: !!m?.blackout,
+      blackoutKind: null,
+      kebutuhanJam: 0,
+    });
+    try {
+      const res = await fetchJson<{
+        tanggal: string; kuota: number; terpakai: number; sisa: number;
+        blackout: boolean; blackoutKind: string | null; kebutuhanJam: number;
+      }>(`/api/streamer?view=kuota-libur&tanggal=${encodeURIComponent(ymd)}`, { cache: "no-store" });
+      setLiburDetail({
+        tanggal: res.tanggal, kuota: res.kuota, terpakai: res.terpakai, sisa: res.sisa,
+        blackout: res.blackout, blackoutKind: res.blackoutKind, kebutuhanJam: res.kebutuhanJam,
+      });
+    } catch { /* pertahankan fallback dari peta */ }
+  }
+
+  function handleLiburDetailAjukan() {
+    if (!liburDetail) return;
+    handleLeaveDateChange(liburDetail.tanggal);
+    setReqSubLibur("pengajuan");
+  }
+
+  function handleLeaveDateChange(v: string) {
+    setLeaveDate(v);
+    // Tanggal berubah -> gate basi, wajib cek ulang (ala ref verifiedLiburDate=null)
+    setCekLiburMsg(null);
+    setVerifiedLiburDate(null);
   }
 
   // Ref-deploy tab-report: ganti periode bulan atau host streamer -> refetch data dashboard.
@@ -401,27 +480,33 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  // Conflict calculation for leaveDate
-  const conflictingJadwal = leaveDate && requestStatus?.activeJadwal
-    ? requestStatus.activeJadwal.find((j) => {
-        const jDate = new Date(j.tanggal).toISOString().slice(0, 10);
-        return jDate === leaveDate;
-      }) ?? null
-    : null;
-  const hasScheduleConflict = Boolean(conflictingJadwal);
-
   async function handleLeaveSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!isStreamer) {
+      const msg = "Akses Ditolak: hanya role Streamer yang dapat mengajukan libur.";
+      toast.warning(msg);
+      setError(msg);
+      return;
+    }
     if (!leaveDate) return;
+    // Gate ala ref: hanya tanggal yang lolos cek yang boleh disubmit
+    if (!verifiedLiburDate || verifiedLiburDate !== leaveDate) {
+      const msg = "Silakan klik Cek Libur Terakhir untuk tanggal ini terlebih dahulu.";
+      toast.warning(msg);
+      setError(msg);
+      return;
+    }
     setSubmittingRequest(true);
     setError("");
     setSuccess("");
     try {
-      await sendJson("/api/streamer", "POST", { action: "leave-request", tanggal: leaveDate, alasan: leaveReason });
+      // Ref submitReqLibur hanya kirim target_date (tanpa alasan)
+      await sendJson("/api/streamer", "POST", { action: "leave-request", tanggal: leaveDate });
       toast.success("Pengajuan Libur berhasil dikirim! Menunggu persetujuan Eksekutif.");
       setSuccess("✅ Pengajuan Libur berhasil dikirim! Menunggu persetujuan Eksekutif.");
       setLeaveDate("");
-      setLeaveReason("");
+      setCekLiburMsg(null);
+      setVerifiedLiburDate(null);
       loadRequestStatus();
     } catch (err) {
       const msg = errorMessage(err, "Gagal mengirim pengajuan libur");
@@ -432,18 +517,86 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  async function handleShiftSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!shiftDate) return;
+  // --- Shift multi-form accordion handlers ---
+  function handleToggleShiftForm(id: number) {
+    setShiftForms((prev) => prev.map((f) => f.id === id ? { ...f, expanded: !f.expanded } : f));
+  }
+
+  function handleShiftFormDateChange(id: number, v: string) {
+    setShiftForms((prev) => prev.map((f) => f.id === id ? { ...f, tanggal: v, shift: "" } : f));
+    setKuotaCheckResult(null); // reset gate on any date change
+    // Ambil ketersediaan shift tanggal tsb (dropdown dinamis)
+    setShiftAvailByForm((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    if (!v) return;
+    fetchJson<{ availableShifts: { sesi: string; label: string; sisa: number }[] }>(
+      `/api/streamer?view=kuota-libur&tanggal=${encodeURIComponent(v)}`,
+      { cache: "no-store" }
+    )
+      .then((res) => setShiftAvailByForm((prev) => ({ ...prev, [id]: res.availableShifts ?? [] })))
+      .catch(() => { /* biarkan dropdown default; gate submit tetap validasi server */ });
+  }
+
+  function handleShiftFormShiftChange(id: number, v: string) {
+    setShiftForms((prev) => prev.map((f) => f.id === id ? { ...f, shift: v } : f));
+    setKuotaCheckResult(null);
+  }
+
+  function handleAddShiftForm() {
+    if (shiftForms.length >= 3) return;
+    const usedIds = shiftForms.map((f) => f.id);
+    const newId = [1, 2, 3].find((n) => !usedIds.includes(n)) ?? shiftForms.length + 1;
+    // Collapse previous forms, add new expanded
+    setShiftForms((prev) => [
+      ...prev.map((f) => ({ ...f, expanded: false })),
+      { id: newId, tanggal: "", shift: "", expanded: true },
+    ]);
+    setKuotaCheckResult(null);
+  }
+
+  function handleRemoveShiftForm(id: number) {
+    setShiftForms((prev) => prev.filter((f) => f.id !== id));
+    setKuotaCheckResult(null);
+  }
+
+  async function handleCekKuotaMingguan() {
+    const filled = shiftForms.filter((f) => f.tanggal && f.shift);
+    if (filled.length === 0) {
+      toast.warning("Isi minimal 1 form (tanggal + shift) sebelum cek kuota.");
+      return;
+    }
+    setShiftLoading(true);
+    setKuotaCheckResult(null);
+    try {
+      const res = await fetchJson<{ ok: boolean; message: string }>(
+        `/api/streamer?view=cek-kuota-mingguan&requests=${encodeURIComponent(JSON.stringify(filled.map((f) => ({ tanggal: f.tanggal, shift: f.shift }))))}`
+      );
+      setKuotaCheckResult({ ok: res.ok, message: res.message });
+    } catch (err) {
+      setKuotaCheckResult({ ok: false, message: errorMessage(err, "Gagal mengecek kuota mingguan") });
+    } finally {
+      setShiftLoading(false);
+    }
+  }
+
+  async function handleShiftSubmit() {
+    const filled = shiftForms.filter((f) => f.tanggal && f.shift);
+    if (filled.length === 0) return;
     setSubmittingRequest(true);
     setError("");
     setSuccess("");
     try {
-      await sendJson("/api/streamer", "POST", { action: "shift-request", tanggal: shiftDate, sesi: selectedSesi, catatan: shiftNote });
+      await sendJson("/api/streamer", "POST", {
+        action: "shift-request-batch",
+        requests: filled.map((f) => ({ tanggal: f.tanggal, shift: f.shift })),
+      });
       toast.success("Request Sesi Live berhasil dikirim! Menunggu konfirmasi Eksekutif.");
       setSuccess("✅ Request Sesi Live berhasil dikirim! Menunggu konfirmasi Eksekutif.");
-      setShiftDate("");
-      setShiftNote("");
+      setShiftForms([{ id: 1, tanggal: "", shift: "", expanded: true }]);
+      setKuotaCheckResult(null);
       loadRequestStatus();
     } catch (err) {
       const msg = errorMessage(err, "Gagal mengirim request sesi live");
@@ -1143,23 +1296,30 @@ export default function StreamerDashboardPage() {
           onReqSubLiburChange={setReqSubLibur}
           onReqSubSesiChange={setReqSubSesi}
           leaveDate={leaveDate}
-          onLeaveDateChange={setLeaveDate}
-          leaveReason={leaveReason}
-          onLeaveReasonChange={setLeaveReason}
-          hasScheduleConflict={hasScheduleConflict}
-          conflictingJadwal={conflictingJadwal}
+          onLeaveDateChange={handleLeaveDateChange}
           onLeaveSubmit={handleLeaveSubmit}
-          shiftDate={shiftDate}
-          onShiftDateChange={setShiftDate}
-          selectedSesi={selectedSesi}
-          onSelectedSesiChange={setSelectedSesi}
-          shiftNote={shiftNote}
-          onShiftNoteChange={setShiftNote}
+          shiftForms={shiftForms}
+          shiftLoading={shiftLoading}
+          kuotaCheckResult={kuotaCheckResult}
+          onToggleShiftForm={handleToggleShiftForm}
+          onShiftFormDateChange={handleShiftFormDateChange}
+          onShiftFormShiftChange={handleShiftFormShiftChange}
+          onAddShiftForm={handleAddShiftForm}
+          onRemoveShiftForm={handleRemoveShiftForm}
+          onCekKuotaMingguan={handleCekKuotaMingguan}
           onShiftSubmit={handleShiftSubmit}
           submittingRequest={submittingRequest}
           liburCalendar={liburCalendar}
           cekLiburMsg={cekLiburMsg}
+          cekLiburOk={!!verifiedLiburDate && verifiedLiburDate === leaveDate && !!cekLiburMsg}
           onCekLibur={handleCekLibur}
+          shiftAvailByForm={shiftAvailByForm}
+          kuotaMap={kuotaMap}
+          liburDetail={liburDetail}
+          onLiburCalMonthChange={loadKuotaBulan}
+          onLiburDateSelect={handleLiburDateSelect}
+          onLiburDetailAjukan={handleLiburDetailAjukan}
+          isStreamer={isStreamer}
         />
       )}
 

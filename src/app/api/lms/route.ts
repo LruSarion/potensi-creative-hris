@@ -17,11 +17,15 @@ import {
   listEnrollments,
   issueCertificate,
   revokeCertificate,
+  extendCertificate,
+  getCertificateTemplate,
+  upsertCertificateTemplate,
+  getCertificateByCode,
+  getCertificateByCodeWithTemplate,
   updateVideoWatch,
   submitVideoLesson,
   listVideoSubmissions,
   getVideoSubmissionDetail,
-  getCertificateByCode,
 } from "@/lib/services/lms";
 import { listCertifications } from "@/lib/services/marketplace";
 
@@ -37,7 +41,9 @@ export const GET = apiHandler(async (req: Request) => {
   if (view === "certifications") return listCertifications();
   if (view === "video-submissions") return listVideoSubmissions({ courseId, lessonId });
   if (view === "video-submission-detail" && watchId) return getVideoSubmissionDetail(watchId);
-  if (view === "certificate" && certCode) return getCertificateByCode(certCode);
+  if (view === "certificate" && certCode) return getCertificateByCodeWithTemplate(certCode);
+  if (view === "certificate-raw" && certCode) return getCertificateByCode(certCode);
+  if (view === "cert-template") return getCertificateTemplate();
   return listCourses();
 });
 
@@ -58,8 +64,10 @@ export const POST = apiHandler(async (req: Request) => {
   if (action === "enroll") return enroll(body.karyawanId, body.courseId, body.dueDate);
   if (action === "enroll-cohort") return enrollCohort(body.courseId, body.karyawanIds, body.dueDate);
   if (action === "progress") return computeProgress(body.enrollmentId);
-  if (action === "certificate") return issueCertificate(body.enrollmentId);
+  if (action === "certificate") return issueCertificate(body.enrollmentId, body.validTo ? { validTo: body.validTo } : undefined);
   if (action === "revoke-cert") return revokeCertificate(body.id);
+  if (action === "extend-cert") return extendCertificate(body.id, body.validTo);
+  if (action === "save-cert-template") return upsertCertificateTemplate(body.template ?? body);
   if (action === "video-watch") return updateVideoWatch(body);
   if (action === "video-submit") return submitVideoLesson(body);
   throw new Error("unknown lms action");
