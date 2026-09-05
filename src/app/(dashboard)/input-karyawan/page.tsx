@@ -28,6 +28,9 @@ const BANK_LIST = [
 
 interface FormKaryawan {
   id: number;
+  sheetRowIndex?: number;
+  isRegistered?: boolean;
+  registeredReason?: string;
   namaLengkap: string;
   namaPanggilan: string;
   gender: string;
@@ -852,17 +855,30 @@ export default function InputKaryawanPage() {
       const emergencySuffix = normSuffix(pick("emergencyContact", r));
       const email = pick("email", r).toLowerCase().trim();
 
-      // Duplikat: no HP ATAU email sama dengan yang sudah terdaftar
-      const isDuplicatePhone = phoneSuffix && (existingPhones.has(phoneSuffix) || seenPhonesInFile.has(phoneSuffix));
-      const isDuplicateEmail = email && (existingEmails.has(email) || seenEmailsInFile.has(email));
+      // Duplikat: no HP ATAU email sama dengan yang sudah terdaftar di DB atau di file
+      let isRegistered = false;
+      let registeredReason = "";
 
-      if (isDuplicatePhone || isDuplicateEmail) {
-        dupCount++;
-        return;
+      if (phoneSuffix && existingPhones.has(phoneSuffix)) {
+        isRegistered = true;
+        registeredReason = "No. Telepon / WA sudah terdaftar di sistem";
+      } else if (email && existingEmails.has(email)) {
+        isRegistered = true;
+        registeredReason = "Email sudah terdaftar di sistem";
+      } else if (phoneSuffix && seenPhonesInFile.has(phoneSuffix)) {
+        isRegistered = true;
+        registeredReason = "Duplikat No. Telepon / WA di file sheet ini";
+      } else if (email && seenEmailsInFile.has(email)) {
+        isRegistered = true;
+        registeredReason = "Duplikat Email di file sheet ini";
       }
 
-      if (phoneSuffix) seenPhonesInFile.add(phoneSuffix);
-      if (email) seenEmailsInFile.add(email);
+      if (isRegistered) {
+        dupCount++;
+      } else {
+        if (phoneSuffix) seenPhonesInFile.add(phoneSuffix);
+        if (email) seenEmailsInFile.add(email);
+      }
 
       const genderRaw = pick("gender", r).toLowerCase();
       const gender = genderRaw.includes("l") || genderRaw.includes("pria") || genderRaw.includes("laki") ? "Laki-laki" : "Perempuan";
@@ -872,6 +888,9 @@ export default function InputKaryawanPage() {
 
       parsedForms.push({
         id: idx + 1,
+        sheetRowIndex: idx + 2, // Baris 1 adalah header, data mulai baris 2
+        isRegistered,
+        registeredReason,
         namaLengkap: nama,
         namaPanggilan: pick("namaPanggilan", r),
         gender,
@@ -970,15 +989,33 @@ export default function InputKaryawanPage() {
   // dihapus — simpan langsung lewat handleSaveImportRows (bulk API).
   // Blok asli: slice(0,10) → setForms(reindexed) → setActiveTab("input").
 
+  function handleDeleteImportRow(index: number) {
+    setImportRows((prev) => {
+      const updated = [...prev];
+      const removed = updated.splice(index, 1)[0];
+      toast.success(`Baris ${removed?.namaLengkap ? `"${removed.namaLengkap}"` : `#${index + 1}`} dihapus dari pratinjau`);
+      return updated;
+    });
+  }
+
+  function handleClearRegisteredRows() {
+    setImportRows((prev) => {
+      const filtered = prev.filter((r) => !r.isRegistered);
+      const count = prev.length - filtered.length;
+      toast.success(`${count} baris yang sudah terdaftar berhasil dibersihkan dari pratinjau`);
+      return filtered;
+    });
+  }
+
   async function handleSaveImportRows() {
-    if (!importRows.length) return;
-    if (importRows.length > 10) {
-      toast.warning("Maksimal 10 baris per penyimpanan batch. Hapus baris lain atau impor bertahap.");
+    const validRows = importRows.filter((f) => !f.isRegistered);
+    if (!validRows.length) {
+      toast.warning("Tidak ada baris baru yang valid untuk disimpan.");
       return;
     }
     setImportSaving(true);
     try {
-      const items = importRows.map((f) => ({
+      const items = validRows.map((f) => ({
         namaLengkap: f.namaLengkap.trim(),
         namaPanggilan: f.namaPanggilan.trim() || undefined,
         gender: f.gender,
@@ -2573,130 +2610,299 @@ export default function InputKaryawanPage() {
             </>
           ) : (
             <>
-              {/* Hasil parse: ringkasan + baris editable */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${importRows.length ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
-                    <i className={`fa-solid ${importRows.length ? "fa-check" : "fa-triangle-exclamation"}`} />
-                  </div>
-                  <div>
-                    <div className="font-extrabold text-slate-900 text-sm">
-                      {importRows.length} Data Karyawan Siap Diimpor
+              {/* Hasil parse: ringkasan + baris interaktif */}
+              {(() => {
+                const readyRows = importRows.filter((r) => !r.isRegistered);
+                const registeredRows = importRows.filter((r) => r.isRegistered);
+
+                return (
+                  <div className="space-y-5">
+                    {/* Header Ringkasan Import */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold shrink-0 ${
+                            readyRows.length ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          }`}
+                        >
+                          <i
+                            className={`fa-solid ${
+                              readyRows.length ? "fa-check" : "fa-triangle-exclamation"
+                            } text-base`}
+                          />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-extrabold text-slate-900 text-sm">
+                              {importRows.length} Baris Data Terbaca
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              {readyRows.length} Siap Diimpor
+                            </span>
+                            {registeredRows.length > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                {registeredRows.length} Sudah Terdaftar
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-1">
+                            Kolom dikenali:{" "}
+                            <span className="font-semibold text-slate-700">
+                              {importMatchedHeaders.length ? importMatchedHeaders.join(", ") : "Tidak ada"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
+                        {registeredRows.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearRegisteredRows}
+                            className="text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                            title="Hapus semua baris yang sudah terdaftar dari daftar pratinjau"
+                          >
+                            <i className="fa-solid fa-broom" />
+                            <span>Hapus Terdaftar ({registeredRows.length})</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleResetImport}
+                          className="text-xs font-bold text-slate-600 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition border border-slate-300 cursor-pointer flex items-center gap-1.5 active:scale-95"
+                        >
+                          <i className="fa-solid fa-arrow-left" />
+                          <span>Ganti Sumber File / Link</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {importRows.length ? (
-                        <>Kolom dikenali: <span className="font-semibold text-slate-700">{importMatchedHeaders.join(", ")}</span></>
-                      ) : importDupSkipped > 0 ? (
-                        <>Semua baris dilewati: data duplikat (no HP / email sudah terdaftar) atau kolom nama tidak dikenali.</>
+
+                    {/* Tabel Pratinjau Interaktif */}
+                    {importRows.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-xs font-bold text-slate-700 flex items-center gap-1.5 uppercase tracking-wide">
+                            <i className="fa-solid fa-table-list text-[#941A0B]" />
+                            <span>Pratinjau Data Karyawan Siap Impor</span>
+                          </h3>
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            Menampilkan seluruh {importRows.length} baris
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto max-w-full border border-slate-200 rounded-xl shadow-2xs bg-white">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-[#F8F9FA] text-slate-700 font-bold border-b border-slate-200">
+                              <tr>
+                                <th className="px-3.5 py-3 whitespace-nowrap w-24">No. Baris</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap w-36">Status</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap">Nama Karyawan</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap">Jabatan / Kategori</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap">Kontak (WA & Email)</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap">Jadwal / Mulai</th>
+                                <th className="px-3.5 py-3 whitespace-nowrap text-center w-16">Aksi</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {importRows.map((row, idx) => {
+                                const isDup = !!row.isRegistered;
+                                return (
+                                  <tr
+                                    key={idx}
+                                    className={`transition ${
+                                      isDup
+                                        ? "bg-amber-50/60 hover:bg-amber-100/50 border-l-4 border-l-amber-500"
+                                        : "hover:bg-slate-50/80"
+                                    }`}
+                                  >
+                                    {/* No. Baris */}
+                                    <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                      <span className="font-extrabold text-slate-900">#{idx + 1}</span>
+                                      <span className="block text-[11px] font-mono text-slate-400">
+                                        Baris {row.sheetRowIndex ?? idx + 2}
+                                      </span>
+                                    </td>
+
+                                    {/* Status */}
+                                    <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                      {isDup ? (
+                                        <div>
+                                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                            <i className="fa-solid fa-triangle-exclamation text-amber-600 text-[10px]" />
+                                            Sudah Terdaftar
+                                          </span>
+                                          {row.registeredReason && (
+                                            <span
+                                              className="block text-[10px] text-amber-700 font-medium mt-0.5 max-w-[200px] truncate"
+                                              title={row.registeredReason}
+                                            >
+                                              {row.registeredReason}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                          <i className="fa-solid fa-circle-check text-emerald-600 text-[10px]" />
+                                          Siap Diimpor
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* Nama Karyawan */}
+                                    <td className="px-3.5 py-2.5">
+                                      <div className="font-bold text-slate-900">{row.namaLengkap}</div>
+                                      {row.namaPanggilan && (
+                                        <span className="text-[11px] text-slate-500">
+                                          Panggilan: {row.namaPanggilan}
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* Jabatan / Kategori */}
+                                    <td className="px-3.5 py-2.5">
+                                      <div className="font-medium text-slate-800">{row.jabatan || "-"}</div>
+                                      <span className="text-[11px] text-slate-500">{row.kategori || "-"}</span>
+                                    </td>
+
+                                    {/* Kontak */}
+                                    <td className="px-3.5 py-2.5">
+                                      <div className="font-mono text-slate-700 text-[11px]">
+                                        {row.nomorTeleponSuffix ? `0${row.nomorTeleponSuffix}` : "-"}
+                                      </div>
+                                      <div
+                                        className="text-slate-500 text-[11px] truncate max-w-[180px]"
+                                        title={row.email}
+                                      >
+                                        {row.email || "-"}
+                                      </div>
+                                    </td>
+
+                                    {/* Jadwal / Mulai */}
+                                    <td className="px-3.5 py-2.5 whitespace-nowrap">
+                                      <span className="font-medium text-slate-700">{row.tipeJadwal || "-"}</span>
+                                      <span className="block text-[11px] text-slate-400">
+                                        {row.startDate ? formatDateIndo(row.startDate) : "-"}
+                                      </span>
+                                    </td>
+
+                                    {/* Aksi Hapus */}
+                                    <td className="px-3.5 py-2.5 text-center">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteImportRow(idx)}
+                                        title="Hapus baris ini dari pratinjau"
+                                        className="w-8 h-8 rounded-lg inline-flex items-center justify-center text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 transition cursor-pointer active:scale-90"
+                                      >
+                                        <i className="fa-solid fa-trash text-xs" />
+                                      </button>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-2">
+                        <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
+                        <div>
+                          <strong>Data kosong:</strong> Tidak ada baris data valid yang terbaca. Pastikan sheet/file memiliki header yang sesuai (mis. Nama Lengkap, No HP, Email).
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pratinjau Kolom Mentah Asli (Collapsible) */}
+                    {importRawHeaders.length > 0 && (
+                      <details className="group border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                        <summary className="text-xs font-bold text-slate-700 cursor-pointer flex items-center justify-between select-none">
+                          <span className="flex items-center gap-2">
+                            <i className="fa-solid fa-file-lines text-slate-400" />
+                            <span>Pratinjau Data Mentah Asli dari File (Maks. 5 Baris Pertama)</span>
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-normal">
+                            Total: {importRawCount} baris
+                          </span>
+                        </summary>
+                        <div className="mt-3 overflow-x-auto max-w-full border border-slate-200 rounded-lg shadow-2xs">
+                          <table className="text-left text-[11px]">
+                            <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200">
+                              <tr>
+                                {importRawHeaders.map((h, i) => (
+                                  <th key={`${h}-${i}`} className="px-3.5 py-2 whitespace-nowrap max-w-[180px] truncate">
+                                    {h}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {importRawPreview.map((row, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  {importRawHeaders.map((_, c) => (
+                                    <td key={c} className="px-3.5 py-2 text-slate-700 max-w-[180px] truncate font-medium" title={row[c] || "-"}>
+                                      {row[c] || "-"}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </details>
+                    )}
+
+                    {/* Informasi Duplikasi */}
+                    {registeredRows.length > 0 && (
+                      <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
+                        <i className="fa-solid fa-circle-info text-amber-600 mt-0.5" />
+                        <div>
+                          <strong>Pemberitahuan Duplikasi:</strong> Sebanyak <strong>{registeredRows.length} baris</strong> terdeteksi sudah terdaftar (nomor telepon/WA atau email cocok dengan data di sistem atau duplikat dalam sheet). Baris tersebut di-highlight dan akan <strong>otomatis dilewati</strong> (tidak diimpor ulang) saat penyimpanan. Anda juga dapat menghapusnya melalui tombol aksi hapus atau tombol <em>Hapus Terdaftar</em> di atas.
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tombol Simpan / Aksi Bawah */}
+                    <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-slate-200">
+                      {importLastSheetUrl ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImportSource("sheet");
+                            setImportSheetUrl(importLastSheetUrl);
+                            setImportDupSkipped(0);
+                            handleImportSheetUrl(importLastSheetUrl);
+                          }}
+                          disabled={importBusy || importSaving}
+                          className="text-[#941A0B] bg-red-50 hover:bg-red-100 font-bold px-4 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                        >
+                          <i className="fa-solid fa-rotate-right" />
+                          <span>Ambil Ulang dari Sheets Terakhir</span>
+                        </button>
                       ) : (
-                        <>Tidak ada baris valid — periksa header sheet, kolom nama (mis. &quot;Nama Lengkap&quot;) harus ada.</>
+                        <span />
                       )}
+
+                      <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                        <button
+                          type="button"
+                          onClick={handleSaveImportRows}
+                          disabled={importBusy || importSaving || readyRows.length === 0}
+                          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
+                        >
+                          <i className={`fa-solid ${importSaving ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
+                          <span>
+                            {importSaving
+                              ? "Menyimpan..."
+                              : readyRows.length > 0
+                              ? `Simpan ${readyRows.length} Baris Baru ke Direktori`
+                              : "Tidak Ada Baris Baru untuk Disimpan"}
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleResetImport}
-                  className="text-xs font-bold text-slate-600 hover:bg-slate-200 px-3.5 py-2 rounded-lg transition border border-slate-300 cursor-pointer self-start sm:self-auto"
-                >
-                  <i className="fa-solid fa-arrow-left mr-1.5" />
-                  Ganti Sumber File / Link
-                </button>
-              </div>
-
-              {/* Preview data mentah */}
-              {importRawHeaders.length > 0 && (
-                <div className="space-y-2">
-                  <div className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                    <span>Pratinjau Data Mentah (Menampilkan maks. 5 baris pertama)</span>
-                    <span className="text-slate-400 font-normal text-[11px]">Total: {importRawCount} baris</span>
-                  </div>
-                  <div className="overflow-x-auto max-w-full border border-slate-200 rounded-xl shadow-2xs">
-                    <table className="text-left text-[11px]">
-                      <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200">
-                        <tr>
-                          {importRawHeaders.map((h, i) => (
-                            <th key={`${h}-${i}`} className="px-3.5 py-2.5 whitespace-nowrap max-w-[180px] truncate">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {importRawPreview.map((row, i) => (
-                          <tr key={i} className="hover:bg-slate-50">
-                            {importRawHeaders.map((_, c) => (
-                              <td key={c} className="px-3.5 py-2 text-slate-700 max-w-[180px] truncate font-medium" title={row[c] || "-"}>
-                                {row[c] || "-"}
-                              </td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Parse sukses tapi 0 baris mentah terbaca — sumber kosong/tidak sesuai format. */}
-              {importRawHeaders.length === 0 && (
-                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-                  <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
-                  <div>
-                    <strong>Data kosong:</strong> sumber berhasil dibaca tetapi tidak ada baris data. Pastikan sheet/file memiliki baris header (mis. Nama, No HP, Email) diikuti minimal satu baris data.
-                  </div>
-                </div>
-              )}
-
-              {importRows.length > 10 && (
-                <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-                  <i className="fa-solid fa-triangle-exclamation text-amber-600 mt-0.5" />
-                  <div>
-                    <strong>Perhatian:</strong> Terdeteksi {importRows.length} baris data. Penyimpanan dibatasi maksimal 10 data per batch — hanya 10 baris pertama yang akan disimpan, sisanya otomatis dilewati. Gunakan tombol Ganti Sumber untuk mengimpor sisanya setelah batch ini tersimpan.
-                  </div>
-                </div>
-              )}
-
-              {importDupSkipped > 0 && (
-                <div className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-start gap-2">
-                  <i className="fa-solid fa-circle-info text-blue-600 mt-0.5" />
-                  <div>
-                    <strong>Penyaringan Duplikasi:</strong> {importDupSkipped} baris data otomatis dilewati karena nomor telepon atau email sudah terdaftar di direktori database.
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-slate-200">
-                {importLastSheetUrl ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImportSource("sheet");
-                      setImportSheetUrl(importLastSheetUrl);
-                      setImportDupSkipped(0);
-                      handleImportSheetUrl(importLastSheetUrl);
-                    }}
-                    disabled={importBusy || importSaving}
-                    className="text-[#941A0B] bg-red-50 hover:bg-red-100 font-bold px-4 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center gap-2 cursor-pointer"
-                  >
-                    <i className="fa-solid fa-rotate-right" />
-                    Ambil Ulang dari Sheets Terakhir
-                  </button>
-                ) : (
-                  <span />
-                )}
-                {/* TODO(import-kolektif): tombol "Kirim ke Input Kolektif" dihapus —
-                    simpan langsung via bulk API. Blok asli: onClick={handlePushImportToForms}. */}
-                <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
-                  <button
-                    type="button"
-                    onClick={handleSaveImportRows}
-                    disabled={importBusy || importSaving || !importRows.length || importRows.length > 10}
-                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl text-xs transition disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm cursor-pointer active:scale-95"
-                  >
-                    <i className={`fa-solid ${importSaving ? "fa-circle-notch fa-spin" : "fa-cloud-arrow-up"}`} />
-                    <span>{importSaving ? "Menyimpan..." : `Simpan ${importRows.length} Baris ke Direktori`}</span>
-                  </button>
-                </div>
-              </div>
+                );
+              })()}
             </>
           )}
         </div>

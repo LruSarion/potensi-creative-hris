@@ -159,7 +159,7 @@ export default function TrainerPortalPage() {
       const [courseData, clientData, enrollData, streamerData] = await Promise.all([
         fetchJson<any[]>("/api/lms?view=courses"),
         fetchJson<any[]>("/api/clients").catch(() => []),
-        fetchJson<any[]>("/api/lms?view=enrollments").catch(() => []),
+        fetchJson<any[]>("/api/lms?view=enrollments&compact=true").catch(() => []),
         fetchJson<any[]>("/api/employees?kategori=STREAMER").catch(() => []),
       ]);
 
@@ -284,8 +284,19 @@ export default function TrainerPortalPage() {
     }
     setError(""); setSuccess("");
     try {
-      const data = await sendJson<any[]>("/api/lms", "POST", { action: "enroll-cohort", courseId: cohortCourseId, karyawanIds: selectedKaryawanIds });
-      const msg = `Berhasil mendaftarkan ${data?.length ?? selectedKaryawanIds.length} streamer ke kursus.`;
+      const res = await sendJson<any>("/api/lms", "POST", { action: "enroll-cohort", courseId: cohortCourseId, karyawanIds: selectedKaryawanIds });
+      const createdCount = Array.isArray(res) ? res.length : (res?.created?.length ?? 0);
+      const alreadyCount = Array.isArray(res) ? 0 : (res?.alreadyEnrolled?.length ?? 0);
+      let msg = "";
+      if (createdCount > 0 && alreadyCount > 0) {
+        msg = `Berhasil mendaftarkan ${createdCount} streamer (${alreadyCount} streamer sudah terdaftar sebelumnya).`;
+      } else if (createdCount > 0) {
+        msg = `Berhasil mendaftarkan ${createdCount} streamer ke kursus.`;
+      } else if (alreadyCount > 0) {
+        msg = `${alreadyCount} streamer yang dipilih sudah terdaftar pada kursus ini sebelumnya.`;
+      } else {
+        msg = "Tidak ada streamer baru yang didaftarkan.";
+      }
       toast.success(msg);
       setSuccess(msg);
       setCohortModalOpen(false);

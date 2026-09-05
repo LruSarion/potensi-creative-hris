@@ -5,6 +5,7 @@ import {
   formatTimeOnly,
   formatDateOnly,
   calcDurationHours,
+  formatDurationHHMM,
   calcWajibHadir,
   getWajibHadirTime,
 } from "./date-format";
@@ -50,5 +51,14 @@ describe("date-format utilities", () => {
   it("getWajibHadirTime calculates 15 mins prior", () => {
     expect(getWajibHadirTime("10:00")).toBe("09.45 WIB");
     expect(getWajibHadirTime("00:00")).toBe("23.45 WIB");
+  });
+
+  it("formatDurationHHMM formats HH:MM duration", () => {
+    expect(formatDurationHHMM("10:00", "12:30")).toBe("02:30");
+    expect(formatDurationHHMM("09:00", "11:00")).toBe("02:00");
+    expect(formatDurationHHMM("23:00", "01:30")).toBe("02:30");
+    expect(formatDurationHHMM("", "12:00")).toBe("–");
+    expect(formatDurationHHMM("10:00", "")).toBe("–");
+    expect(formatDurationHHMM("10:00", "10:00")).toBe("24:00");
   });
 });

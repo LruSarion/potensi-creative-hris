@@ -420,7 +420,7 @@ export default function LiveCameraCheckin({
               )}
               {locLoading ? (
                 <div className="bg-black/60 backdrop-blur-md border border-white/20 px-3 py-1.5 rounded-full flex items-center gap-2 text-white text-xs shadow-lg">
-                  <i className="fa-solid fa-circle-notch animate-spin text-blue-400 text-xs" />
+                  <i className="fa-solid fa-circle-notch animate-spin text-[#FA3737] text-xs" />
                   <span className="text-[11px] font-medium truncate">Mengunci GPS...</span>
                 </div>
               ) : locError ? (

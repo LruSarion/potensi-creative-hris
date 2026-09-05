@@ -7,7 +7,7 @@
 // Versi lama (4 stat cards + tiering box) dipertahankan sebagai komentar
 // TODO(ref-deploy-report) di bawah.
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import type { DashboardData } from "./types";
 import { formatDateSafe } from "@/lib/utils/date-format";
 import { CardSkeleton } from "@/components/ui/loading-states";
@@ -26,21 +26,90 @@ function periodeOptions(): { value: string; label: string }[] {
   return out;
 }
 
+export interface HostOption {
+  id: string;
+  idKaryawan: string;
+  namaLengkap: string;
+}
+
+export interface TabReportProps {
+  dashboardData: DashboardData | null;
+  onPeriodeChange?: (periode: string) => void;
+  loading?: boolean;
+  isAdmin?: boolean;
+  hostList?: HostOption[];
+  selectedHostId?: string;
+  onHostChange?: (hostId: string) => void;
+}
+
 export function TabReport({
   dashboardData,
   onPeriodeChange,
   loading,
-}: {
-  dashboardData: DashboardData | null;
-  onPeriodeChange?: (periode: string) => void;
-  loading?: boolean;
-}) {
+  isAdmin = false,
+  hostList = [],
+  selectedHostId = "",
+  onHostChange,
+}: TabReportProps) {
   const [periode, setPeriode] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+  const [isListOpen, setIsListOpen] = useState<boolean>(false);
+  const comboboxRef = useRef<HTMLDivElement>(null);
 
-  // Default ke periode data aktif (bulat berjalan) saat load pertama.
+  // Default ke periode data aktif (bulan berjalan) saat load pertama.
   useEffect(() => {
     if (!periode && dashboardData?.periode) setPeriode(dashboardData.periode);
   }, [dashboardData?.periode, periode]);
+
+  // Sync nama host pada input saat selectedHostId berubah atau hostList terisi
+  useEffect(() => {
+    if (selectedHostId && hostList.length > 0) {
+      const match = hostList.find(
+        (h) => h.idKaryawan.toLowerCase() === selectedHostId.toLowerCase() || h.id === selectedHostId
+      );
+      if (match) {
+        setSearchTerm(`${match.idKaryawan} | ${match.namaLengkap}`);
+      }
+    } else if (!selectedHostId) {
+      setSearchTerm("");
+    }
+  }, [selectedHostId, hostList]);
+
+  // Click outside listener untuk menutup list dropdown host
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (comboboxRef.current && !comboboxRef.current.contains(event.target as Node)) {
+        setIsListOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Filter host berdasarkan query input (ID atau Nama)
+  const filteredHosts = useMemo(() => {
+    if (!searchTerm.trim()) return hostList;
+    const q = searchTerm.toLowerCase();
+    return hostList.filter((h) => {
+      const idMatch = h.idKaryawan.toLowerCase().includes(q);
+      const nameMatch = h.namaLengkap.toLowerCase().includes(q);
+      const combinedMatch = `${h.idKaryawan} | ${h.namaLengkap}`.toLowerCase().includes(q);
+      return idMatch || nameMatch || combinedMatch;
+    });
+  }, [hostList, searchTerm]);
+
+  function handleSelectHost(host: HostOption) {
+    const val = `${host.idKaryawan} | ${host.namaLengkap}`;
+    setSearchTerm(val);
+    setIsListOpen(false);
+    onHostChange?.(host.idKaryawan);
+  }
+
+  function handleClearHost() {
+    setSearchTerm("");
+    setIsListOpen(true);
+    onHostChange?.("");
+  }
 
   const hasData = Boolean(dashboardData && dashboardData.totalSesi > 0);
 
@@ -52,7 +121,7 @@ export function TabReport({
         <span>Laporan Kinerja Bulanan</span>
       </h3>
 
-      {/* Filter Periode (ref-deploy filterReportPeriode) */}
+      {/* Filter Periode & Pilih Host (ref-deploy filterReportPeriode & report-admin-filter) */}
       <div className="flex flex-col sm:flex-row gap-3 mb-2 bg-slate-50 p-4 rounded-lg border border-slate-200 shadow-inner">
         <div className="flex-1">
           <label className="block text-xs font-bold text-slate-500 mb-1">Periode Bulan</label>
@@ -70,10 +139,81 @@ export function TabReport({
             ))}
           </select>
         </div>
+
+        {isAdmin && (
+          <div id="report-admin-filter" ref={comboboxRef} className="flex-1 relative">
+            <label className="block text-xs font-bold text-slate-500 mb-1">Pilih Host (Akses Admin)</label>
+            <div className="relative flex items-center w-full">
+              <input
+                type="text"
+                id="filterReportHost"
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setIsListOpen(true);
+                  if (!e.target.value.trim()) {
+                    onHostChange?.("");
+                  }
+                }}
+                onFocus={() => setIsListOpen(true)}
+                placeholder="Ketik nama atau ID host..."
+                autoComplete="off"
+                className="w-full border border-slate-300 rounded-lg pl-3 pr-8 py-2 text-sm focus:ring-2 focus:ring-blue-500 bg-white shadow-sm"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  id="btnClearHostReport"
+                  onClick={handleClearHost}
+                  className="absolute right-2.5 text-slate-400 hover:text-red-500 transition-colors"
+                  title="Hapus Pencarian"
+                >
+                  <i className="fa-solid fa-xmark text-base" />
+                </button>
+              )}
+            </div>
+
+            {isListOpen && (
+              <ul
+                id="customListReportHost"
+                className="absolute z-50 w-full bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto mt-1"
+              >
+                {filteredHosts.length === 0 ? (
+                  <li className="px-3 py-2 text-sm text-slate-500 italic cursor-not-allowed">
+                    Tidak ditemukan
+                  </li>
+                ) : (
+                  filteredHosts.map((h) => {
+                    const label = `${h.idKaryawan} | ${h.namaLengkap}`;
+                    return (
+                      <li
+                        key={h.id}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSelectHost(h);
+                        }}
+                        className="px-3 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer border-b border-slate-50 last:border-0 font-medium transition-colors"
+                      >
+                        {label}
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       {loading ? (
         <CardSkeleton count={2} gridCls="grid grid-cols-1 md:grid-cols-2 gap-5" />
+      ) : isAdmin && !selectedHostId ? (
+        /* State awal khusus admin saat belum memilih host */
+        <div className="text-center py-16 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+          <i className="fa-solid fa-user-check text-5xl mb-3 text-slate-300" />
+          <p className="font-medium text-sm">Silakan pilih host terlebih dahulu untuk melihat laporan kinerja bulanan.</p>
+          <p className="text-xs text-slate-400 mt-1">Gunakan kolom pencarian host di atas untuk memilih akun streamer.</p>
+        </div>
       ) : !hasData ? (
         /* Empty state (ref-deploy reportDataEmpty) */
         <div className="text-center py-16 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-300">

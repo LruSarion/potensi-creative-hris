@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import type { LocationCoordinates } from "@/components/streamer-dashboard/live-camera-checkin";
 import { fetchJson, sendJson, errorMessage } from "@/lib/api-client";
 import { toast } from "@/components/ui/toast";
-import { StreamerProfileCardOverview } from "@/components/streamer-dashboard/streamer-profile-card-overview";
-import { StreamerListView } from "@/components/streamer-dashboard/streamer-list-view";
 import { STUDIOS } from "@/types/jadwal";
 import {
   formatDateSafe,
@@ -27,7 +25,6 @@ import { getLateCheckInStatus } from "@/components/streamer-dashboard/late-check
 import { TabRiwayat } from "@/components/streamer-dashboard/tab-riwayat";
 import { TabRequest } from "@/components/streamer-dashboard/tab-request";
 import { BuktiFotoModal, ImageLightbox } from "@/components/streamer-dashboard/history-modals";
-import { useLoading } from "@/components/loading-provider";
 import {
   STREAMER_TABS,
   type ActiveSession,
@@ -43,11 +40,10 @@ import {
 
 export default function StreamerDashboardPage() {
   const { data: session } = useSession();
-  const { showLoading, hideLoading } = useLoading();
   const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(session?.user?.role ?? "");
+  const isReportAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(session?.user?.role ?? "");
 
   const [activeTab, setActiveTab] = useState("checkin");
-  const [selectedOverviewStreamerId, setSelectedOverviewStreamerId] = useState<string | null>(null);
   const [jadwal, setJadwal] = useState<Jadwal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -56,6 +52,10 @@ export default function StreamerDashboardPage() {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
   const [pendingGmvList, setPendingGmvList] = useState<PerluLaporItem[]>([]);
+  // Report tab host selection state (ref-deploy report-admin-filter)
+  const [reportHostId, setReportHostId] = useState<string>("");
+  const [reportHostList, setReportHostList] = useState<{ id: string; idKaryawan: string; namaLengkap: string }[]>([]);
+  const [reportPeriode, setReportPeriode] = useState<string>("");
   // TODO(hapus-profil): state tiering hanya dipakai kartu profil — dipertahankan sebagai komentar.
   // const [tiering, setTiering] = useState<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number }[]>([]);
   const [absensiHistory, setAbsensiHistory] = useState<AbsensiHistory[]>([]);
@@ -225,9 +225,25 @@ export default function StreamerDashboardPage() {
   };
 
   useEffect(() => {
-    loadData();
-    loadRequestStatus();
+    loadInitialData();
   }, []);
+
+  // Lazy tab data loaders on tab change
+  useEffect(() => {
+    if (activeTab === "report") {
+      if (isReportAdmin) {
+        loadReportHostList();
+      } else {
+        loadDashboardData();
+      }
+    } else if (activeTab === "riwayat") {
+      loadAbsensiHistory();
+    } else if (activeTab === "terbatas") {
+      loadTerbatasData();
+    } else if (activeTab === "request") {
+      loadRequestStatus();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeSession && activeTab === "checkin") {
@@ -235,7 +251,8 @@ export default function StreamerDashboardPage() {
     }
   }, [activeSession, activeTab]);
 
-  async function loadRequestStatus() {
+  async function loadRequestStatus(force = false) {
+    if (requestStatus && !force) return;
     try {
       const [data, libur] = await Promise.all([
         fetchJson<RequestStatusData>("/api/streamer?view=request-status").catch(() => null),
@@ -243,6 +260,39 @@ export default function StreamerDashboardPage() {
       ]);
       if (data) setRequestStatus(data);
       if (Array.isArray(libur)) setLiburCalendar(libur);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadDashboardData(force = false) {
+    if (dashboardData && !force) return;
+    try {
+      const d = await fetchJson<DashboardData>("/api/streamer?view=dashboard");
+      if (d) setDashboardData(d);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadAbsensiHistory(force = false) {
+    if (absensiHistory.length > 0 && !force) return;
+    try {
+      const h = await fetchJson<AbsensiHistory[]>("/api/absensi?view=history");
+      if (Array.isArray(h)) setAbsensiHistory(h);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadTerbatasData(force = false) {
+    if ((terbatasData.jedaTerbatas.length > 0 || terbatasData.perluLapor.length > 0) && !force) return;
+    try {
+      const tb = await fetchJson<TerbatasData>("/api/streamer?view=terbatas");
+      if (tb) {
+        setTerbatasData(tb);
+        if (tb.perluLapor) setPendingGmvList(tb.perluLapor);
+      }
     } catch {
       // ignore
     }
@@ -263,33 +313,52 @@ export default function StreamerDashboardPage() {
     );
   }
 
-  // Ref-deploy tab-report: ganti periode bulan -> refetch data dashboard.
-  async function loadDashboardPeriode(periode: string) {
+  // Ref-deploy tab-report: ganti periode bulan atau host streamer -> refetch data dashboard.
+  async function loadDashboardPeriode(newPeriode?: string, newHostId?: string) {
+    const activeP = newPeriode !== undefined ? newPeriode : reportPeriode;
+    const activeH = newHostId !== undefined ? newHostId : reportHostId;
+    if (newPeriode !== undefined) setReportPeriode(newPeriode);
+    if (newHostId !== undefined) setReportHostId(newHostId);
+
+    if (isReportAdmin && !activeH) {
+      setDashboardData(null);
+      return;
+    }
+
     try {
-      const d = await fetchJson<DashboardData>(`/api/streamer?view=dashboard&periode=${encodeURIComponent(periode)}`);
-      if (d) setDashboardData(d);
+      let url = "/api/streamer?view=dashboard";
+      const params = new URLSearchParams();
+      if (activeP) params.set("periode", activeP);
+      if (isReportAdmin && activeH) params.set("hostId", activeH);
+      const q = params.toString();
+      if (q) url += `&${q}`;
+
+      const d = await fetchJson<DashboardData>(url);
+      setDashboardData(d);
     } catch {
-      toast.error("Gagal memuat laporan periode " + periode);
+      toast.error("Gagal memuat laporan" + (activeP ? " periode " + activeP : ""));
     }
   }
 
-  async function loadData() {
-    setLoading(true);
-    showLoading("Sinkronisasi Data Streamer", "Mengambil jadwal siaran, sesi aktif, riwayat presensi & data GMV dari database...");
+  async function loadReportHostList() {
+    if (reportHostList.length > 0) return;
+    try {
+      const list = await fetchJson<{ id: string; idKaryawan: string; namaLengkap: string }[]>("/api/streamer?view=hosts");
+      if (Array.isArray(list)) setReportHostList(list);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function loadInitialData(isRefresh = false) {
+    if (!isRefresh) setLoading(true);
     setError("");
     try {
-      // fetchJson throws on non-success; each endpoint keeps its original
-      // fallback so one failing view never blocks the rest of the dashboard.
-      // TODO(hapus-profil): fetch tiering (kartu profil) dihentikan — tRes tidak dipakai.
-      const [jRes, sRes, dRes, pRes, hRes, tbRes, stdRes] = await Promise.all([
+      const [jRes, sRes, stdRes, pRes] = await Promise.all([
         fetchJson<Jadwal[]>("/api/streamer?view=jadwal").catch(() => null),
         fetchJson<ActiveSession | null>("/api/streamer?view=sesi").catch(() => null),
-        fetchJson<DashboardData>("/api/streamer?view=dashboard").catch(() => null),
-        fetchJson<PerluLaporItem[]>("/api/streamer?view=pending-gmv").catch(() => null),
-        // fetchJson<{ tier: string; jamMinimal: number; jamMaksimal: number; ratePerJam: number | string }[]>("/api/payroll?tiering=1").catch(() => null),
-        fetchJson<AbsensiHistory[]>("/api/absensi?view=history").catch(() => null),
-        fetchJson<TerbatasData>("/api/streamer?view=terbatas").catch(() => null),
         fetchJson<{ name: string; cabang: string; no: string }[]>("/api/streamer?view=studios").catch(() => null),
+        fetchJson<PerluLaporItem[]>("/api/streamer?view=pending-gmv").catch(() => null),
       ]);
 
       if (Array.isArray(stdRes) && stdRes.length > 0) {
@@ -321,30 +390,14 @@ export default function StreamerDashboardPage() {
       } else {
         setActiveSession(null);
       }
-      if (dRes) setDashboardData(dRes);
-      if (tbRes) {
-        setTerbatasData(tbRes);
-        setPendingGmvList(tbRes.perluLapor || []);
-      } else if (Array.isArray(pRes)) {
+
+      if (Array.isArray(pRes)) {
         setPendingGmvList(pRes);
       }
-      if (Array.isArray(hRes)) setAbsensiHistory(hRes);
-      // TODO(hapus-profil): tiering hanya dipakai kartu profil — fetch & state dipertahankan
-      // sebagai komentar; endpoint /api/payroll?tiering=1 tetap ada untuk modul lain.
-      // if (Array.isArray(tRes)) {
-      //   setTiering(tRes.map((b) => ({
-      //     tier: b.tier,
-      //     jamMinimal: b.jamMinimal,
-      //     jamMaksimal: b.jamMaksimal,
-      //     ratePerJam: Number(b.ratePerJam),
-      //   })));
-      // }
-
     } catch {
       setError("Terjadi kesalahan koneksi saat memuat jadwal");
     } finally {
-      setLoading(false);
-      hideLoading();
+      if (!isRefresh) setLoading(false);
     }
   }
 
@@ -456,7 +509,7 @@ export default function StreamerDashboardPage() {
       setFotoBuktiUrl("");
       setAlasanTerlambat("");
       setCheckInLocation(null);
-      loadData();
+      loadInitialData(true);
       setActiveTab("jadwal");
     } catch (e) {
       const msg = errorMessage(e, "Koneksi gagal saat presensi");
@@ -533,7 +586,8 @@ export default function StreamerDashboardPage() {
       setCheckoutFotoUrl("");
       setCheckoutCatatan("");
       setCheckoutLocation(null);
-      loadData();
+      loadInitialData(true);
+      loadAbsensiHistory(true);
       setActiveTab("riwayat");
     } catch (err) {
       const msg = errorMessage(err, "Koneksi gagal saat check-out");
@@ -544,11 +598,11 @@ export default function StreamerDashboardPage() {
     }
   }
 
-  function formatRupiahInput(val: string) {
+  const formatRupiahInput = useCallback((val: string) => {
     const raw = val.replace(/[^0-9]/g, "");
     if (!raw) return "";
     return parseInt(raw, 10).toLocaleString("id-ID");
-  }
+  }, []);
 
   function siapkanFormKhusus(item: JedaJadwal | PerluLaporItem, tipeForm: "PULANG_TELAT" | "MASUK_PULANG_TERBATAS") {
     const isPerluLapor = tipeForm === "PULANG_TELAT";
@@ -648,7 +702,8 @@ export default function StreamerDashboardPage() {
       setFormTerbatasFotoKeluar("");
       setFormTerbatasLocGmv(null);
       setFormTerbatasLocKeluar(null);
-      loadData();
+      loadInitialData(true);
+      loadTerbatasData(true);
     } catch (err) {
       const msg = errorMessage(err, "Koneksi gagal saat mengirim data");
       toast.error(msg);
@@ -675,41 +730,45 @@ export default function StreamerDashboardPage() {
   // TODO(hapus-profil): tidak ada pemakai lain.
   // const isCurrentlyOnAir = Boolean(activeSession || currentLiveJadwal);
 
-  const filteredJeda = (terbatasData?.jedaTerbatas || []).filter((j) => {
-    if (!filterTextTerbatas.trim()) return true;
-    const q = filterTextTerbatas.toLowerCase();
-    if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
-    if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
-    if (filterColTerbatas === "STREAMER") return (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) || (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q);
-    return (
-      (j.idJadwal || "").toLowerCase().includes(q) ||
-      (j.platform || "").toLowerCase().includes(q) ||
-      (j.client?.namaClient || "").toLowerCase().includes(q) ||
-      (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) ||
-      (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q) ||
-      formatDateSafe(j.tanggal).toLowerCase().includes(q)
-    );
-  });
+  const filteredJeda = useMemo(() => {
+    return (terbatasData?.jedaTerbatas || []).filter((j) => {
+      if (!filterTextTerbatas.trim()) return true;
+      const q = filterTextTerbatas.toLowerCase();
+      if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
+      if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
+      if (filterColTerbatas === "STREAMER") return (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) || (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q);
+      return (
+        (j.idJadwal || "").toLowerCase().includes(q) ||
+        (j.platform || "").toLowerCase().includes(q) ||
+        (j.client?.namaClient || "").toLowerCase().includes(q) ||
+        (j.streamerKaryawan?.namaLengkap || "").toLowerCase().includes(q) ||
+        (j.streamerKaryawan?.idKaryawan || "").toLowerCase().includes(q) ||
+        formatDateSafe(j.tanggal).toLowerCase().includes(q)
+      );
+    });
+  }, [terbatasData?.jedaTerbatas, filterTextTerbatas, filterColTerbatas]);
 
   const rawLaporList = (terbatasData?.perluLapor && terbatasData.perluLapor.length > 0) ? terbatasData.perluLapor : pendingGmvList;
-  const filteredLapor = rawLaporList.filter((item) => {
-    if (!filterTextTerbatas.trim()) return true;
-    const q = filterTextTerbatas.toLowerCase();
-    const j: JedaJadwal = (item.jadwal || item) as JedaJadwal;
-    const k = item.karyawan || j.streamerKaryawan;
-    if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
-    if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
-    if (filterColTerbatas === "STREAMER") return (k?.namaLengkap || "").toLowerCase().includes(q) || (k?.idKaryawan || "").toLowerCase().includes(q);
-    return (
-      (j.idJadwal || "").toLowerCase().includes(q) ||
-      (item.id || "").toLowerCase().includes(q) ||
-      (j.platform || "").toLowerCase().includes(q) ||
-      (j.client?.namaClient || "").toLowerCase().includes(q) ||
-      (k?.namaLengkap || "").toLowerCase().includes(q) ||
-      (k?.idKaryawan || "").toLowerCase().includes(q) ||
-      formatDateSafe(j.tanggal).toLowerCase().includes(q)
-    );
-  });
+  const filteredLapor = useMemo(() => {
+    return rawLaporList.filter((item) => {
+      if (!filterTextTerbatas.trim()) return true;
+      const q = filterTextTerbatas.toLowerCase();
+      const j: JedaJadwal = (item.jadwal || item) as JedaJadwal;
+      const k = item.karyawan || j.streamerKaryawan;
+      if (filterColTerbatas === "DATE") return formatDateSafe(j.tanggal).toLowerCase().includes(q);
+      if (filterColTerbatas === "PLATFORM") return (j.platform || "").toLowerCase().includes(q) || (j.client?.namaClient || "").toLowerCase().includes(q);
+      if (filterColTerbatas === "STREAMER") return (k?.namaLengkap || "").toLowerCase().includes(q) || (k?.idKaryawan || "").toLowerCase().includes(q);
+      return (
+        (j.idJadwal || "").toLowerCase().includes(q) ||
+        (item.id || "").toLowerCase().includes(q) ||
+        (j.platform || "").toLowerCase().includes(q) ||
+        (j.client?.namaClient || "").toLowerCase().includes(q) ||
+        (k?.namaLengkap || "").toLowerCase().includes(q) ||
+        (k?.idKaryawan || "").toLowerCase().includes(q) ||
+        formatDateSafe(j.tanggal).toLowerCase().includes(q)
+      );
+    });
+  }, [rawLaporList, filterTextTerbatas, filterColTerbatas]);
 
   // Filtered and paginated history matching ref-deploy
   const filteredHistory = useMemo(() => {
@@ -801,19 +860,7 @@ export default function StreamerDashboardPage() {
     pageHistory * rowsPerPageHistory
   );
 
-  // Non-admin (streamer): hide the "overview" tab — accessed via sidebar instead.
-  const visibleTabs = STREAMER_TABS
-    .filter((t) => t.id !== "overview" || isAdmin)
-    .map((t) => {
-      if (t.id === "overview") {
-        return {
-          ...t,
-          label: "Daftar & Profil Streamer",
-          icon: "fa-solid fa-users-viewfinder",
-        };
-      }
-      return t;
-    });
+  const visibleTabs = STREAMER_TABS;
 
   return (
     <div className="space-y-6 min-w-0">
@@ -964,30 +1011,6 @@ export default function StreamerDashboardPage() {
           </button>
         )}
       </div>
-
-      {/* ======== TAB: DAFTAR & PROFIL STREAMER (ROLE-AWARE) ======== */}
-      {activeTab === "overview" && (
-        <div className="space-y-4">
-          {isAdmin ? (
-            !selectedOverviewStreamerId ? (
-              <StreamerListView
-                onSelectStreamer={(id) => setSelectedOverviewStreamerId(id)}
-                currentKaryawanId={session?.user?.karyawanId}
-              />
-            ) : (
-              <StreamerProfileCardOverview
-                streamerId={selectedOverviewStreamerId}
-                onBackToList={() => setSelectedOverviewStreamerId(null)}
-              />
-            )
-          ) : (
-            /* Streamer role: only sees their own profile */
-            <StreamerProfileCardOverview
-              streamerId={session?.user?.karyawanId || undefined}
-            />
-          )}
-        </div>
-      )}
 
       {/* ======== TAB: CHECK IN ======== */}
       {activeTab === "checkin" && (
@@ -1214,8 +1237,12 @@ export default function StreamerDashboardPage() {
       {activeTab === "report" && (
         <TabReport
           dashboardData={dashboardData}
-          onPeriodeChange={loadDashboardPeriode}
+          onPeriodeChange={(p) => loadDashboardPeriode(p, undefined)}
           loading={loading}
+          isAdmin={isReportAdmin}
+          hostList={reportHostList}
+          selectedHostId={reportHostId}
+          onHostChange={(h) => loadDashboardPeriode(undefined, h)}
         />
       )}
     </div>

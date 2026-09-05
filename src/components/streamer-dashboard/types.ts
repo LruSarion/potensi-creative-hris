@@ -92,6 +92,13 @@ export type Jadwal = {
   streamerKaryawan?: { namaLengkap: string; idKaryawan: string } | null;
   produk?: { namaProduk: string; sku: string }[];
   absensi?: { reportedGmv: number | null; waktuMasuk: string; waktuKeluar: string | null }[];
+  // Ref-deploy jadwal fields (for Tab Jadwal rebuild 1:1)
+  judulLive?: string | null;
+  promoLive?: string | null;
+  produkPrioritas?: string | null;
+  catatanHost?: string | null;
+  filePendukungHostDriveId?: string | null;
+  periodeBulan?: string | null;
 };
 
 export type DashboardData = {
@@ -177,7 +184,6 @@ export type AbsensiHistory = {
 };
 
 export const STREAMER_TABS = [
-  { id: "overview", label: "Daftar & Profil Streamer", icon: "fa-solid fa-users-viewfinder" },
   { id: "checkin", label: "Check In", icon: "fa-solid fa-arrow-right-to-bracket" },
   { id: "checkout", label: "Check Out", icon: "fa-solid fa-arrow-right-from-bracket" },
   { id: "terbatas", label: "Terbatas", icon: "fa-solid fa-bolt" },

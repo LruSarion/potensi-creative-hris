@@ -16,6 +16,67 @@ const DEMO_ACCOUNTS = [
   { role: "Client", email: "client@potensicreative.test", pin: "123456", color: "bg-orange-50 text-orange-700 border-orange-200" },
 ];
 
+function ChevronIcon({ isUp }: { isUp: boolean }) {
+  return (
+    <svg
+      className={`w-3 h-3 text-slate-500 transition-transform ${isUp ? "rotate-180" : ""}`}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={2.5}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  );
+}
+
+function SpinnerIcon({ className = "w-4 h-4 text-blue-600 animate-spin" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
+
+function EyeIcon({ show }: { show: boolean }) {
+  return show ? (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+    </svg>
+  ) : (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  );
+}
+
+function LoginIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+    </svg>
+  );
+}
+
+function ArrowLeftIcon() {
+  return (
+    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -206,7 +267,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-4">
+    <main id="main-content" role="main" className="min-h-screen bg-slate-50 text-slate-800 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden border border-slate-100 transition-all duration-300">
         {/* Header Branding */}
         <div className="bg-slate-50 p-8 text-center border-b border-slate-100">
@@ -249,7 +310,7 @@ export default function LoginPage() {
                 >
                   {loading ? (
                     <>
-                      <i className="fa-solid fa-circle-notch fa-spin text-blue-600"></i>
+                      <SpinnerIcon className="w-4 h-4 text-[#941A0B] animate-spin" />
                       <span>Memverifikasi Google...</span>
                     </>
                   ) : (
@@ -271,10 +332,10 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowManualLogin(!showManualLogin)}
-                  className="text-xs text-slate-500 hover:text-blue-600 font-medium transition flex items-center justify-center gap-1.5 mx-auto py-1"
+                  className="text-xs text-slate-600 hover:text-blue-600 font-semibold transition flex items-center justify-center gap-1.5 mx-auto py-1 cursor-pointer"
                 >
                   <span>{showManualLogin ? "Sembunyikan Opsi Alternatif" : "Atau gunakan Email & PIN / Akun Demo"}</span>
-                  <i className={`fa-solid fa-chevron-${showManualLogin ? "up" : "down"} text-[10px]`}></i>
+                  <ChevronIcon isUp={showManualLogin} />
                 </button>
               </div>
 
@@ -322,16 +383,16 @@ export default function LoginPage() {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 text-xs"
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 px-4 rounded-xl transition shadow-sm disabled:opacity-50 flex items-center justify-center gap-2 text-xs cursor-pointer"
                     >
-                      <i className="fa-solid fa-right-to-bracket"></i>
+                      <LoginIcon />
                       <span>Masuk via Email & PIN</span>
                     </button>
                   </form>
 
                   {/* 1-Click Demo Accounts */}
                   <div>
-                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">
+                    <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2 text-center">
                       Akun Uji Coba Cepat (1-Click)
                     </div>
                     <div className="grid grid-cols-2 gap-1.5">
@@ -341,10 +402,10 @@ export default function LoginPage() {
                           type="button"
                           onClick={() => handleDemoClick(acc)}
                           disabled={loading}
-                          className={`text-left px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition hover:shadow-sm flex items-center justify-between ${acc.color}`}
+                          className={`text-left px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition hover:shadow-sm flex items-center justify-between ${acc.color} cursor-pointer`}
                         >
                           <span className="truncate">{acc.role}</span>
-                          <span className="text-[10px] opacity-60 ml-1 font-mono">Demo</span>
+                          <span className="text-[10px] opacity-70 ml-1 font-mono font-bold">Demo</span>
                         </button>
                       ))}
                     </div>
@@ -375,7 +436,7 @@ export default function LoginPage() {
                     </div>
                   )}
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center text-xs shadow-xs border-2 border-white" title="Akun Terverifikasi Google">
-                    <i className="fa-solid fa-check font-black text-[10px]"></i>
+                    <CheckIcon />
                   </div>
                 </div>
 
@@ -420,10 +481,10 @@ export default function LoginPage() {
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-2 cursor-pointer transition"
                       title={showPin ? "Sembunyikan PIN" : "Tampilkan PIN"}
                     >
-                      <i className={`fa-solid ${showPin ? "fa-eye-slash" : "fa-eye"}`}></i>
+                      <EyeIcon show={showPin} />
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 text-center mt-1.5 font-medium">
+                  <p className="text-[11px] text-slate-600 text-center mt-1.5 font-medium">
                     PIN default akun baru: <span className="font-mono font-bold text-blue-600">123456</span>
                   </p>
                 </div>
@@ -435,12 +496,12 @@ export default function LoginPage() {
                 >
                   {loading ? (
                     <>
-                      <i className="fa-solid fa-circle-notch fa-spin"></i>
+                      <SpinnerIcon className="w-4 h-4 text-white animate-spin" />
                       <span>Memverifikasi PIN...</span>
                     </>
                   ) : (
                     <>
-                      <i className="fa-solid fa-right-to-bracket"></i>
+                      <LoginIcon />
                       <span>Masuk ke Dashboard</span>
                     </>
                   )}
@@ -451,9 +512,9 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={resetToGoogleStep}
-                  className="text-xs text-slate-500 hover:text-blue-600 font-medium transition flex items-center justify-center gap-1.5 mx-auto cursor-pointer"
+                  className="text-xs text-slate-600 hover:text-blue-600 font-semibold transition flex items-center justify-center gap-1.5 mx-auto cursor-pointer"
                 >
-                  <i className="fa-solid fa-arrow-left text-[11px]"></i>
+                  <ArrowLeftIcon />
                   <span>Ganti Akun Google</span>
                 </button>
               </div>
@@ -462,9 +523,9 @@ export default function LoginPage() {
         </div>
 
         <div className="bg-slate-50 p-4 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
+          <p className="text-xs text-slate-600 font-medium">&copy; 2026 HRIS Potensi Creative. All rights reserved.</p>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

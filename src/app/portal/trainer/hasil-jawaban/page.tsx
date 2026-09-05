@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, memo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { fetchJson, sendJson } from "@/lib/api-client";
@@ -39,6 +39,51 @@ type SubmissionDetail = Submission & {
     isCorrect: boolean;
   }[];
 };
+
+const SubmissionRowItem = memo(function SubmissionRowItem({
+  submission,
+  onOpenDetail,
+}: {
+  submission: Submission;
+  onOpenDetail: (id: string) => void;
+}) {
+  return (
+    <tr className="hover:bg-slate-50 transition">
+      <td className="px-4 py-3.5 font-bold text-slate-900">{submission.studentName}</td>
+      <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[200px] truncate">{submission.lessonTitle}</td>
+      <td className="px-4 py-3.5 text-slate-700 font-semibold">
+        <span className="flex items-center gap-1.5">
+          <i className="fa-solid fa-eye text-blue-600 text-[10px]" />
+          {submission.watchPercentage}%
+        </span>
+      </td>
+      <td className="px-4 py-3.5 font-black text-slate-900 text-sm">{submission.scorePercent}<span className="text-xs font-medium text-slate-600">/100</span></td>
+      <td className="px-4 py-3.5">
+        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+          submission.status === "PASSED" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300"
+        }`}>
+          {submission.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
+        </span>
+        {(submission.pendingGradingCount ?? 0) > 0 && (
+          <span className="ml-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+            ⏳ {submission.pendingGradingCount} perlu dinilai
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-3.5 text-slate-700 font-medium">
+        {submission.submittedAt ? new Date(submission.submittedAt).toLocaleString("id-ID") : "-"}
+      </td>
+      <td className="px-4 py-3.5 text-center">
+        <button
+          onClick={() => onOpenDetail(submission.id)}
+          className="text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-200 shadow-sm transition cursor-pointer"
+        >
+          Lihat Jawaban
+        </button>
+      </td>
+    </tr>
+  );
+});
 
 export default function HasilJawabanPage() {
   const pathname = usePathname();
@@ -84,7 +129,9 @@ export default function HasilJawabanPage() {
     }
   }
 
-  const lessons = Array.from(new Map(submissions.map((s) => [s.lessonId, s.lessonTitle])).entries());
+  const lessons = useMemo(() => {
+    return Array.from(new Map(submissions.map((s) => [s.lessonId, s.lessonTitle])).entries());
+  }, [submissions]);
 
   async function saveGrade(attemptId: string, questionId: string) {
     const raw = gradeScores[questionId];
@@ -106,20 +153,26 @@ export default function HasilJawabanPage() {
     }
   }
 
-  const filtered = submissions.filter((s) => {
-    if (filterLesson !== "ALL" && s.lessonId !== filterLesson) return false;
-    if (filterStatus === "PASSED" && s.scorePercent < 70) return false;
-    if (filterStatus === "FAILED" && s.scorePercent >= 70) return false;
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      if (!s.studentName.toLowerCase().includes(q) && !s.lessonTitle.toLowerCase().includes(q)) return false;
-    }
-    return true;
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return submissions.filter((s) => {
+      if (filterLesson !== "ALL" && s.lessonId !== filterLesson) return false;
+      if (filterStatus === "PASSED" && s.scorePercent < 70) return false;
+      if (filterStatus === "FAILED" && s.scorePercent >= 70) return false;
+      if (q) {
+        if (!s.studentName.toLowerCase().includes(q) && !s.lessonTitle.toLowerCase().includes(q)) return false;
+      }
+      return true;
+    });
+  }, [submissions, filterLesson, filterStatus, search]);
 
-  const passedCount = submissions.filter((s) => s.scorePercent >= 70).length;
-  const avgScore = submissions.length > 0 ? Math.round(submissions.reduce((a, s) => a + s.scorePercent, 0) / submissions.length) : 0;
-  const passRate = submissions.length > 0 ? Math.round((passedCount / submissions.length) * 100) : 0;
+  const { passedCount, avgScore, passRate } = useMemo(() => {
+    if (submissions.length === 0) return { passedCount: 0, avgScore: 0, passRate: 0 };
+    const passed = submissions.filter((s) => s.scorePercent >= 70).length;
+    const avg = Math.round(submissions.reduce((a, s) => a + s.scorePercent, 0) / submissions.length);
+    const rate = Math.round((passed / submissions.length) * 100);
+    return { passedCount: passed, avgScore: avg, passRate: rate };
+  }, [submissions]);
 
   return (
     <div className="space-y-6">
@@ -261,40 +314,7 @@ export default function HasilJawabanPage() {
               </tr>
             ) : (
               filtered.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-50 transition">
-                  <td className="px-4 py-3.5 font-bold text-slate-900">{s.studentName}</td>
-                  <td className="px-4 py-3.5 font-semibold text-slate-800 max-w-[200px] truncate">{s.lessonTitle}</td>
-                  <td className="px-4 py-3.5 text-slate-700 font-semibold">
-                    <span className="flex items-center gap-1.5">
-                      <i className="fa-solid fa-eye text-blue-600 text-[10px]" />
-                      {s.watchPercentage}%
-                    </span>
-                  </td>
-                  <td className="px-4 py-3.5 font-black text-slate-900 text-sm">{s.scorePercent}<span className="text-xs font-medium text-slate-600">/100</span></td>
-                  <td className="px-4 py-3.5">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                      s.status === "PASSED" ? "bg-emerald-100 text-emerald-800 border-emerald-300" : "bg-red-100 text-red-800 border-red-300"
-                    }`}>
-                      {s.status === "PASSED" ? "✓ LULUS" : "✗ BELUM LULUS"}
-                    </span>
-                    {(s.pendingGradingCount ?? 0) > 0 && (
-                      <span className="ml-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
-                        ⏳ {s.pendingGradingCount} perlu dinilai
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 text-slate-700 font-medium">
-                    {s.submittedAt ? new Date(s.submittedAt).toLocaleString("id-ID") : "-"}
-                  </td>
-                  <td className="px-4 py-3.5 text-center">
-                    <button
-                      onClick={() => openDetail(s.id)}
-                      className="text-[11px] font-bold text-purple-700 bg-purple-100 border border-purple-300 px-3 py-1 rounded-lg hover:bg-purple-200 shadow-sm transition"
-                    >
-                      Lihat Jawaban
-                    </button>
-                  </td>
-                </tr>
+                <SubmissionRowItem key={s.id} submission={s} onOpenDetail={openDetail} />
               ))
             )}
           </tbody>

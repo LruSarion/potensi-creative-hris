@@ -11,6 +11,7 @@ import {
 import {
   formatDateSafe,
   formatTimeSafe,
+  formatDurationHHMM,
   calcWajibHadir,
   getWajibHadirTime,
 } from "@/lib/utils/date-format";
@@ -813,9 +814,9 @@ export function TabStreamer({
                   </div>
                 </div>
 
-                {/* Row 4: Jam Mulai/Selesai + File Pendukung/Catatan Host (ref grid md:2) */}
+                {/* Row 4: Jam Mulai/Selesai/Durasi + File Pendukung/Catatan Host */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-3 items-end">
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1.5">Jam Mulai *</label>
                       <FlatpickrTimeInput
@@ -840,6 +841,20 @@ export function TabStreamer({
                         placeholder="Pilih Jam Selesai"
                         required
                       />
+                    </div>
+                    <div className="min-w-[92px]">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1.5">Durasi</label>
+                      <div
+                        title={
+                          item.jamMulaiLive && item.jamSelesaiLive
+                            ? `Durasi: ${formatDurationHHMM(item.jamMulaiLive, item.jamSelesaiLive)}`
+                            : "Isi Jam Mulai & Jam Selesai untuk melihat durasi HH:MM"
+                        }
+                        className="h-[42px] flex items-center gap-2 px-3 rounded-lg border border-slate-200 bg-slate-50 text-sm font-semibold tabular-nums text-slate-800"
+                      >
+                        <i className="fa-regular fa-clock text-slate-400 text-xs" />
+                        <span>{formatDurationHHMM(item.jamMulaiLive, item.jamSelesaiLive)}</span>
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

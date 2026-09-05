@@ -70,10 +70,10 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
           <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-auto flex flex-col items-center text-center border border-slate-100 transform animate-scaleUp">
             {/* Animated Loading Spinner & Logo Badge */}
             <div className="relative mb-5 flex items-center justify-center">
-              <div className="w-16 h-16 rounded-2xl bg-blue-600/10 flex items-center justify-center border border-blue-200">
-                <span className="text-2xl font-black text-blue-600 font-sans">P</span>
+              <div className="w-16 h-16 rounded-2xl bg-[#941A0B]/10 flex items-center justify-center border border-red-200">
+                <span className="text-2xl font-black text-[#941A0B] font-sans">P</span>
               </div>
-              <div className="absolute -inset-2 rounded-3xl border-2 border-blue-600 border-t-transparent animate-spin"></div>
+              <div className="absolute -inset-2 rounded-3xl border-2 border-[#941A0B] border-t-transparent animate-spin"></div>
             </div>
 
             {/* Title / Primary Text */}
@@ -88,14 +88,14 @@ export function LoadingProvider({ children }: { children: React.ReactNode }) {
               </p>
             ) : (
               <p className="text-xs text-slate-400 mt-1.5 font-medium flex items-center gap-1.5 justify-center">
-                <i className="fa-solid fa-cloud-arrow-up text-blue-500 text-[10px] animate-pulse"></i>
+                <i className="fa-solid fa-cloud-arrow-up text-[#941A0B] text-[10px] animate-pulse"></i>
                 <span>Sinkronisasi database & sistem...</span>
               </p>
             )}
 
             {/* Shimmering Progress Bar */}
             <div className="w-full bg-slate-100 rounded-full h-1.5 mt-5 overflow-hidden">
-              <div className="bg-blue-600 h-full w-full rounded-full animate-indeterminate"></div>
+              <div className="bg-[#941A0B] h-full w-full rounded-full animate-indeterminate"></div>
             </div>
           </div>
         </div>

@@ -18,13 +18,13 @@ export const MENU_ITEMS: NavItem[] = [
     href: "/dashboard",
     label: "Dashboard",
     icon: "fa-solid fa-table-cells-large",
-    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "TRAINER", "STREAMER", "STAFF", "OTS", "CLIENT"],
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "STREAMER", "STAFF", "OTS", "CLIENT"],
   },
   {
     href: "/streamer-dashboard",
     label: "Streamer Dashboard",
     icon: "fa-solid fa-video",
-    roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"],
+    roles: ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   },
   {
     href: "/lms",
@@ -84,13 +84,13 @@ export const MENU_ITEMS: NavItem[] = [
     href: "/penilaian-sdm",
     label: "Penilaian SDM",
     icon: "fa-regular fa-star",
-    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"],
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER"],
   },
   {
     href: "/qc-violations",
     label: "Log Pelanggaran QC",
     icon: "fa-solid fa-shield-halved",
-    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"],
+    roles: ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER"],
   },
   {
     href: "/payroll",

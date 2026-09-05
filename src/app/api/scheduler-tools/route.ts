@@ -179,7 +179,7 @@ export const GET = apiHandler(async (req: Request) => {
     isNearTier4,
     isOverlimit,
   };
-});
+}, { cacheControl: "private, max-age=30, stale-while-revalidate=60" });
 
 export const POST = apiHandler(async (req: Request) => {
   const user = await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STAFF");

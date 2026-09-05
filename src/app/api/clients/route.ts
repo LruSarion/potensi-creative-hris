@@ -8,12 +8,15 @@ import {
   upsertKetentuan,
 } from "@/lib/services/clients";
 
-export const GET = apiHandler(async (req: Request) => {
-  const url = new URL(req.url);
-  const id = url.searchParams.get("id");
-  if (id) return getClient(id);
-  return listClients();
-});
+export const GET = apiHandler(
+  async (req: Request) => {
+    const url = new URL(req.url);
+    const id = url.searchParams.get("id");
+    if (id) return getClient(id);
+    return listClients();
+  },
+  { cacheControl: "private, max-age=60, stale-while-revalidate=120" }
+);
 
 export const POST = apiHandler(async (req: Request) => {
   const body = await req.json();

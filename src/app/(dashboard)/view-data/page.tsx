@@ -9,6 +9,7 @@ export default function ViewDataPage() {
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState("karyawan");
   const [search, setSearch] = useState("");
+  const [tabLoading, setTabLoading] = useState(false);
 
   useEffect(() => {
     fetch("/api/view-data")
@@ -19,6 +20,22 @@ export default function ViewDataPage() {
       })
       .catch(() => setError("Koneksi error"));
   }, []);
+
+  function handleTabChange(key: string) {
+    setActiveTab(key);
+    if (data && !data[key]) {
+      setTabLoading(true);
+      fetch(`/api/view-data?tab=${key}`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.status === "success" && d.data) {
+            setData((prev: any) => ({ ...prev, ...d.data }));
+          }
+        })
+        .catch(() => {})
+        .finally(() => setTabLoading(false));
+    }
+  }
 
   // Reset search when tab changes
   useEffect(() => setSearch(""), [activeTab]);
@@ -53,14 +70,14 @@ export default function ViewDataPage() {
   }
 
   const tabConfig: Record<string, { label: string; count: number; icon: string }> = {
-    karyawan: { label: "Karyawan & Host", count: data.karyawan?.length ?? 0, icon: "fa-users" },
-    clients: { label: "Brand Partner", count: data.clients?.length ?? 0, icon: "fa-building" },
-    jadwal: { label: "Jadwal Siaran", count: data.jadwal?.length ?? 0, icon: "fa-calendar" },
-    absensi: { label: "Log Presensi", count: data.absensi?.length ?? 0, icon: "fa-id-badge" },
-    lembur: { label: "Pengajuan Lembur", count: data.lembur?.length ?? 0, icon: "fa-clock" },
-    izin: { label: "Pengajuan Izin", count: data.izin?.length ?? 0, icon: "fa-file-signature" },
-    payroll: { label: "Payroll", count: data.payroll?.length ?? 0, icon: "fa-money-bill-wave" },
-    tiering: { label: "Master Tiering", count: data.tiering?.length ?? 0, icon: "fa-layer-group" },
+    karyawan: { label: "Karyawan & Host", count: data.counts?.karyawan ?? data.karyawan?.length ?? 0, icon: "fa-users" },
+    clients: { label: "Brand Partner", count: data.counts?.clients ?? data.clients?.length ?? 0, icon: "fa-building" },
+    jadwal: { label: "Jadwal Siaran", count: data.counts?.jadwal ?? data.jadwal?.length ?? 0, icon: "fa-calendar" },
+    absensi: { label: "Log Presensi", count: data.counts?.absensi ?? data.absensi?.length ?? 0, icon: "fa-id-badge" },
+    lembur: { label: "Pengajuan Lembur", count: data.counts?.lembur ?? data.lembur?.length ?? 0, icon: "fa-clock" },
+    izin: { label: "Pengajuan Izin", count: data.counts?.izin ?? data.izin?.length ?? 0, icon: "fa-file-signature" },
+    payroll: { label: "Payroll", count: data.counts?.payroll ?? data.payroll?.length ?? 0, icon: "fa-money-bill-wave" },
+    tiering: { label: "Master Tiering", count: data.counts?.tiering ?? data.tiering?.length ?? 0, icon: "fa-layer-group" },
   };
 
   const allRows: any[] = data[activeTab] ?? [];
@@ -90,7 +107,7 @@ export default function ViewDataPage() {
           return (
             <button
               key={key}
-              onClick={() => setActiveTab(key)}
+              onClick={() => handleTabChange(key)}
               className={`px-4 py-2.5 rounded-xl text-xs font-bold transition flex items-center gap-2 border ${
                 active
                   ? "bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-600/20"
@@ -152,7 +169,12 @@ export default function ViewDataPage() {
         </div>
 
         <div className="overflow-x-auto">
-          {currentRows.length > 0 ? (
+          {tabLoading ? (
+            <div className="p-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+              <i className="fa-solid fa-spinner animate-spin text-blue-600" />
+              <span>Memuat data {tabConfig[activeTab]?.label}...</span>
+            </div>
+          ) : currentRows.length > 0 ? (
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
                 <tr>

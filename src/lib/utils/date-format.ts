@@ -154,6 +154,29 @@ export function calcDurationHours(startVal: string, endVal: string): string {
 }
 
 /**
+ * Format live duration as HH:MM (e.g. 10:00→12:30 = 02:30).
+ * Overnight-safe (end < start → +24h). Returns "–" when empty/invalid.
+ * Normalizes inputs via formatTimeSafe (supports ISO, HH:mm:ss, Date).
+ */
+export function formatDurationHHMM(startVal: any, endVal: any, fallback = "–"): string {
+  if (!startVal || !endVal) return fallback;
+  const s = formatTimeSafe(startVal, "");
+  const e = formatTimeSafe(endVal, "");
+  if (!s || !e || !s.includes(":") || !e.includes(":")) return fallback;
+  const [sh, sm] = s.split(":").map(Number);
+  const [eh, em] = e.split(":").map(Number);
+  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) return fallback;
+  let startMins = sh * 60 + sm;
+  let endMins = eh * 60 + em;
+  if (endMins < startMins) endMins += 1440;
+  if (endMins === startMins) return "24:00";
+  const diff = endMins - startMins;
+  const hh = String(Math.floor(diff / 60)).padStart(2, "0");
+  const mm = String(diff % 60).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+/**
  * Given a "jamMulaiLive" time value, calculate "Wajib Hadir" (15 minutes before).
  * Returns a readable "HH.mm WIB" string.
  */

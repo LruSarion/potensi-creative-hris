@@ -4,7 +4,7 @@ import { AppError } from "@/lib/errors";
 import { requireRole } from "@/lib/auth-helpers";
 import type { Role } from "@/generated/prisma/enums";
 
-const RATER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"];
+const RATER_ROLES: Role[] = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER"];
 
 const penilaianSchema = z.object({
   id: z.string().optional(),

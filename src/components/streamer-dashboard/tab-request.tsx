@@ -7,7 +7,7 @@
 // - Sesi   -> sub-tab History | Pengajuan Sesi
 // Versi lama (requestSubTab "libur"|"sesi") dipertahankan sebagai komentar TODO(ref-deploy-request).
 
-import Link from "next/link";
+import { useState } from "react";
 import { formatDateSafe } from "@/lib/utils/date-format";
 
 export type RequestStatus = {
@@ -117,13 +117,16 @@ export function TabRequest({
   cekLiburMsg: string | null;
   onCekLibur: () => void;
 }) {
-  // Kalender bulan yang ditampilkan — mengikuti tanggal pengajuan (leaveDate) atau bulan berjalan.
-  const calBase = (leaveDate && parseBulanLabel(leaveDate) === null && !isNaN(new Date(leaveDate).getTime()))
-    ? new Date(leaveDate)
-    : new Date();
+  // Kalender ala ref-deploy: offset ±1 bulan dari hari ini (guardrail, tombol hilang di batas)
+  const [calOffset, setCalOffset] = useState(0);
+  const todayBase = new Date();
+  todayBase.setHours(0, 0, 0, 0);
+  const calBase = new Date(todayBase.getFullYear(), todayBase.getMonth() + calOffset, 1);
   const calYear = calBase.getFullYear();
   const calMonth = calBase.getMonth();
   const monthLabel = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"][calMonth];
+  const canGoPrev = calOffset > -1;
+  const canGoNext = calOffset < 1;
 
   const liburByDate = new Set(liburCalendar.map((l) => toLocalYMD(new Date(l.tanggal))));
 
@@ -135,9 +138,9 @@ export function TabRequest({
 
   return (
     <div className="space-y-6">
-      {/* Header & Quota Overview */}
+      {/* Header — tanpa quota overview (sesuai ref-deploy) */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-3 gap-4">
           <div>
             <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
               <i className="fa-solid fa-code-pull-request text-blue-500" />
@@ -147,21 +150,30 @@ export function TabRequest({
               Ajukan permohonan Libur dan preferensi Request Sesi Live siaran.
             </p>
           </div>
-
-          {/* Quota Indicators */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="bg-[#941A0B]/10 border border-[#941A0B]/20 rounded-xl px-3.5 py-2">
-              <div className="text-[10px] uppercase font-bold text-[#941A0B]">Sisa Kuota Libur</div>
-              <div className="text-sm font-bold text-[#000000]">
-                {requestStatus ? `${requestStatus.sisaKuotaLibur} / ${requestStatus.defaultKuotaLibur} Hari` : "Memuat..."}
-              </div>
-            </div>
-            <div className="bg-[#941A0B]/10 border border-[#941A0B]/20 rounded-xl px-3.5 py-2">
-              <div className="text-[10px] uppercase font-bold text-[#941A0B]">Sisa Kuota Sesi</div>
-              <div className="text-sm font-bold text-[#000000]">
-                {requestStatus ? `${requestStatus.sisaKuotaShift} / ${requestStatus.defaultKuotaShift} Kali` : "Memuat..."}
-              </div>
-            </div>
+          {/* Kategori: Libur | Sesi Live (ref-deploy switchReqCategory) */}
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => onReqCategoryChange("libur")}
+              className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
+                reqCategory === "libur"
+                  ? "text-white bg-blue-600 shadow"
+                  : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
+              }`}
+            >
+              Libur
+            </button>
+            <button
+              type="button"
+              onClick={() => onReqCategoryChange("sesilive")}
+              className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
+                reqCategory === "sesilive"
+                  ? "text-white bg-blue-600 shadow"
+                  : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
+              }`}
+            >
+              Sesi Live
+            </button>
           </div>
         </div>
 
@@ -182,32 +194,6 @@ export function TabRequest({
             )}
           </div>
         )}
-
-        {/* Kategori: Libur | Sesi Live (ref-deploy switchReqCategory) */}
-        <div className="flex gap-2 border-b border-slate-100 pt-5 pb-1">
-          <button
-            type="button"
-            onClick={() => onReqCategoryChange("libur")}
-            className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
-              reqCategory === "libur"
-                ? "text-white bg-blue-600 shadow"
-                : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
-            }`}
-          >
-            Libur
-          </button>
-          <button
-            type="button"
-            onClick={() => onReqCategoryChange("sesilive")}
-            className={`px-4 py-2 text-sm font-bold rounded-lg transition whitespace-nowrap ${
-              reqCategory === "sesilive"
-                ? "text-white bg-blue-600 shadow"
-                : "text-slate-600 bg-slate-100 border border-slate-200 hover:bg-slate-200"
-            }`}
-          >
-            Sesi Live
-          </button>
-        </div>
 
         {/* ================= KATEGORI: LIBUR ================= */}
         {reqCategory === "libur" && (
@@ -238,12 +224,28 @@ export function TabRequest({
               </button>
             </div>
 
-            {/* --- SUB-TAB: JADWAL LIBUR (KALENDER BULAN — ref-deploy calendarGrid) --- */}
+            {/* --- SUB-TAB: JADWAL LIBUR (KALENDER BULAN — ref-deploy calendarGrid, cell 60/80px + nav ±1 bulan) --- */}
             {reqSubLibur === "jadwal" && (
               <div>
-                <h4 className="font-bold text-slate-800 text-lg mb-3">
-                  {monthLabel} {calYear}
-                </h4>
+                <div className="flex items-center justify-between mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setCalOffset((c) => c - 1)}
+                    className={`bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-lg transition ${!canGoPrev ? "hidden" : ""}`}
+                    aria-label="Bulan sebelumnya"
+                  >
+                    <i className="fa-solid fa-chevron-left" />
+                  </button>
+                  <h4 className="font-bold text-slate-800 text-lg">{monthLabel} {calYear}</h4>
+                  <button
+                    type="button"
+                    onClick={() => setCalOffset((c) => c + 1)}
+                    className={`bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3 py-2 rounded-lg transition ${!canGoNext ? "hidden" : ""}`}
+                    aria-label="Bulan berikutnya"
+                  >
+                    <i className="fa-solid fa-chevron-right" />
+                  </button>
+                </div>
                 <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2 text-center text-[10px] sm:text-xs font-bold text-slate-500">
                   {DAY_LABELS.map((d) => (
                     <div key={d}>{d}</div>
@@ -251,7 +253,7 @@ export function TabRequest({
                 </div>
                 <div className="grid grid-cols-7 gap-1 sm:gap-2 auto-rows-fr">
                   {cells.map((d, i) => {
-                    if (!d) return <div key={`empty-${i}`} />;
+                    if (!d) return <div key={`empty-${i}`} className="bg-slate-50/30 rounded-lg border border-transparent p-2 min-h-[60px] sm:min-h-[80px]" />;
                     const ymd = toLocalYMD(d);
                     const isLibur = liburByDate.has(ymd);
                     const isToday = ymd === toLocalYMD(new Date());
@@ -264,17 +266,19 @@ export function TabRequest({
                           onReqSubLiburChange("pengajuan");
                         }}
                         title={isLibur ? "Tanggal libur Anda" : undefined}
-                        className={`relative aspect-square sm:rounded-lg text-xs sm:text-sm font-bold transition flex items-center justify-center ${
+                        className={`border rounded-lg p-1 sm:p-2 min-h-[60px] sm:min-h-[80px] transition-colors relative flex flex-col ${
                           isLibur
-                            ? "bg-red-100 text-red-700 border border-red-300 hover:bg-red-200"
+                            ? "bg-red-100 text-red-700 border-red-300 hover:bg-red-200"
                             : isToday
-                            ? "bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100"
-                            : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-100"
+                            ? "bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100"
+                            : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                         }`}
                       >
-                        {d.getDate()}
+                        <div className="text-right font-black text-xs sm:text-sm w-full">{d.getDate()}</div>
                         {isLibur && (
-                          <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-red-500" />
+                          <div className="mt-1 flex justify-center">
+                            <span className="bg-[#941A0B] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">Libur</span>
+                          </div>
                         )}
                       </button>
                     );
@@ -545,134 +549,6 @@ export function TabRequest({
             )}
           </div>
         )}
-      </div>
-
-      {/* Riwayat Pengajuan Streamer */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-        <div className="p-4 sm:px-6 bg-slate-50/70 border-b border-slate-200 flex items-center justify-between">
-          <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-            <i className="fa-solid fa-clock-rotate-left text-slate-500" />
-            Riwayat Pengajuan Libur & Sesi Live Bulan Ini
-          </h4>
-          <span className="text-xs text-slate-400 font-mono">
-            {((requestStatus?.leaveRequests?.length ?? 0) + (requestStatus?.shiftRequests?.length ?? 0))} Pengajuan
-          </span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200">
-              <tr>
-                <th className="px-4 py-3">Tanggal Pengajuan</th>
-                <th className="px-4 py-3">Tipe Permohonan</th>
-                <th className="px-4 py-3">Keterangan / Detail</th>
-                <th className="px-4 py-3">Status Persetujuan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {requestStatus && (requestStatus.leaveRequests.length > 0 || requestStatus.shiftRequests.length > 0) ? (
-                <>
-                  {requestStatus.leaveRequests.map((l) => (
-                    <tr key={l.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-4 py-3 font-semibold text-slate-800">
-                        {formatDateSafe(l.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#941A0B]/10 text-[#941A0B] border border-[#941A0B]/20">
-                          🏖️ Libur Streamer
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{l.alasan || "–"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          l.status === "APPROVED"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : l.status === "REJECTED"
-                            ? "bg-red-50 text-red-700 border-red-200"
-                            : "bg-amber-50 text-amber-700 border-amber-200"
-                        }`}>
-                          {l.status === "APPROVED" ? "Disetujui" : l.status === "REJECTED" ? "Ditolak" : "Menunggu Approval"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {requestStatus.shiftRequests.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/80 transition">
-                      <td className="px-4 py-3 font-semibold text-slate-800">
-                        {formatDateSafe(s.tanggalMulai, { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#941A0B]/10 text-[#941A0B] border border-[#941A0B]/20">
-                          📹 {s.jenis?.replace("REQUEST_", "") || "Sesi Live"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 max-w-xs truncate">{s.alasan || "–"}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                          s.status === "APPROVED"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : s.status === "REJECTED"
-                            ? "bg-red-50 text-red-700 border-red-200"
-                            : "bg-amber-50 text-amber-700 border-amber-200"
-                        }`}>
-                          {s.status === "APPROVED" ? "Disetujui" : s.status === "REJECTED" ? "Ditolak" : "Menunggu Approval"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </>
-              ) : (
-                <tr>
-                  <td colSpan={4} className="p-6 text-center text-slate-400 text-xs">
-                    Belum ada riwayat pengajuan libur atau request sesi live.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Other Portal Links */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Link
-          href="/tukar-shift"
-          className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">
-            <i className="fa-solid fa-right-left" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-800 text-xs group-hover:text-[#941A0B]">Tukar Shift</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Penggantian jadwal live streaming</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/pengajuan-izin"
-          className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-amber-400 hover:bg-amber-50/40 transition group text-center shadow-sm"
-        >
-          <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center text-lg group-hover:scale-110 transition">
-            <i className="fa-solid fa-file-signature" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-800 text-xs group-hover:text-amber-700">Pengajuan Izin / Cuti</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Sakit, cuti tahunan, atau keperluan</div>
-          </div>
-        </Link>
-
-        <Link
-          href="/pengajuan-lembur"
-          className="flex flex-col items-center gap-3 p-5 bg-white border border-slate-200 rounded-2xl hover:border-[#941A0B] hover:bg-[#941A0B]/10/40 transition group text-center shadow-sm"
-        >
-          <div className="w-10 h-10 rounded-xl bg-[#941A0B]/15 text-[#941A0B] flex items-center justify-center text-lg group-hover:scale-110 transition">
-            <i className="fa-regular fa-clock" />
-          </div>
-          <div>
-            <div className="font-bold text-slate-800 text-xs group-hover:text-[#941A0B]">Pengajuan Lembur</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Tambahan jam siaran (1.5x rate)</div>
-          </div>
-        </Link>
       </div>
     </div>
   );

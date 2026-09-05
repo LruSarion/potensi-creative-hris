@@ -28,6 +28,9 @@ function formatRelativeTime(dateStr: string) {
   }
 }
 
+// Module-level cache to deduplicate /api/history across navigations
+let cachedActivities: any[] | null = null;
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const userName = session?.user?.name ?? "Karyawan";
@@ -36,8 +39,8 @@ export default function DashboardPage() {
 
   const [dashboardView, setDashboardView] = useState<"streamer_sop" | "main">("streamer_sop");
   const [selectedStreamerId, setSelectedStreamerId] = useState<string | null>(null);
-  const [activities, setActivities] = useState<any[]>([]);
-  const [loadingActivities, setLoadingActivities] = useState(true);
+  const [activities, setActivities] = useState<any[]>(() => cachedActivities ?? []);
+  const [loadingActivities, setLoadingActivities] = useState(() => !cachedActivities);
 
   const [stats, setStats] = useState<{
     totalKaryawan: number;
@@ -50,12 +53,22 @@ export default function DashboardPage() {
   const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
+    // Only fetch history if main view is active and we haven't cached it
+    if (dashboardView !== "main" && isAdmin) return;
+    if (cachedActivities && cachedActivities.length > 0) {
+      setActivities(cachedActivities);
+      setLoadingActivities(false);
+      return;
+    }
+
     async function loadRecentActivities() {
       try {
         setLoadingActivities(true);
         const data = await fetchJson<any[]>("/api/history");
         if (Array.isArray(data)) {
-          setActivities(data.slice(0, 5));
+          const slice = data.slice(0, 5);
+          cachedActivities = slice;
+          setActivities(slice);
         }
       } catch {
         // ignore
@@ -64,7 +77,7 @@ export default function DashboardPage() {
       }
     }
     loadRecentActivities();
-  }, []);
+  }, [dashboardView, isAdmin]);
 
   useEffect(() => {
     async function loadStats() {

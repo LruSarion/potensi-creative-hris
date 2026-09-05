@@ -13,11 +13,12 @@ export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
   const kategori = url.searchParams.get("kategori") ?? undefined;
+  const compact = url.searchParams.get("compact") === "true" || url.searchParams.get("fields") === "picker";
 
   if (id) {
     return getEmployee(id);
   }
-  return listEmployees({ kategori });
+  return listEmployees({ kategori, compact });
 });
 
 export const POST = apiHandler(async (req: Request) => {

@@ -157,6 +157,159 @@ export async function decideApplication(applicationId: string, decision: "PICKED
   return updated;
 }
 
+// ---------- Keranjang / History Market (ref-deploy sub-tab) ----------
+
+const KERANJANG_EXPIRE_MS = 15 * 60 * 1000;
+
+async function expireStaleBookingsForUser(karyawanId: string) {
+  const cutoff = new Date(Date.now() - KERANJANG_EXPIRE_MS);
+  // Mark stale APPLIED as DECLINED (expired) so they move to history
+  await db.projectApplication.updateMany({
+    where: { streamerKaryawanId: karyawanId, status: "APPLIED", createdAt: { lt: cutoff } },
+    data: { status: "DECLINED" },
+  });
+}
+
+/** Streamer: list keranjang (APPLIED = BOOKED) — buku 15 menit sebelum expired */
+export async function getKeranjangJobs(hostKaryawanId?: string) {
+  const user = await requireRole();
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(user.role);
+  const targetId = isAdmin && hostKaryawanId ? hostKaryawanId : user.karyawanId!;
+  if (!targetId) return [];
+  // Auto-expire stale before returning so timer matches DB
+  await expireStaleBookingsForUser(targetId);
+  const apps = await db.projectApplication.findMany({
+    where: { streamerKaryawanId: targetId, status: "APPLIED" },
+    include: {
+      listing: {
+        include: {
+          client: true,
+          jadwal: { select: { id: true, idJadwal: true, tanggal: true, jamMulaiLive: true, jamSelesaiLive: true, cabangStudio: true, nomorStudio: true, judulLive: true, platform: true } },
+        },
+      },
+      streamer: { select: { id: true, idKaryawan: true, namaLengkap: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  return apps.map((a) => ({
+    id: a.id,
+    listingId: a.listingId,
+    status: a.status,
+    note: a.note,
+    createdAt: a.createdAt,
+    // WAKTU_BOOKING in ref = booking timestamp
+    waktuBooking: a.createdAt,
+    expireAt: new Date(new Date(a.createdAt).getTime() + KERANJANG_EXPIRE_MS),
+    listing: a.listing
+      ? {
+          id: a.listing.id,
+          title: a.listing.title,
+          platform: a.listing.platform,
+          ratePerSesi: Number(a.listing.ratePerSesi),
+          quota: a.listing.quota,
+          status: a.listing.status,
+          client: a.listing.client ? { id: a.listing.client.id, namaClient: a.listing.client.namaClient } : null,
+          jadwal: a.listing.jadwal,
+        }
+      : null,
+    streamer: a.streamer,
+  }));
+}
+
+/** Streamer: history market (PICKED/DECLINED — termasuk expired) */
+export async function getHistoryMarketJobs(hostKaryawanId?: string) {
+  const user = await requireRole();
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"].includes(user.role);
+  const targetId = isAdmin && hostKaryawanId ? hostKaryawanId : user.karyawanId!;
+  if (!targetId) return [];
+  const apps = await db.projectApplication.findMany({
+    where: { streamerKaryawanId: targetId, status: { in: ["PICKED", "DECLINED"] } },
+    include: {
+      listing: {
+        include: {
+          client: true,
+          jadwal: { select: { id: true, idJadwal: true, tanggal: true, jamMulaiLive: true, jamSelesaiLive: true, cabangStudio: true, nomorStudio: true, judulLive: true, platform: true, status: true } },
+        },
+      },
+      streamer: { select: { id: true, idKaryawan: true, namaLengkap: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  // Limit 36 like ref
+  return apps.slice(0, 36).map((a) => ({
+    id: a.id,
+    listingId: a.listingId,
+    status: a.status,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+    listing: a.listing
+      ? {
+          id: a.listing.id,
+          title: a.listing.title,
+          platform: a.listing.platform,
+          status: a.listing.status,
+          client: a.listing.client ? { id: a.listing.client.id, namaClient: a.listing.client.namaClient } : null,
+          jadwal: a.listing.jadwal,
+        }
+      : null,
+    streamer: a.streamer,
+  }));
+}
+
+/** Streamer: ambil jadwal marketplace (BOOKED) — alias takeMarketplaceJob */
+export async function takeMarketplaceJob(listingId: string) {
+  // Reuse eligibility & quota checks from applyToListing
+  return applyToListing(listingId);
+}
+
+/** Streamer: batal ambil (hapus BOOKED) */
+export async function cancelMarketplaceJob(listingId: string) {
+  const user = await requireRole();
+  if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+  const app = await db.projectApplication.findUnique({
+    where: { listingId_streamerKaryawanId: { listingId, streamerKaryawanId: user.karyawanId } },
+  });
+  if (!app) throw AppError.notFound("Booking tidak ditemukan");
+  if (app.status !== "APPLIED") throw AppError.conflict(`Booking sudah berstatus ${app.status}, tidak bisa dibatalkan`);
+  await db.projectApplication.delete({ where: { id: app.id } });
+  return { success: true, listingId };
+}
+
+/** Streamer: finalisasi massal keranjang → JADWAL FIX (PICKED) */
+export async function finalizeKeranjangMassal(listingIds: string[]) {
+  const user = await requireRole();
+  if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+  if (!Array.isArray(listingIds) || listingIds.length === 0) throw AppError.badRequest("Tidak ada jadwal terpilih");
+  // Expire stale first so expired ids cannot be finalized
+  await expireStaleBookingsForUser(user.karyawanId);
+
+  const results: { listingId: string; status: string }[] = [];
+  for (const listingId of listingIds) {
+    const app = await db.projectApplication.findUnique({
+      where: { listingId_streamerKaryawanId: { listingId, streamerKaryawanId: user.karyawanId } },
+      include: { listing: true },
+    });
+    if (!app) throw AppError.notFound(`Booking ${listingId} tidak ditemukan`);
+    if (app.status !== "APPLIED") throw AppError.conflict(`Booking ${listingId} sudah berstatus ${app.status}`);
+    // Transaction per listing (quota + jadwal assignment)
+    await db.$transaction(async (tx) => {
+      await tx.projectApplication.update({ where: { id: app.id }, data: { status: "PICKED" } });
+      const pickedCount = await tx.projectApplication.count({ where: { listingId, status: "PICKED" } });
+      if (pickedCount >= app.listing.quota) {
+        await tx.marketplaceListing.update({ where: { id: listingId }, data: { status: "FILLED" } });
+      }
+      if (app.listing.jadwalId) {
+        const linked = await tx.jadwal.findUnique({ where: { id: app.listing.jadwalId } });
+        if (linked && !linked.streamerKaryawanId) {
+          await tx.jadwal.update({ where: { id: app.listing.jadwalId }, data: { streamerKaryawanId: user.karyawanId! } });
+        }
+      }
+    });
+    results.push({ listingId, status: "PICKED" });
+  }
+  return { success: true, finalized: results.length, results };
+}
+
 // ---------- Client/HR: listing management ----------
 
 /** HR/ops pipeline view: every listing with its applications and the linked

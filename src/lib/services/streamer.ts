@@ -241,9 +241,61 @@ function periodeRange(periode: string): [number, number] {
   const year = m ? parseInt(m[2], 10) : new Date().getFullYear();
   return [new Date(year, idx, 1).getTime(), new Date(year, idx + 1, 1).getTime()];
 }
+/** Get list of active streamers for admin host selection (ref-deploy report-admin-filter). */
+export async function getStreamerHostList() {
+  await requireRole("SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const streamers = await db.karyawan.findMany({
+    where: {
+      statusAktif: "AKTIF",
+      OR: [
+        { kategori: "STREAMER" },
+        { jabatan: { contains: "Streamer", mode: "insensitive" } },
+        { jabatan: { contains: "Host", mode: "insensitive" } },
+        { idKaryawan: { startsWith: "HST" } },
+        { idKaryawan: { startsWith: "PCS" } },
+      ],
+    },
+    select: {
+      id: true,
+      idKaryawan: true,
+      namaLengkap: true,
+    },
+    orderBy: { namaLengkap: "asc" },
+  });
+
+  return streamers.map((s) => ({
+    id: s.id,
+    idKaryawan: s.idKaryawan,
+    namaLengkap: s.namaLengkap,
+  }));
+}
+
 /** Full realtime dashboard data for the streamer (ref-deploy tab-report). */
-export async function getMyDashboard(periode?: string) {
-  const karyawanId = await requireStreamer();
+export async function getMyDashboard(periode?: string, targetHostId?: string) {
+  const user = await requireRole("STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL");
+  const isAdmin = ["SUPER_ADMIN", "ADMIN_OPERASIONAL"].includes(user.role);
+
+  let karyawanId: string;
+  if (isAdmin) {
+    if (!targetHostId || !targetHostId.trim()) {
+      return null;
+    }
+    const cleanRaw = targetHostId.includes("|") ? targetHostId.split("|")[0].trim() : targetHostId.trim();
+    const found = await db.karyawan.findFirst({
+      where: {
+        OR: [
+          { id: cleanRaw },
+          { idKaryawan: cleanRaw },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!found) return null;
+    karyawanId = found.id;
+  } else {
+    if (!user.karyawanId) throw AppError.forbidden("Akun tidak terhubung ke karyawan");
+    karyawanId = user.karyawanId;
+  }
 
   const now = new Date();
   const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];

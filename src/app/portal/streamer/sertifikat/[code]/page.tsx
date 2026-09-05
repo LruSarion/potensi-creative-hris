@@ -34,7 +34,7 @@ export default function SertifikatPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-sm text-slate-400 flex items-center gap-2">
-          <i className="fa-solid fa-spinner animate-spin text-emerald-500" />
+          <i className="fa-solid fa-spinner animate-spin text-[#941A0B]" />
           Memuat sertifikat...
         </div>
       </div>

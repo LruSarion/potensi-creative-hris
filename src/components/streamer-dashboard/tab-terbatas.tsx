@@ -232,7 +232,7 @@ export function TabTerbatas({
                           <i className="fa-regular fa-calendar text-[10px]" />
                           <span>{formatDateSafe(j.tanggal)}</span>
                         </div>
-                        <div className="text-[11px] text-amber-600 mt-0.5 flex items-center gap-1 font-mono">
+                        <div className="text-[11px] text-amber-600 mt-0.5 flex items-center gap-1 font-medium tabular-nums">
                           <i className="fa-regular fa-clock text-[10px]" />
                           <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
                         </div>
@@ -329,7 +329,7 @@ export function TabTerbatas({
                         <td className="px-3.5 py-3 text-center font-bold text-slate-400">{idx + 1}</td>
                         <td className="px-4 py-3 text-center align-middle whitespace-nowrap">
                           <div className="font-mono font-bold text-[#941A0B]">{j.idJadwal ?? "–"}</div>
-                          {p.id && <div className="text-[9px] text-slate-400 font-mono truncate max-w-[120px] mx-auto">{p.id}</div>}
+                          {p.id && <div className="text-[10px] text-slate-400 font-mono truncate max-w-[120px] mx-auto">{p.id}</div>}
                         </td>
                         <td className="px-4 py-3 align-top">
                           <div className="font-bold text-slate-900">{k?.namaLengkap || sessionUserName}</div>
@@ -341,7 +341,7 @@ export function TabTerbatas({
                             <i className="fa-regular fa-calendar text-[10px]" />
                             <span>{formatDateSafe(j.tanggal)}</span>
                           </div>
-                          <div className="text-[11px] text-rose-600 mt-0.5 flex items-center gap-1 font-mono">
+                          <div className="text-[11px] text-rose-600 mt-0.5 flex items-center gap-1 font-medium tabular-nums">
                             <i className="fa-regular fa-clock text-[10px]" />
                             <span>{formatTimeSafe(j.jamMulaiLive)} - {formatTimeSafe(j.jamSelesaiLive)} WIB</span>
                           </div>
@@ -396,7 +396,7 @@ export function TabTerbatas({
                 <p className="text-[10px] text-slate-400 mb-0.5">ID Jadwal</p>
                 <p className="font-bold text-[#FA3737] font-mono break-all">{selectedTerbatasJadwal.idJadwal}</p>
                 {selectedTerbatasJadwal.idAbsen && (
-                  <p className="text-[9px] text-slate-400 font-mono">{selectedTerbatasJadwal.idAbsen}</p>
+                  <p className="text-[10px] text-slate-400 font-mono">{selectedTerbatasJadwal.idAbsen}</p>
                 )}
               </div>
               <div>
@@ -406,12 +406,12 @@ export function TabTerbatas({
               <div>
                 <p className="text-[10px] text-slate-400 mb-0.5">Streamer</p>
                 <p className="font-bold text-white">{selectedTerbatasJadwal.streamerName}</p>
-                <p className="text-[9px] text-slate-400 font-mono">{selectedTerbatasJadwal.streamerId}</p>
+                <p className="text-[10px] text-slate-400 font-mono">{selectedTerbatasJadwal.streamerId}</p>
               </div>
               <div>
                 <p className="text-[10px] text-slate-400 mb-0.5">Waktu Live</p>
                 <p className="font-bold text-emerald-400">{formatDateSafe(selectedTerbatasJadwal.tanggal)}</p>
-                <p className="text-[10px] text-amber-300 font-mono">
+                <p className="text-[10px] text-amber-300 font-medium tabular-nums">
                   {formatTimeSafe(selectedTerbatasJadwal.jamMulaiLive)} - {formatTimeSafe(selectedTerbatasJadwal.jamSelesaiLive)} WIB
                 </p>
               </div>

@@ -97,7 +97,10 @@ export default function PayrollPage() {
       {/* Tab Navigation persis ref-website-lama/payroll.html */}
       <div className="flex flex-wrap gap-2 border border-slate-200 p-1.5 rounded-xl bg-slate-50 mb-6">
         <button
-          onClick={() => setActiveTab("payroll")}
+          onClick={() => {
+            setSelectedSlip(null);
+            setActiveTab("payroll");
+          }}
           className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
             activeTab === "payroll"
               ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
@@ -108,7 +111,10 @@ export default function PayrollPage() {
           <span>Payroll Bulan Ini</span>
         </button>
         <button
-          onClick={() => setActiveTab("atur-gaji")}
+          onClick={() => {
+            setSelectedSlip(null);
+            setActiveTab("atur-gaji");
+          }}
           className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
             activeTab === "atur-gaji"
               ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
@@ -119,7 +125,10 @@ export default function PayrollPage() {
           <span>Atur Master Gaji</span>
         </button>
         <button
-          onClick={() => setActiveTab("history")}
+          onClick={() => {
+            setSelectedSlip(null);
+            setActiveTab("history");
+          }}
           className={`flex-1 py-2 px-4 rounded-lg text-sm transition flex items-center justify-center gap-2 ${
             activeTab === "history"
               ? "bg-white border border-slate-300 font-bold text-slate-900 shadow-sm"
@@ -303,8 +312,14 @@ export default function PayrollPage() {
 
       {/* Slip Modal */}
       {selectedSlip && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-5">
+        <div
+          onClick={() => setSelectedSlip(null)}
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 cursor-pointer"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 space-y-5 cursor-default"
+          >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="font-bold text-slate-900 text-base">Rincian Slip Honor Streamer</h3>

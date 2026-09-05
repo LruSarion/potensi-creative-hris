@@ -199,13 +199,20 @@ export default function StaffDashboardPage() {
     setSuccess("");
     setActionLoading(true);
     try {
-      await sendJson("/api/absensi", "POST", { tipe, kategori: "STAFF", fotoBuktiUrl: fotoBuktiUrl || undefined });
+      const targetKaryawanId = monitoredStaff ? monitoredStaff.id : undefined;
+      await sendJson("/api/absensi", "POST", {
+        tipe,
+        kategori: "STAFF",
+        karyawanId: targetKaryawanId,
+        fotoBuktiUrl: fotoBuktiUrl || undefined,
+      });
       const msg = tipe === "CHECK_IN" ? "Presensi Masuk (Check-In) berhasil dicatat!" : "Presensi Pulang (Check-Out) berhasil dicatat!";
       toast.success(msg);
       setSuccess("✅ " + msg);
-      loadSession();
-      loadStats();
-      loadHistory();
+      setFotoBuktiUrl("");
+      loadSession(monitoredStaff?.id);
+      loadStats(monitoredStaff?.id);
+      loadHistory(monitoredStaff?.id);
       setActiveTab(tipe === "CHECK_IN" ? "checkout" : "riwayat");
     } catch (err) {
       const msg = errorMessage(err, "Gagal memproses absensi");
@@ -513,18 +520,40 @@ export default function StaffDashboardPage() {
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">Foto / Dokumentasi Studio</label>
               <CameraCapture value={fotoBuktiUrl} onChange={setFotoBuktiUrl} label="📷 Ambil Foto Absensi" />
+              <p className="text-[11px] text-slate-400 mt-1">Opsional: Lampirkan foto dokumentasi saat check-in.</p>
             </div>
 
-            <div className="pt-2">
-              <button
-                onClick={() => doAbsen("CHECK_IN")}
-                disabled={actionLoading || Boolean(sesi)}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition shadow-md shadow-emerald-600/20 disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                <i className="fa-solid fa-door-open" />
-                <span>Presensi Masuk (Check-In)</span>
-              </button>
-            </div>
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
+                <i className="fa-solid fa-circle-exclamation text-red-500 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {sesi ? (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("checkout")}
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition shadow-md shadow-blue-600/20 flex items-center justify-center gap-2"
+                >
+                  <i className="fa-solid fa-arrow-right" />
+                  <span>Sesi Aktif — Beralih ke Presensi Pulang (Check-Out)</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => doAbsen("CHECK_IN")}
+                  disabled={actionLoading}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl text-sm transition shadow-md shadow-emerald-600/20 disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <i className={actionLoading ? "fa-solid fa-spinner animate-spin" : "fa-solid fa-door-open"} />
+                  <span>{actionLoading ? "Memproses Presensi..." : "Presensi Masuk (Check-In)"}</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* SOP Checklist */}
@@ -755,7 +784,7 @@ export default function StaffDashboardPage() {
                 {jadwalLoading ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
+                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-[#941A0B] mb-2 block" />
                       Menyinkronkan jadwal kerja...
                     </td>
                   </tr>

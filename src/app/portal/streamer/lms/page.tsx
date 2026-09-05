@@ -104,7 +104,7 @@ export default function LmsAkademiPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-sm text-slate-400 flex items-center gap-2">
-          <i className="fa-solid fa-spinner animate-spin text-blue-500" />
+          <i className="fa-solid fa-spinner animate-spin text-[#941A0B]" />
           Memuat materi akademi...
         </div>
       </div>

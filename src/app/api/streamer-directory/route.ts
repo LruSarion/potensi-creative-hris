@@ -96,4 +96,4 @@ export const GET = apiHandler(async (req: Request) => {
       })),
     };
   });
-});
+}, { cacheControl: "private, max-age=30, stale-while-revalidate=60" });

@@ -10,6 +10,7 @@ import {
   getTerbatasData,
   getStreamerRequestStatus,
   getStudioList,
+  getStreamerHostList,
   submitLeaveRequest,
   submitShiftRequest,
 } from "@/lib/services/streamer";
@@ -18,10 +19,12 @@ export const GET = apiHandler(async (req: Request) => {
   const url = new URL(req.url);
   const view = url.searchParams.get("view") ?? "jadwal";
   const periode = url.searchParams.get("periode") ?? undefined;
+  const hostId = url.searchParams.get("hostId") ?? url.searchParams.get("karyawanId") ?? undefined;
   if (view === "absensi") return getMyAbsensi();
   if (view === "report") return getMyReport(periode);
   if (view === "sesi") return getMySesiAktif();
-  if (view === "dashboard") return getMyDashboard(periode);
+  if (view === "dashboard") return getMyDashboard(periode, hostId);
+  if (view === "hosts") return getStreamerHostList();
   if (view === "pending-gmv") return getPendingGmv();
   if (view === "terbatas") return getTerbatasData();
   if (view === "studios") return getStudioList();

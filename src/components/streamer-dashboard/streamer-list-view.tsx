@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, memo } from "react";
 import Image from "next/image";
 import { fetchJson } from "@/lib/api-client";
 import { TableLoadingState } from "@/components/ui/loading-states";
@@ -27,7 +27,103 @@ interface StreamerListViewProps {
   currentKaryawanId?: string | null;
 }
 
-export function StreamerListView({
+const StreamerRowItem = memo(function StreamerRowItem({
+  streamer,
+  index,
+  isSelf,
+  onSelect,
+}: {
+  streamer: StreamerListItem;
+  index: number;
+  isSelf: boolean;
+  onSelect: (id: string) => void;
+}) {
+  const photoSrc = streamer.fotoUrl || streamer.photoUrl;
+  const completedCount = streamer.totalSessionsMonth ?? streamer.totalSessions ?? 0;
+  const isAktif = (streamer.statusAktif || "AKTIF").toUpperCase() === "AKTIF";
+
+  return (
+    <tr
+      className="hover:bg-red-50/20 transition group cursor-pointer"
+      onClick={() => onSelect(streamer.id)}
+    >
+      <td className="px-4 py-3.5 text-center text-slate-400 font-mono font-bold">
+        {index + 1}
+      </td>
+
+      <td className="px-4 py-3.5">
+        <div className="flex items-center gap-3">
+          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 shadow-2xs">
+            {photoSrc ? (
+              <Image
+                src={photoSrc}
+                alt={streamer.namaLengkap}
+                fill
+                sizes="40px"
+                className="object-cover"
+                unoptimized
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-[#941A0B]/10 text-[#941A0B] font-bold text-sm">
+                {streamer.namaLengkap.slice(0, 2).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
+              <span>{streamer.namaLengkap}</span>
+              {isSelf && (
+                <span className="bg-[#941A0B] text-white text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">
+                  Anda
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-slate-400 font-mono font-medium mt-0.5">
+              {streamer.idKaryawan}
+            </div>
+          </div>
+        </div>
+      </td>
+
+      <td className="px-4 py-3.5">
+        <div className="font-bold text-slate-700 text-xs">{streamer.jabatan || "Live Streamer"}</div>
+        <div className="text-[11px] text-slate-400 font-medium">{streamer.kategori || "Host"}</div>
+      </td>
+
+      <td className="px-4 py-3.5 text-center">
+        <span className="font-extrabold text-sm text-slate-800 bg-slate-100 px-3 py-1 rounded-lg">
+          {completedCount} Sesi
+        </span>
+      </td>
+
+      <td className="px-4 py-3.5 text-center">
+        <span
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border shadow-2xs ${
+            isAktif
+              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+              : "bg-slate-100 text-slate-500 border-slate-200"
+          }`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${isAktif ? "bg-emerald-500" : "bg-slate-400"}`} />
+          <span>{streamer.statusAktif || "AKTIF"}</span>
+        </span>
+      </td>
+
+      <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+        <button
+          type="button"
+          onClick={() => onSelect(streamer.id)}
+          className="px-3.5 py-1.5 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs mx-auto active:scale-95 cursor-pointer"
+        >
+          <i className="fa-solid fa-id-card text-xs" />
+          <span>Lihat Profil</span>
+        </button>
+      </td>
+    </tr>
+  );
+});
+
+export const StreamerListView = memo(function StreamerListView({
   onSelectStreamer,
   currentKaryawanId,
 }: StreamerListViewProps) {
@@ -84,32 +180,38 @@ export function StreamerListView({
     loadStreamers();
   }, []);
 
-  const filtered = streamers.filter((s) => {
+  const filtered = useMemo(() => {
     const query = search.toLowerCase().trim();
-    const matchSearch =
-      !query ||
-      s.namaLengkap.toLowerCase().includes(query) ||
-      s.idKaryawan.toLowerCase().includes(query) ||
-      (s.namaPanggilan && s.namaPanggilan.toLowerCase().includes(query)) ||
-      (s.jabatan && s.jabatan.toLowerCase().includes(query));
+    return streamers.filter((s) => {
+      const matchSearch =
+        !query ||
+        s.namaLengkap.toLowerCase().includes(query) ||
+        s.idKaryawan.toLowerCase().includes(query) ||
+        (s.namaPanggilan && s.namaPanggilan.toLowerCase().includes(query)) ||
+        (s.jabatan && s.jabatan.toLowerCase().includes(query));
 
-    const statusNorm = (s.statusAktif || "AKTIF").toUpperCase();
-    const matchStatus =
-      filterStatus === "ALL" ||
-      (filterStatus === "AKTIF" && (statusNorm === "AKTIF" || !statusNorm.includes("NON"))) ||
-      (filterStatus === "NON_AKTIF" && (statusNorm === "NON_AKTIF" || statusNorm.includes("NON")));
+      const statusNorm = (s.statusAktif || "AKTIF").toUpperCase();
+      const matchStatus =
+        filterStatus === "ALL" ||
+        (filterStatus === "AKTIF" && (statusNorm === "AKTIF" || !statusNorm.includes("NON"))) ||
+        (filterStatus === "NON_AKTIF" && (statusNorm === "NON_AKTIF" || statusNorm.includes("NON")));
 
-    return matchSearch && matchStatus;
-  });
+      return matchSearch && matchStatus;
+    });
+  }, [streamers, search, filterStatus]);
 
   const totalStreamers = streamers.length;
-  const activeCount = streamers.filter(
-    (s) => (s.statusAktif || "AKTIF").toUpperCase() === "AKTIF"
-  ).length;
-  const totalCompletedSessions = streamers.reduce(
-    (sum, s) => sum + (s.totalSessionsMonth || s.totalSessions || 0),
-    0
-  );
+  const activeCount = useMemo(() => {
+    return streamers.filter(
+      (s) => (s.statusAktif || "AKTIF").toUpperCase() === "AKTIF"
+    ).length;
+  }, [streamers]);
+  const totalCompletedSessions = useMemo(() => {
+    return streamers.reduce(
+      (sum, s) => sum + (s.totalSessionsMonth || s.totalSessions || 0),
+      0
+    );
+  }, [streamers]);
 
   return (
     <div className="space-y-6">
@@ -226,93 +328,15 @@ export function StreamerListView({
                   subtext="Menyelaraskan profil dan rekap performa sesi..."
                 />
               ) : (
-                filtered.map((s, idx) => {
-                  const isSelf = currentKaryawanId && currentKaryawanId === s.id;
-                  const photoSrc = s.fotoUrl || s.photoUrl;
-                  const completedCount = s.totalSessionsMonth ?? s.totalSessions ?? 0;
-                  const isAktif = (s.statusAktif || "AKTIF").toUpperCase() === "AKTIF";
-
-                  return (
-                    <tr
-                      key={s.id}
-                      className="hover:bg-red-50/20 transition group cursor-pointer"
-                      onClick={() => onSelectStreamer(s.id)}
-                    >
-                      <td className="px-4 py-3.5 text-center text-slate-400 font-mono font-bold">
-                        {idx + 1}
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="flex items-center gap-3">
-                          <div className="relative w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 flex-shrink-0 shadow-2xs">
-                            {photoSrc ? (
-                              <Image
-                                src={photoSrc}
-                                alt={s.namaLengkap}
-                                fill
-                                sizes="40px"
-                                className="object-cover"
-                                unoptimized
-                              />
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center bg-[#941A0B]/10 text-[#941A0B] font-bold text-sm">
-                                {s.namaLengkap.slice(0, 2).toUpperCase()}
-                              </div>
-                            )}
-                          </div>
-                          <div>
-                            <div className="font-extrabold text-slate-900 text-sm flex items-center gap-1.5">
-                              <span>{s.namaLengkap}</span>
-                              {isSelf && (
-                                <span className="bg-[#941A0B] text-white text-[9px] font-bold px-1.5 py-0.2 rounded uppercase">
-                                  Anda
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-[11px] text-slate-400 font-mono font-medium mt-0.5">
-                              {s.idKaryawan}
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3.5">
-                        <div className="font-bold text-slate-700 text-xs">{s.jabatan || "Live Streamer"}</div>
-                        <div className="text-[11px] text-slate-400 font-medium">{s.kategori || "Host"}</div>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-center">
-                        <span className="font-extrabold text-sm text-slate-800 bg-slate-100 px-3 py-1 rounded-lg">
-                          {completedCount} Sesi
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider border shadow-2xs ${
-                            isAktif
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${isAktif ? "bg-emerald-500" : "bg-slate-400"}`} />
-                          <span>{s.statusAktif || "AKTIF"}</span>
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          type="button"
-                          onClick={() => onSelectStreamer(s.id)}
-                          className="px-3.5 py-1.5 bg-[#941A0B] hover:bg-[#7a1509] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs mx-auto active:scale-95 cursor-pointer"
-                        >
-                          <i className="fa-solid fa-id-card text-xs" />
-                          <span>Lihat Profil</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })
+                filtered.map((s, idx) => (
+                  <StreamerRowItem
+                    key={s.id}
+                    streamer={s}
+                    index={idx}
+                    isSelf={Boolean(currentKaryawanId && currentKaryawanId === s.id)}
+                    onSelect={onSelectStreamer}
+                  />
+                ))
               )}
             </tbody>
           </table>
@@ -327,4 +351,5 @@ export function StreamerListView({
       </div>
     </div>
   );
-}
+});
+

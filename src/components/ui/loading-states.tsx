@@ -22,14 +22,14 @@ export function TableLoadingState({
     variant === "brand"
       ? "border-red-100 border-t-[#941A0B]"
       : variant === "blue"
-      ? "border-blue-100 border-t-blue-600"
+      ? "border-red-100 border-t-[#941A0B]"
       : "border-slate-200 border-t-slate-700";
 
   const iconColor =
     variant === "brand"
       ? "text-[#941A0B]"
       : variant === "blue"
-      ? "text-blue-600"
+      ? "text-[#941A0B]"
       : "text-slate-600";
 
   return (
@@ -68,7 +68,7 @@ export function SectionLoader({
     variant === "brand"
       ? "text-[#941A0B]"
       : variant === "blue"
-      ? "text-blue-600"
+      ? "text-[#941A0B]"
       : "text-slate-600";
 
   return (

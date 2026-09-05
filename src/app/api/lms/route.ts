@@ -32,7 +32,8 @@ export const GET = apiHandler(async (req: Request) => {
   const lessonId = url.searchParams.get("lessonId") ?? undefined;
   const watchId = url.searchParams.get("watchId") ?? undefined;
   const certCode = url.searchParams.get("code") ?? undefined;
-  if (view === "enrollments") return listEnrollments(courseId);
+  const compact = url.searchParams.get("compact") === "true";
+  if (view === "enrollments") return listEnrollments(courseId, compact);
   if (view === "certifications") return listCertifications();
   if (view === "video-submissions") return listVideoSubmissions({ courseId, lessonId });
   if (view === "video-submission-detail" && watchId) return getVideoSubmissionDetail(watchId);

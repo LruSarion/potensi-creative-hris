@@ -808,7 +808,7 @@ export function TukarShiftView() {
                 {loadingSwaps ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-blue-500 mb-2 block" />
+                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-[#941A0B] mb-2 block" />
                       Memuat pengajuan tukar shift...
                     </td>
                   </tr>
@@ -1093,7 +1093,7 @@ export function TukarShiftView() {
                 {loadingSwaps ? (
                   <tr>
                     <td colSpan={7} className="px-4 py-12 text-center text-slate-400">
-                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-indigo-500 mb-2 block" />
+                      <i className="fa-solid fa-circle-notch fa-spin text-2xl text-[#941A0B] mb-2 block" />
                       Memuat pengajuan tukar shift...
                     </td>
                   </tr>

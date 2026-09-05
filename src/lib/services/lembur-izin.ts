@@ -92,7 +92,17 @@ export async function listLembur(params?: { karyawanId?: string }) {
   return db.lembur.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    include: { karyawan: true },
+    include: {
+      karyawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          jabatan: true,
+        },
+      },
+    },
+    take: 100,
   });
 }
 
@@ -159,6 +169,16 @@ export async function listIzin(params?: { karyawanId?: string }) {
   return db.izin.findMany({
     where,
     orderBy: { createdAt: "desc" },
-    include: { karyawan: true },
+    include: {
+      karyawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          jabatan: true,
+        },
+      },
+    },
+    take: 100,
   });
 }

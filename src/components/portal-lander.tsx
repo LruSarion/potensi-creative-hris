@@ -45,7 +45,6 @@ const PORTAL_SECTIONS: Record<
       desc: "Kelola modul kursus, kurikulum live selling, dan evaluasi peserta.",
       tiles: [
         { href: "/portal/trainer", label: "Kurikulum & Modul Kursus", icon: "fa-graduation-cap" },
-        { href: "/penilaian-sdm", label: "Evaluasi KPI Host", icon: "fa-star" },
       ],
     },
   ],

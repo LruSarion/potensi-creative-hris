@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import LogoutConfirmModal from "@/components/logout-confirm-modal";
@@ -17,6 +17,36 @@ export default function TopNav({
   const { data: session } = useSession();
   const pathname = usePathname();
   const [logoutOpen, setLogoutOpen] = useState(false);
+  const [fallbackKaryawan, setFallbackKaryawan] = useState<{ idKaryawan: string | null; jabatan: string | null } | null>(null);
+
+  // Fallback fetch for idKaryawan | jabatan if session token is stale (before migration)
+  useEffect(() => {
+    const sessUser = session?.user as { idKaryawan?: string | null; nik?: string | null; jabatan?: string | null } | undefined;
+    const hasId = Boolean(sessUser?.idKaryawan);
+    const hasJabatan = Boolean(sessUser?.jabatan);
+    if (session?.user && (!hasId || !hasJabatan)) {
+      let cancelled = false;
+      fetch("/api/streamer-profile-card", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelled && data?.karyawan) {
+            setFallbackKaryawan({ idKaryawan: data.karyawan.idKaryawan ?? null, jabatan: data.karyawan.jabatan ?? null });
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        cancelled = true;
+      };
+    } else if (hasId && hasJabatan) {
+      setFallbackKaryawan(null);
+    }
+  }, [session?.user]);
+
+  const displayName = session?.user?.name ?? "Henry Setyawan";
+  const sessAny = session?.user as { idKaryawan?: string | null; nik?: string | null; jabatan?: string | null; role?: string } | undefined;
+  const idKaryawanDisplay = sessAny?.idKaryawan ?? fallbackKaryawan?.idKaryawan ?? sessAny?.nik ?? "—";
+  const jabatanDisplay =
+    sessAny?.jabatan ?? fallbackKaryawan?.jabatan ?? (sessAny?.role ? String(sessAny.role).replace(/_/g, " ") : "—");
 
   const pathTitles: Record<string, string> = {
     "/dashboard": "Dashboard",
@@ -77,23 +107,28 @@ export default function TopNav({
         <h1 className="font-bold text-base sm:text-lg text-[#000000] tracking-tight">{currentTitle}</h1>
       </div>
 
-      {/* User Info & Logout on Top Right */}
+      {/* User Info & Logout on Top Right — nama lengkap + idKaryawan | jabatan */}
       <div className="flex items-center gap-3 sm:gap-4">
-        <div className="text-right flex flex-col justify-center">
-          <div className="text-xs sm:text-sm font-bold text-[#000000] leading-tight">
-            {session?.user?.name ?? "Henry Setyawan"}
+        <div className="text-right flex flex-col justify-center min-w-0">
+          <div className="text-xs sm:text-sm font-bold text-[#000000] leading-tight truncate max-w-[160px] sm:max-w-[220px]">
+            {displayName}
           </div>
-          <div className="text-[11px] text-[#4D4D4D] font-medium mt-0.5">
-            {session?.user?.role ? `${session.user.role.replace(/_/g, " ")}` : "DEV000 | Desain Grafis"}
+          <div className="text-[11px] text-[#4D4D4D] font-medium mt-0.5 flex items-center justify-end gap-1.5 truncate max-w-[160px] sm:max-w-[220px]">
+            <span className="font-mono font-semibold text-[#000000]">{idKaryawanDisplay}</span>
+            <span className="text-[#919191]">|</span>
+            <span className="truncate">{jabatanDisplay}</span>
           </div>
         </div>
 
+        <div className="h-8 w-px bg-[#F1F1F1] hidden sm:block" />
+
         <button
           onClick={() => setLogoutOpen(true)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-[#919191] hover:text-[#FA3737] hover:bg-[#941A0B]/10 transition cursor-pointer"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-[#919191] hover:text-white hover:bg-[#941A0B] border border-transparent hover:border-[#941A0B] transition cursor-pointer shrink-0"
           title="Keluar / Logout"
+          aria-label="Keluar"
         >
-          <i className="fa-solid fa-arrow-right-from-bracket text-lg" />
+          <i className="fa-solid fa-arrow-right-from-bracket text-[16px]" />
         </button>
       </div>
 

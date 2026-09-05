@@ -64,7 +64,49 @@ export async function listJadwal(params?: {
       ...(params?.tanggal ? { tanggal: new Date(params.tanggal) } : {}),
     },
     orderBy: { tanggal: "desc" },
-    include: { streamerKaryawan: true, hostKaryawan: true, otsKaryawan: true, client: true, absensi: true },
+    include: {
+      streamerKaryawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          namaPanggilan: true,
+          jabatan: true,
+        },
+      },
+      hostKaryawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          namaPanggilan: true,
+          jabatan: true,
+        },
+      },
+      otsKaryawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          namaPanggilan: true,
+          jabatan: true,
+        },
+      },
+      client: {
+        select: {
+          id: true,
+          namaClient: true,
+        },
+      },
+      absensi: {
+        select: {
+          id: true,
+          tipe: true,
+          waktu: true,
+          buktiDriveId: true,
+        },
+      },
+    },
   });
 }
 

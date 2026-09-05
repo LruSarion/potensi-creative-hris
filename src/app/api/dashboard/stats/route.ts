@@ -112,4 +112,4 @@ export const GET = apiHandler(async () => {
     sedangLive: sedangLiveCount,
     totalRevenueBulanIni,
   };
-});
+}, { cacheControl: "private, max-age=15, stale-while-revalidate=60" });

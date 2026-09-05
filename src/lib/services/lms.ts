@@ -228,9 +228,9 @@ export function checkAnswerMatch(
 
 /** Auto-grade an MCQ attempt; essay returns null (manual grading). */
 export async function submitAnswer(enrollmentId: string, questionId: string, answerText: string) {
-  const user = await requirePortal("streamer");
+  const user = await requireRole();
   const enroll = await db.enrollment.findFirst({
-    where: { id: enrollmentId, karyawanId: user.karyawanId ?? undefined },
+    where: { id: enrollmentId, ...(user.karyawanId && user.role !== "SUPER_ADMIN" ? { karyawanId: user.karyawanId } : {}) },
   });
   if (!enroll) throw AppError.forbidden("Enrollment tidak ditemukan");
 
@@ -276,13 +276,16 @@ export async function enrollCohort(courseId: string, karyawanIds: string[], dueD
   if (!course) throw AppError.notFound("Course tidak ditemukan");
   return db.$transaction(async (tx) => {
     const created = [];
+    const alreadyEnrolled = [];
     for (const k of karyawanIds) {
       const exists = await tx.enrollment.findFirst({ where: { courseId, karyawanId: k } });
       if (!exists) {
         created.push(await tx.enrollment.create({ data: { courseId, karyawanId: k, dueDate: dueDate ? new Date(dueDate) : undefined } }));
+      } else {
+        alreadyEnrolled.push(exists);
       }
     }
-    return created;
+    return { created, alreadyEnrolled, total: karyawanIds.length };
   });
 }
 
@@ -321,12 +324,12 @@ export async function computeProgress(enrollmentId: string) {
   return { progressPct, answered, totalQuestions, completed: isCompleted };
 }
 
-export async function listEnrollments(courseId?: string) {
+export async function listEnrollments(courseId?: string, compact?: boolean) {
   const user = await requireRole();
   const karyawanId = user.karyawanId;
 
-  // If user is a streamer and has a karyawan record, auto-enroll in any active courses if not yet enrolled
-  if (karyawanId) {
+  // Auto-enroll ONLY applies to streamers on their active courses, not admins or trainers
+  if (karyawanId && user.role === "STREAMER") {
     const activeCourses = await db.course.findMany({
       where: { ...tenantWhere(user), status: "ACTIVE" },
       select: { id: true },
@@ -350,15 +353,25 @@ export async function listEnrollments(courseId?: string) {
       ...tenantFilter,
     },
     include: {
-      course: {
-        include: {
-          modules: {
-            orderBy: { order: "asc" },
-            include: { lessons: { orderBy: { order: "asc" } }, questions: true },
+      course: compact
+        ? { select: { id: true, title: true, isCertification: true, status: true } }
+        : {
+            include: {
+              modules: {
+                orderBy: { order: "asc" },
+                include: { lessons: { orderBy: { order: "asc" } }, questions: true },
+              },
+            },
           },
+      karyawan: {
+        select: {
+          id: true,
+          idKaryawan: true,
+          namaLengkap: true,
+          email: true,
+          jabatan: true,
         },
       },
-      karyawan: true,
       certificates: true,
     },
     orderBy: { updatedAt: "desc" },
@@ -416,8 +429,10 @@ export async function revokeCertificate(id: string) {
 
 /** Streamer reports watch progress on a video lesson. Idempotent upsert. */
 export async function updateVideoWatch(input: { enrollmentId: string; lessonId: string; watchSeconds: number; completed?: boolean }) {
-  const user = await requirePortal("streamer");
-  const enroll = await db.enrollment.findFirst({ where: { id: input.enrollmentId, karyawanId: user.karyawanId ?? undefined } });
+  const user = await requireRole();
+  const enroll = await db.enrollment.findFirst({
+    where: { id: input.enrollmentId, ...(user.karyawanId && user.role !== "SUPER_ADMIN" ? { karyawanId: user.karyawanId } : {}) },
+  });
   if (!enroll) throw AppError.forbidden("Enrollment tidak ditemukan");
 
   const lesson = await db.lesson.findUnique({ where: { id: input.lessonId }, include: { module: true } });
@@ -460,8 +475,10 @@ export async function updateVideoWatch(input: { enrollmentId: string; lessonId: 
 
 /** Streamer submits all answers for a video lesson's timed questions. Marks the watch as submitted. */
 export async function submitVideoLesson(input: { enrollmentId: string; lessonId: string; answers: { questionId: string; answerText: string }[] }) {
-  const user = await requirePortal("streamer");
-  const enroll = await db.enrollment.findFirst({ where: { id: input.enrollmentId, karyawanId: user.karyawanId ?? undefined } });
+  const user = await requireRole();
+  const enroll = await db.enrollment.findFirst({
+    where: { id: input.enrollmentId, ...(user.karyawanId && user.role !== "SUPER_ADMIN" ? { karyawanId: user.karyawanId } : {}) },
+  });
   if (!enroll) throw AppError.forbidden("Enrollment tidak ditemukan");
 
   const lesson = await db.lesson.findUnique({ where: { id: input.lessonId }, include: { module: true } });

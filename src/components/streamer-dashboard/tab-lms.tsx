@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import VideoLessonPlayer from "@/components/lms/video-lesson-player";
 import AudioCapture from "@/components/audio-capture";
 import { fetchJson } from "@/lib/api-client";
+import { toast } from "@/components/ui/toast";
 
 type Question = {
   id: string;
@@ -200,7 +201,11 @@ export default function TabLms() {
             }),
           }).then((x) => x.json());
 
-          if (isGradable && res.data?.score === 100) isRight = true;
+          if (res?.status === "error") {
+            toast.error(res.message || "Gagal menyimpan jawaban kuis ke server.");
+          } else if (isGradable && res.data?.score === 100) {
+            isRight = true;
+          }
         } catch {
           // Keep evaluateAnswer result
         }

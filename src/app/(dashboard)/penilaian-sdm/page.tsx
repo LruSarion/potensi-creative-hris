@@ -39,7 +39,7 @@ interface KPIRow {
 export default function PenilaianSDMPage() {
   const { data: session } = useSession();
   const userRole = (session?.user?.role || "").toUpperCase();
-  const isRater = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER", "TRAINER"].includes(userRole);
+  const isRater = ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER"].includes(userRole);
 
   // Tabs state
   const [activeTab, setActiveTab] = useState<"streamer" | "ots">("streamer");
@@ -466,7 +466,7 @@ export default function PenilaianSDMPage() {
                   <th className="px-4 py-3.5 text-center bg-slate-100">TOTAL SKOR</th>
                   <th className="px-4 py-3.5 text-center bg-slate-100">EVALUASI</th>
                   <th className="px-4 py-3.5 text-center bg-slate-100">PENILAI</th>
-                  {isRater && <th className="px-4 py-3.5 text-center bg-slate-100 sticky right-0 z-20">AKSI</th>}
+                  {isRater && <th className="px-4 py-3.5 text-center bg-slate-100 sticky right-0 z-20 min-w-[80px] shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] border-l border-slate-200">AKSI</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
@@ -537,7 +537,10 @@ export default function PenilaianSDMPage() {
                         <td className="px-4 py-3 text-center">
                           <button
                             type="button"
-                            onClick={() => setModalPenilaiInfo({ idPenilaian: merged.idPenilaian, namaPenilai: merged.penilai })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setModalPenilaiInfo({ idPenilaian: merged.idPenilaian, namaPenilai: merged.penilai });
+                            }}
                             className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 font-bold text-[11px] bg-slate-100 hover:bg-slate-200 border border-slate-200 px-2 py-1 rounded-lg transition"
                           >
                             <i className="fa-solid fa-circle-info" />
@@ -545,10 +548,13 @@ export default function PenilaianSDMPage() {
                           </button>
                         </td>
                         {isRater && (
-                          <td className="px-4 py-3 text-center sticky right-0 bg-inherit z-10">
+                          <td className={`px-4 py-3 text-center sticky right-0 ${isModified ? "bg-amber-50" : "bg-white"} group-hover:bg-slate-50 z-20 min-w-[80px] shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.05)] border-l border-slate-100`}>
                             <button
                               type="button"
-                              onClick={() => openEditModal(merged as KPIRow)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditModal(merged as KPIRow);
+                              }}
                               className="inline-flex items-center gap-1 text-white bg-blue-600 hover:bg-blue-700 font-bold text-[11px] px-3 py-1.5 rounded-lg shadow-sm transition active:scale-95"
                             >
                               <i className="fa-solid fa-pen" />

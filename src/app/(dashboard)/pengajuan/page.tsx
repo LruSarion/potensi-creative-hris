@@ -22,7 +22,7 @@ function PengajuanRedirect() {
 
   return (
     <div className="p-8 text-center text-slate-500 font-medium flex items-center justify-center gap-2">
-      <i className="fa-solid fa-circle-notch fa-spin text-blue-600" />
+      <i className="fa-solid fa-circle-notch fa-spin text-[#941A0B]" />
       <span>Mengalihkan ke halaman pengajuan...</span>
     </div>
   );

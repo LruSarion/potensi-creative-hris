@@ -7,10 +7,10 @@
 import LiveCameraCheckin, { LocationCoordinates } from "./live-camera-checkin";
 import type { ActiveSession } from "./types";
 import { formatTimeSafe } from "@/lib/utils/date-format";
-import { useEffect, useState } from "react";
+import { useEffect, useState, memo } from "react";
 import { getScheduleEndFromSession, getCheckoutWindowState, getStreamerActiveSessionState } from "./checkout-window";
 
-export function TabCheckOut({
+export const TabCheckOut = memo(function TabCheckOut({
   activeSession,
   actionLoading,
   studioList,
@@ -283,4 +283,4 @@ export function TabCheckOut({
       )}
     </div>
   );
-}
+});

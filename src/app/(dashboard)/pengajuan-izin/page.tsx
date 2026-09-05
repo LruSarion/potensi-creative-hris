@@ -48,7 +48,7 @@ export default function PengajuanIzinPage() {
 
   async function loadEmployees() {
     try {
-      const data = await fetchJson<any[]>("/api/employees");
+      const data = await fetchJson<any[]>("/api/employees?compact=true");
       if (Array.isArray(data)) {
         setEmployees(data);
       }

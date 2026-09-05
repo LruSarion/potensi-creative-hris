@@ -3,6 +3,10 @@ import { AppError, toAppError } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { ZodError } from "zod";
 
+export interface ApiHandlerOptions {
+  cacheControl?: string;
+}
+
 /**
  * Wrap an API route handler so thrown AppErrors become structured JSON
  * responses and unexpected errors are logged + returned as 500.
@@ -10,7 +14,8 @@ import { ZodError } from "zod";
  * Compatible with Next.js 16 route handler signature (params is a Promise).
  */
 export function apiHandler<T>(
-  fn: (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<T>
+  fn: (req: Request, ctx: { params: Promise<Record<string, string>> }) => Promise<T>,
+  options?: ApiHandlerOptions
 ) {
   return async (req: Request, ctx: { params: Promise<Record<string, string>> }) => {
     try {
@@ -18,7 +23,13 @@ export function apiHandler<T>(
       // If the handler returned a raw Response/NextResponse (e.g. CSV download,
       // file stream, redirect), return it as-is instead of wrapping it.
       if (data instanceof Response) return data;
-      return NextResponse.json({ status: "success", data });
+
+      const headers: Record<string, string> = {};
+      if (options?.cacheControl) {
+        headers["Cache-Control"] = options.cacheControl;
+      }
+
+      return NextResponse.json({ status: "success", data }, { headers });
     } catch (err) {
       if (err instanceof ZodError) {
         return NextResponse.json(

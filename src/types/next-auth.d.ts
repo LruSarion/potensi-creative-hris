@@ -10,6 +10,7 @@ declare module "next-auth" {
       tenantId: string;
       jabatan?: string | null;
       nik?: string | null;
+      idKaryawan?: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -21,5 +22,6 @@ declare module "next-auth/jwt" {
     tenantId?: string;
     jabatan?: string | null;
     nik?: string | null;
+    idKaryawan?: string | null;
   }
 }

@@ -37,7 +37,7 @@ export function useJadwalData() {
   const fetchData = useCallback(async () => {
     try {
       const [empRes, clientRes, jadwalRes] = await Promise.all([
-        fetch("/api/employees").then((r) => r.json()),
+        fetch("/api/employees?compact=true").then((r) => r.json()),
         fetch("/api/clients")
           .then((r) => r.json())
           .catch(() => ({ status: "success", data: [] })),

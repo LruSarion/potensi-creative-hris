@@ -35,7 +35,7 @@ function normalizeStatusAktif(s?: string | null): StatusAktif | undefined {
   return "AKTIF";
 }
 
-export async function listEmployees(params?: { kategori?: string }) {
+export async function listEmployees(params?: { kategori?: string; compact?: boolean }) {
   const user = await requireRole();
   const isAdmin = hasPermission(user.role, "employee:write");
 
@@ -45,6 +45,22 @@ export async function listEmployees(params?: { kategori?: string }) {
       contains: params.kategori,
       mode: "insensitive",
     };
+  }
+
+  if (params?.compact) {
+    return db.karyawan.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        idKaryawan: true,
+        namaLengkap: true,
+        namaPanggilan: true,
+        jabatan: true,
+        kategori: true,
+        statusAktif: true,
+      },
+      orderBy: { namaLengkap: "asc" },
+    });
   }
 
   const rows = await db.karyawan.findMany({

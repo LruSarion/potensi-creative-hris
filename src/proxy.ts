@@ -30,15 +30,16 @@ const ROLE_ROUTES: Record<string, string[]> = {
   "/pipeline": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
   "/sop-management": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   "/migration": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "FINANCE", "FINANCE_MANAGER"],
-  "/qc-violations": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER", "TRAINER"],
+  "/dashboard": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "FINANCE", "FINANCE_MANAGER", "QC_MANAGER", "QC_REVIEWER", "STREAMER", "STAFF", "OTS", "CLIENT", "CLIENT_ADMIN"],
+  "/qc-violations": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "QC_MANAGER", "QC_REVIEWER"],
   "/input-jadwal": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
   "/client": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "CLIENT", "CLIENT_ADMIN"],
   "/pengajuan-izin": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "STREAMER", "STAFF", "OTS"],
   "/pengajuan-lembur": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "STREAMER", "STAFF", "OTS"],
   "/tukar-shift": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "STREAMER", "STAFF"],
-  "/penilaian-sdm": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "QC_MANAGER", "QC_REVIEWER"],
+  "/penilaian-sdm": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "QC_MANAGER", "QC_REVIEWER"],
   "/suara-karyawan": ["SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER", "FINANCE", "FINANCE_MANAGER", "QC_REVIEWER", "STREAMER", "STAFF", "OTS"],
-  "/streamer-dashboard": ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION", "TRAINER"],
+  "/streamer-dashboard": ["STREAMER", "SUPER_ADMIN", "ADMIN_OPERASIONAL", "OPERATION"],
   "/staff-dashboard": ["STAFF", "OTS", "SUPER_ADMIN", "ADMIN_OPERASIONAL"],
 };
 
@@ -71,8 +72,8 @@ export const proxy = auth((req) => {
       if (role && roles.includes(role)) {
         return NextResponse.next();
       }
-      // Denied: redirect to dashboard (root app shell).
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+      const redirectTarget = role === "TRAINER" ? "/portal/trainer" : "/dashboard";
+      return NextResponse.redirect(new URL(redirectTarget, req.url));
     }
   }
 
@@ -82,7 +83,8 @@ export const proxy = auth((req) => {
       if (role && roles.includes(role)) {
         return NextResponse.next();
       }
-      return NextResponse.redirect(new URL("/dashboard", req.url));
+      const redirectTarget = role === "TRAINER" ? "/portal/trainer" : "/dashboard";
+      return NextResponse.redirect(new URL(redirectTarget, req.url));
     }
   }
 
